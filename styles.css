@@ -1,0 +1,869 @@
+/* ==========================================================================
+   FlatWrite — styles.css
+   Disney-inspired minimalist markdown editor.
+   This is the base stylesheet; UI libraries (PoshUI / Oat / Spectre.css)
+   are loaded dynamically and handle form controls + typography overrides.
+   ========================================================================== */
+
+/* ---------- Reset & Box Model ---------- */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---------- CSS Custom Properties ---------- */
+:root {
+  /* Fonts */
+  --font-display: "Unbounded", system-ui, sans-serif;
+  --font-body: "Lato", system-ui, sans-serif;
+
+  /* Glass panel */
+  --glass-bg: rgba(255, 255, 255, 0.35);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px rgba(93, 122, 142, 0.18);
+  --glass-radius: 18px;
+  --glass-blur: 14px;
+
+  /* Colours */
+  --text-primary: #2d2a3e;
+  --text-secondary: #5d5878;
+  --text-muted: #8a849e;
+  --accent: #b06ab3;
+  --accent-hover: #9b4d9e;
+  --btn-bg: rgba(255, 255, 255, 0.55);
+  --btn-border: rgba(180, 160, 200, 0.45);
+  --btn-active-bg: rgba(176, 106, 179, 0.18);
+  --btn-active-border: var(--accent);
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --toolbar-height: 52px;
+}
+
+/* ---------- Body & Background ---------- */
+html, body {
+  height: 100%;
+  overflow: hidden; /* no page-level scroll */
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  line-height: 1.6;
+  /* Disney Castle-inspired dreamy gradient */
+  background: linear-gradient(
+    135deg,
+    #eab8e4 0%,
+    #f5c2da 20%,
+    #f7e9a1 40%,
+    #a2d8c2 65%,
+    #7eb8d4 82%,
+    #5d7a8e 100%
+  );
+  background-attachment: fixed;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- App Shell ---------- */
+.app-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0; /* allow flex children to shrink */
+  max-width: 1440px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px 20px 0;
+  gap: 20px;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  flex: 0 0 var(--sidebar-width);
+  max-width: var(--sidebar-width);
+  min-height: 0; /* allow shrink for scroll */
+}
+
+.sidebar-inner {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow);
+  padding: 28px 22px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.app-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #b06ab3, #4568dc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.tagline {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.sidebar-divider {
+  border: none;
+  border-top: 1px solid rgba(180, 160, 200, 0.3);
+  margin: 18px 0;
+}
+
+/* Reusable sidebar section label */
+.sidebar-section-label {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+/* Framework selector */
+.framework-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.framework-dropdown {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  appearance: auto;
+}
+
+.framework-dropdown:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.18);
+}
+
+.framework-current {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Typography controls (in toolbar — comfort only, not in export) */
+.typo-controls {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.typo-label {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.typo-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.typo-btn:hover {
+  background: rgba(176, 106, 179, 0.12);
+  border-color: rgba(176, 106, 179, 0.3);
+  color: var(--accent);
+}
+
+.typo-btn:active {
+  transform: scale(0.92);
+}
+
+.typo-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(180, 160, 200, 0.3);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.typo-font-picker {
+  padding: 4px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  appearance: auto;
+  max-width: 130px;
+}
+
+.typo-font-picker:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- UI Components Panel (Sidebar) ---------- */
+.components-panel {
+  margin-top: 0;
+}
+
+.components-title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.components-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+.components-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.comp-btn {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 6px 6px;
+  border: 1px solid rgba(180, 160, 200, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.comp-btn:hover {
+  background: rgba(176, 106, 179, 0.12);
+  border-color: rgba(176, 106, 179, 0.3);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(176, 106, 179, 0.12);
+}
+
+.comp-btn:active {
+  transform: translateY(0);
+  background: rgba(176, 106, 179, 0.2);
+}
+
+/* Disabled component buttons (unsupported by current framework) */
+.comp-btn-disabled,
+.comp-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: rgba(180, 160, 200, 0.15);
+  background: rgba(200, 200, 200, 0.2);
+  color: var(--text-muted);
+}
+
+.comp-btn:disabled:hover {
+  opacity: 0.35;
+  transform: none;
+  box-shadow: none;
+  border-color: rgba(180, 160, 200, 0.15);
+  background: rgba(200, 200, 200, 0.2);
+  color: var(--text-muted);
+}
+
+/* ---------- Main Panel ---------- */
+.main-panel {
+  flex: 1;
+  min-width: 0; /* prevent overflow */
+  min-height: 0; /* allow flex shrink */
+  display: flex;
+  flex-direction: column;
+}
+
+.main-inner {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow);
+  padding: 18px 26px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- Toolbar ---------- */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+}
+
+/* Buttons (base) */
+.btn {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 18px;
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(176, 106, 179, 0.15);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+/* Active mode button */
+.btn-mode.active {
+  background: var(--btn-active-bg);
+  border-color: var(--btn-active-border);
+  color: var(--accent);
+}
+
+/* Export icon buttons */
+.export-label {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  margin-right: 2px;
+}
+
+.export-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0;
+}
+
+.export-icon-btn:hover {
+  color: var(--accent);
+}
+
+.export-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.5;
+}
+
+/* btn-export kept for modal Insert button */
+.btn-export {
+  background: rgba(176, 106, 179, 0.08);
+}
+
+/* ---------- Markdown Formatting Toolbar ---------- */
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(180, 160, 200, 0.3);
+  border-radius: 10px;
+  align-items: center;
+}
+
+.md-btn {
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.md-btn:hover {
+  background: rgba(176, 106, 179, 0.12);
+  border-color: rgba(176, 106, 179, 0.25);
+  color: var(--accent);
+}
+
+.md-btn:active {
+  background: rgba(176, 106, 179, 0.2);
+  transform: scale(0.95);
+}
+
+.md-btn-italic {
+  font-style: italic;
+}
+
+.md-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(180, 160, 200, 0.3);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ---------- Editor ---------- */
+.editor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-label {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.editor {
+  width: 100%;
+  flex: 1;
+  min-height: 120px;
+  padding: 18px 20px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(180, 160, 200, 0.3);
+  border-radius: 12px;
+  resize: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.editor:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.14);
+}
+
+.editor::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---------- Preview (iframe-based, sandboxes framework CSS) ---------- */
+.preview-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-frame {
+  width: 100%;
+  flex: 1;
+  min-height: 120px;
+  border: 1px solid rgba(180, 160, 200, 0.3);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* ---------- Hidden utility ---------- */
+.hidden {
+  display: none !important;
+}
+
+/* ---------- Footer ---------- */
+.app-footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 14px 20px 18px;
+}
+
+.footer-brand {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, #b06ab3, #4568dc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 2px;
+}
+
+.footer-copy {
+  font-size: 0.82rem;
+  color: rgba(45, 42, 62, 0.6);
+  letter-spacing: 0.01em;
+}
+
+.app-footer a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s, text-decoration-color 0.2s;
+}
+
+.app-footer a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-decoration-color: rgba(176, 106, 179, 0.4);
+}
+
+/* ==========================================================================
+   Component Insert Modal
+   ========================================================================== */
+
+.comp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(45, 42, 62, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.2s ease;
+}
+
+.comp-modal-overlay.hidden {
+  display: none;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.comp-modal {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(180, 160, 200, 0.35);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.18), 0 2px 8px rgba(176, 106, 179, 0.1);
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideIn 0.25s ease;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.comp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
+}
+
+.comp-modal-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.comp-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.comp-modal-close:hover {
+  color: var(--accent);
+}
+
+.comp-modal-body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.comp-modal-body label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+
+.comp-modal-body label:first-child {
+  margin-top: 0;
+}
+
+.comp-modal-body input[type="text"],
+.comp-modal-body input[type="url"],
+.comp-modal-body input[type="number"],
+.comp-modal-body textarea,
+.comp-modal-body select {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(180, 160, 200, 0.35);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.comp-modal-body input:focus,
+.comp-modal-body textarea:focus,
+.comp-modal-body select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
+}
+
+.comp-modal-body textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.comp-modal-body .modal-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.comp-modal-body .modal-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.comp-modal-body .modal-row > div {
+  flex: 1;
+}
+
+.comp-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 22px 18px;
+  border-top: 1px solid rgba(180, 160, 200, 0.2);
+}
+
+/* ==========================================================================
+   Responsive — Mobile (< 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  html, body {
+    overflow: auto; /* allow scroll on mobile */
+  }
+
+  .app-shell {
+    flex-direction: column;
+    padding: 12px 12px 0;
+    gap: 14px;
+    min-height: auto;
+    flex: none;
+  }
+
+  .sidebar {
+    flex: none;
+    max-width: 100%;
+  }
+
+  .sidebar-inner {
+    padding: 18px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .app-title {
+    font-size: 1.3rem;
+  }
+
+  .tagline {
+    display: none;
+  }
+
+  .sidebar-divider {
+    display: none;
+  }
+
+  .framework-selector {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .framework-current {
+    display: none;
+  }
+
+  .components-panel {
+    width: 100%;
+  }
+
+  .components-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .components-hint {
+    display: none;
+  }
+
+  .toolbar-center {
+    display: none;
+  }
+
+  .md-toolbar {
+    gap: 3px;
+    padding: 5px 6px;
+  }
+
+  .md-btn {
+    padding: 3px 7px;
+    font-size: 0.7rem;
+  }
+
+  .main-panel {
+    min-height: 60vh;
+  }
+
+  .main-inner {
+    padding: 14px 14px 18px;
+  }
+
+  .editor {
+    min-height: 40vh;
+  }
+
+  .preview-frame {
+    min-height: 40vh;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-left,
+  .toolbar-right {
+    justify-content: center;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .btn {
+    padding: 7px 12px;
+    font-size: 0.72rem;
+  }
+
+  .editor {
+    min-height: 35vh;
+    font-size: 0.88rem;
+    padding: 12px 14px;
+  }
+}
