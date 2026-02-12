@@ -41,6 +41,50 @@
 
   const COMPONENTS = [
     {
+      id: "accordion",
+      emoji: "🪗",
+      label: "Accordion",
+      support: { poshui: false, oat: true, spectre: true },
+      snippets: {
+        poshui:  "",
+        oat:     "<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>",
+        spectre: '<div class="accordion">\n  <input type="checkbox" id="accordion-1" name="accordion-checkbox" hidden>\n  <label class="accordion-header" for="accordion-1">\n    <i class="icon icon-arrow-right mr-1"></i> Click to expand\n  </label>\n  <div class="accordion-body">\n    <p>Hidden content goes here.</p>\n  </div>\n</div>',
+      },
+    },
+    {
+      id: "alert",
+      emoji: "⚠️",
+      label: "Alert",
+      support: { poshui: true, oat: true, spectre: true },
+      snippets: {
+        poshui:  '<div class="alert alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
+        oat:     '<div role="alert" data-variant="warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
+        spectre: '<div class="toast toast-warning">\n  <button class="btn btn-clear float-right"></button>\n  <strong>Warning:</strong> This is an alert.\n</div>',
+      },
+    },
+    {
+      id: "avatar",
+      emoji: "👤",
+      label: "Avatar",
+      support: { poshui: true, oat: false, spectre: true },
+      snippets: {
+        poshui:  '<div class="avatar avatar-md">\n  <img src="https://i.pravatar.cc/150" alt="avatar" />\n</div>',
+        oat:     "",
+        spectre: '<figure class="avatar avatar-lg">\n  <img src="https://i.pravatar.cc/150" alt="avatar" />\n</figure>',
+      },
+    },
+    {
+      id: "badge",
+      emoji: "🏷️",
+      label: "Badge",
+      support: { poshui: true, oat: true, spectre: true },
+      snippets: {
+        poshui:  '<span class="badge badge-primary-bg">Primary</span> <span class="badge badge-secondary-bg">Secondary</span>',
+        oat:     '<span class="badge">Default</span> <span class="badge secondary">Secondary</span>',
+        spectre: '<span class="label label-primary">Primary</span> <span class="label label-secondary">Secondary</span>',
+      },
+    },
+    {
       id: "button",
       emoji: "🔘",
       label: "Button",
@@ -58,217 +102,8 @@
       support: { poshui: true, oat: true, spectre: true },
       snippets: {
         poshui:  '<div class="card">\n  <div class="card-header">\n    <h3>Card Title</h3>\n  </div>\n  <div class="card-body">\n    <p>Card content goes here.</p>\n  </div>\n</div>',
-        oat:     "<div class=\"card\">\n  <h3>Card Title</h3>\n  <p>Card content goes here.</p>\n</div>",
+        oat:     '<article class="card">\n  <header>\n    <h3>Card Title</h3>\n  </header>\n  <p>Card content goes here.</p>\n</article>',
         spectre: '<div class="card">\n  <div class="card-header">\n    <div class="card-title h5">Card Title</div>\n    <div class="card-subtitle text-gray">Subtitle</div>\n  </div>\n  <div class="card-body">Card content goes here.</div>\n</div>',
-      },
-    },
-    {
-      id: "alert",
-      emoji: "⚠️",
-      label: "Alert",
-      support: { poshui: true, oat: true, spectre: true },
-      snippets: {
-        poshui:  '<div class="alert alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        oat:     '<div class="alert warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        spectre: '<div class="toast toast-warning">\n  <button class="btn btn-clear float-right"></button>\n  <strong>Warning:</strong> This is an alert.\n</div>',
-      },
-    },
-    {
-      id: "badge",
-      emoji: "🏷️",
-      label: "Badge",
-      support: { poshui: true, oat: true, spectre: true },
-      snippets: {
-        poshui:  '<span class="badge badge-primary-bg">Primary</span> <span class="badge badge-secondary-bg">Secondary</span>',
-        oat:     '<span class="badge">Default</span> <span class="badge primary">Primary</span>',
-        spectre: '<span class="label label-primary">Primary</span> <span class="label label-secondary">Secondary</span>',
-      },
-    },
-    {
-      id: "avatar",
-      emoji: "👤",
-      label: "Avatar",
-      support: { poshui: true, oat: false, spectre: true },
-      snippets: {
-        poshui:  '<div class="avatar avatar-md">\n  <img src="https://i.pravatar.cc/150" alt="avatar" />\n</div>',
-        oat:     "",
-        spectre: '<figure class="avatar avatar-lg">\n  <img src="https://i.pravatar.cc/150" alt="avatar" />\n</figure>',
-      },
-    },
-    {
-      id: "table",
-      emoji: "📊",
-      label: "Table",
-      support: { poshui: false, oat: true, spectre: true },
-      snippets: {
-        poshui:  "",
-        oat:     "<table>\n  <thead>\n    <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n    <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>\n  </tbody>\n</table>",
-        spectre: '<table class="table table-striped table-hover">\n  <thead>\n    <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n    <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>\n  </tbody>\n</table>',
-      },
-    },
-    {
-      id: "accordion",
-      emoji: "🪗",
-      label: "Accordion",
-      support: { poshui: false, oat: true, spectre: true },
-      snippets: {
-        poshui:  "",
-        oat:     "<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>",
-        spectre: '<div class="accordion">\n  <input type="checkbox" id="accordion-1" name="accordion-checkbox" hidden>\n  <label class="accordion-header" for="accordion-1">\n    <i class="icon icon-arrow-right mr-1"></i> Click to expand\n  </label>\n  <div class="accordion-body">\n    <p>Hidden content goes here.</p>\n  </div>\n</div>',
-      },
-    },
-    {
-      id: "modal",
-      emoji: "🪟",
-      label: "Modal",
-      support: { poshui: true, oat: false, spectre: true },
-      snippets: {
-        poshui:  '<div class="modal">\n  <div class="modal-content">\n    <h3>Modal Title</h3>\n    <p>Modal body content.</p>\n    <button class="btn btn-primary-bg">Close</button>\n  </div>\n</div>',
-        oat:     "",
-        spectre: '<div class="modal active">\n  <a class="modal-overlay" href="#close"></a>\n  <div class="modal-container">\n    <div class="modal-header">\n      <div class="modal-title h5">Modal Title</div>\n    </div>\n    <div class="modal-body">\n      <p>Modal body content.</p>\n    </div>\n    <div class="modal-footer">\n      <button class="btn btn-primary">Close</button>\n    </div>\n  </div>\n</div>',
-      },
-    },
-    {
-      id: "tooltip",
-      emoji: "💬",
-      label: "Tooltip",
-      support: { poshui: true, oat: true, spectre: true },
-      snippets: {
-        poshui:  '<span class="tooltip" data-tooltip="Tooltip text">Hover me</span>',
-        oat:     '<span class="tooltip" data-tooltip="Tooltip text">Hover me</span>',
-        spectre: '<span class="tooltip" data-tooltip="Tooltip text">Hover me</span>',
-      },
-    },
-    {
-      id: "toast",
-      emoji: "🍞",
-      label: "Toast",
-      support: { poshui: true, oat: true, spectre: true },
-      snippets: {
-        poshui:  '<div class="toast toast-success">\n  <p>Success! Operation completed.</p>\n</div>',
-        oat:     '<div class="toast success">\n  Success! Operation completed.\n</div>',
-        spectre: '<div class="toast toast-success">\n  <button class="btn btn-clear float-right"></button>\n  Success! Operation completed.\n</div>',
-      },
-    },
-    {
-      id: "nav",
-      emoji: "🧭",
-      label: "Nav",
-      support: { poshui: true, oat: false, spectre: true },
-      snippets: {
-        poshui:  '<nav class="navigation">\n  <a href="#">Home</a>\n  <a href="#">About</a>\n  <a href="#">Contact</a>\n</nav>',
-        oat:     "",
-        spectre: '<ul class="nav">\n  <li class="nav-item"><a href="#">Home</a></li>\n  <li class="nav-item"><a href="#">About</a></li>\n  <li class="nav-item"><a href="#">Contact</a></li>\n</ul>',
-      },
-    },
-    {
-      id: "tabs",
-      emoji: "📑",
-      label: "Tabs",
-      support: { poshui: false, oat: true, spectre: true },
-      snippets: {
-        poshui:  "",
-        oat:     '<div class="tabs">\n  <a href="#" class="active">Tab 1</a>\n  <a href="#">Tab 2</a>\n  <a href="#">Tab 3</a>\n</div>',
-        spectre: '<ul class="tab">\n  <li class="tab-item active"><a href="#">Tab 1</a></li>\n  <li class="tab-item"><a href="#">Tab 2</a></li>\n  <li class="tab-item"><a href="#">Tab 3</a></li>\n</ul>',
-      },
-    },
-    {
-      id: "progress",
-      emoji: "📶",
-      label: "Progress",
-      support: { poshui: false, oat: true, spectre: true },
-      snippets: {
-        poshui:  "",
-        oat:     '<progress value="60" max="100">60%</progress>',
-        spectre: '<div class="bar">\n  <div class="bar-item" role="progressbar" style="width:60%;" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100"></div>\n</div>',
-      },
-    },
-    {
-      id: "input",
-      emoji: "✏️",
-      label: "Form Input",
-      support: { poshui: true, oat: true, spectre: true },
-      snippets: {
-        poshui:  '<div class="input-container">\n  <label>Email</label>\n  <input type="email" placeholder="you@example.com" />\n</div>',
-        oat:     '<label>Email\n  <input type="email" placeholder="you@example.com" />\n</label>',
-        spectre: '<div class="form-group">\n  <label class="form-label" for="input-email">Email</label>\n  <input class="form-input" type="email" id="input-email" placeholder="you@example.com" />\n</div>',
-      },
-    },
-    {
-      id: "image",
-      emoji: "🖼️",
-      label: "Image",
-      support: { poshui: true, oat: false, spectre: true },
-      snippets: {
-        poshui:  '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
-        oat:     "",
-        spectre: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
-      },
-    },
-    {
-      id: "list",
-      emoji: "📋",
-      label: "List",
-      support: { poshui: true, oat: false, spectre: false },
-      snippets: {
-        poshui:  '<ul class="list list-style-disc">\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        oat:     "",
-        spectre: "",
-      },
-    },
-    {
-      id: "slider",
-      emoji: "🎚️",
-      label: "Slider",
-      support: { poshui: true, oat: false, spectre: false },
-      snippets: {
-        poshui:  '<input type="range" class="slider" min="0" max="100" value="50" />',
-        oat:     "",
-        spectre: "",
-      },
-    },
-    {
-      id: "rating",
-      emoji: "⭐",
-      label: "Rating",
-      support: { poshui: true, oat: false, spectre: false },
-      snippets: {
-        poshui:  '<div class="rating">\n  <span class="rating-star">★</span>\n  <span class="rating-star">★</span>\n  <span class="rating-star">★</span>\n  <span class="rating-star">☆</span>\n  <span class="rating-star">☆</span>\n</div>',
-        oat:     "",
-        spectre: "",
-      },
-    },
-    {
-      id: "switch",
-      emoji: "🔀",
-      label: "Switch",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<label class="switch">\n  <input type="checkbox" />\n  Enable feature\n</label>',
-        spectre: "",
-      },
-    },
-    {
-      id: "spinner",
-      emoji: "🔄",
-      label: "Spinner",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<div class="spinner"></div>',
-        spectre: "",
-      },
-    },
-    {
-      id: "breadcrumb",
-      emoji: "🥖",
-      label: "Breadcrumb",
-      support: { poshui: false, oat: false, spectre: true },
-      snippets: {
-        poshui:  "",
-        oat:     "",
-        spectre: '<ul class="breadcrumb">\n  <li class="breadcrumb-item"><a href="#">Home</a></li>\n  <li class="breadcrumb-item"><a href="#">Docs</a></li>\n  <li class="breadcrumb-item">Current</li>\n</ul>',
       },
     },
     {
@@ -279,7 +114,51 @@
       snippets: {
         poshui:  "",
         oat:     "",
-        spectre: '<span class="chip">Tag One<button class="btn btn-clear" aria-label="Close"></button></span>\n<span class="chip">Tag Two<button class="btn btn-clear" aria-label="Close"></button></span>',
+        spectre: '<span class="chip">Tag One</span>\n<span class="chip">Tag Two</span>\n<span class="chip">Tag Three</span>',
+      },
+    },
+    {
+      id: "grid",
+      emoji: "📐",
+      label: "Grid",
+      support: { poshui: true, oat: true, spectre: true },
+      snippets: {
+        poshui:  '<div class="grid grid-cols-2">\n  <div>\n    <p>Column 1 content</p>\n  </div>\n  <div>\n    <p>Column 2 content</p>\n  </div>\n</div>',
+        oat:     '<div class="container">\n  <div class="row">\n    <div class="col-6">Column 1 content</div>\n    <div class="col-6">Column 2 content</div>\n  </div>\n</div>',
+        spectre: '<div class="columns">\n  <div class="column col-6">Column 1 content</div>\n  <div class="column col-6">Column 2 content</div>\n</div>',
+      },
+    },
+    {
+      id: "hero",
+      emoji: "🦸",
+      label: "Hero",
+      support: { poshui: false, oat: false, spectre: true },
+      snippets: {
+        poshui:  "",
+        oat:     "",
+        spectre: '<div class="hero hero-lg bg-gray">\n  <div class="hero-body">\n    <h1>Hero Title</h1>\n    <p>This is a hero subtitle or description.</p>\n  </div>\n</div>',
+      },
+    },
+    {
+      id: "image",
+      emoji: "🖼️",
+      label: "Image",
+      support: { poshui: true, oat: true, spectre: true },
+      snippets: {
+        poshui:  '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
+        oat:     '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />',
+        spectre: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
+      },
+    },
+    {
+      id: "list",
+      emoji: "📋",
+      label: "List",
+      support: { poshui: true, oat: true, spectre: true },
+      snippets: {
+        poshui:  '<ul class="list list-style-disc">\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
+        oat:     "<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>",
+        spectre: "<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>",
       },
     },
     {
@@ -294,69 +173,25 @@
       },
     },
     {
-      id: "steps",
-      emoji: "👣",
-      label: "Steps",
-      support: { poshui: false, oat: false, spectre: true },
+      id: "table",
+      emoji: "�",
+      label: "Table",
+      support: { poshui: true, oat: true, spectre: true },
       snippets: {
-        poshui:  "",
-        oat:     "",
-        spectre: '<ul class="step">\n  <li class="step-item active"><a href="#">Step 1</a></li>\n  <li class="step-item"><a href="#">Step 2</a></li>\n  <li class="step-item"><a href="#">Step 3</a></li>\n</ul>',
+        poshui:  "<table>\n  <thead>\n    <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n    <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>\n  </tbody>\n</table>",
+        oat:     "<table>\n  <thead>\n    <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n    <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>\n  </tbody>\n</table>",
+        spectre: '<table class="table table-striped table-hover">\n  <thead>\n    <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n    <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>\n  </tbody>\n</table>',
       },
     },
     {
-      id: "dropdown",
-      emoji: "🔽",
-      label: "Dropdown",
-      support: { poshui: false, oat: true, spectre: false },
+      id: "tabs",
+      emoji: "�",
+      label: "Tabs",
+      support: { poshui: false, oat: true, spectre: true },
       snippets: {
         poshui:  "",
-        oat:     '<div class="dropdown">\n  <button>Open Menu</button>\n  <div class="items">\n    <a href="#">Option 1</a>\n    <a href="#">Option 2</a>\n    <a href="#">Option 3</a>\n  </div>\n</div>',
-        spectre: "",
-      },
-    },
-    {
-      id: "skeleton",
-      emoji: "🦴",
-      label: "Skeleton",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<div class="skeleton">\n  <div class="line"></div>\n  <div class="line"></div>\n  <div class="line short"></div>\n</div>',
-        spectre: "",
-      },
-    },
-    {
-      id: "meter",
-      emoji: "📏",
-      label: "Meter",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<meter min="0" max="100" value="65" low="25" high="75" optimum="80">65%</meter>',
-        spectre: "",
-      },
-    },
-    {
-      id: "sidebar_comp",
-      emoji: "📐",
-      label: "Sidebar",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<div class="sidebar">\n  <nav>\n    <a href="#">Link 1</a>\n    <a href="#">Link 2</a>\n    <a href="#">Link 3</a>\n  </nav>\n</div>',
-        spectre: "",
-      },
-    },
-    {
-      id: "dialog",
-      emoji: "🗨️",
-      label: "Dialog",
-      support: { poshui: false, oat: true, spectre: false },
-      snippets: {
-        poshui:  "",
-        oat:     '<dialog open>\n  <h3>Dialog Title</h3>\n  <p>Dialog body content.</p>\n  <form method="dialog">\n    <button>Close</button>\n  </form>\n</dialog>',
-        spectre: "",
+        oat:     '<ot-tabs>\n  <div role="tablist">\n    <button role="tab">Tab 1</button>\n    <button role="tab">Tab 2</button>\n  </div>\n  <div role="tabpanel">\n    <p>Tab 1 content</p>\n  </div>\n  <div role="tabpanel">\n    <p>Tab 2 content</p>\n  </div>\n</ot-tabs>',
+        spectre: '<ul class="tab">\n  <li class="tab-item active"><a href="#">Tab 1</a></li>\n  <li class="tab-item"><a href="#">Tab 2</a></li>\n  <li class="tab-item"><a href="#">Tab 3</a></li>\n</ul>',
       },
     },
   ];
@@ -371,21 +206,21 @@
   const LS_WEIGHTSTEP  = "flatwrite_weightstep";
   const LS_LINESTEP    = "flatwrite_linestep";
   const LS_COMFORTFONT = "flatwrite_comfortfont";
+  const LS_ZOOMSTEP    = "flatwrite_zoomstep";
 
-  /* Comfort font options (preview only — never affects export) */
+  /* Comfort font options (preview only — never affects export)
+     5 curated fonts for distinct content archetypes:
+     Inter         → clean modern sans (Medium-style tech blogs)
+     Merriweather  → warm reading serif (New Yorker longform)
+     Playfair      → high-contrast editorial (magazine)
+     Lora          → classic book serif (literary/academic)
+     JetBrains     → monospace (code-heavy tutorials)            */
   const COMFORT_FONTS = [
-    { value: "Unbounded",         label: "Unbounded" },
-    { value: "Lato",              label: "Lato" },
     { value: "Inter",             label: "Inter" },
     { value: "Merriweather",      label: "Merriweather" },
     { value: "Playfair Display",  label: "Playfair Display" },
-    { value: "Space Grotesk",     label: "Space Grotesk" },
-    { value: "Crimson Text",      label: "Crimson Text" },
-    { value: "Outfit",            label: "Outfit" },
-    { value: "Bitter",            label: "Bitter" },
-    { value: "DM Serif Display",  label: "DM Serif Display" },
+    { value: "Lora",              label: "Lora" },
     { value: "JetBrains Mono",    label: "JetBrains Mono" },
-    { value: "Source Code Pro",   label: "Source Code Pro" },
   ];
 
   /* Size steps: each step adds/removes ~2px equivalent via a scale factor.
@@ -413,7 +248,8 @@
   let sizeStep = 0;              // default = 1.0x scale
   let weightStep = 0;            // default = 400 (regular)
   let lineStep = 0;              // default = 1.75 line-height
-  let comfortFont = "Unbounded"; // default body font for preview
+  let comfortFont = "Inter"; // default body font for preview
+  let zoomStep = 100;            // default = 100% page zoom
   let debounceTimer = null;
 
   /* ==========================================================================
@@ -421,7 +257,6 @@
      ========================================================================== */
 
   const frameworkDropdown = document.getElementById("framework-dropdown");
-  const frameworkCurrent  = document.getElementById("framework-current");
   const editor            = document.getElementById("editor");
   const editorWrap        = document.getElementById("editor-wrap");
   const previewWrap       = document.getElementById("preview-wrap");
@@ -440,6 +275,8 @@
   const fontPicker        = document.getElementById("font-picker");
   const lineDownBtn       = document.getElementById("line-down");
   const lineUpBtn         = document.getElementById("line-up");
+  const zoomSlider        = document.getElementById("zoom-slider");
+  const zoomValue         = document.getElementById("zoom-value");
   const modalOverlay      = document.getElementById("comp-modal-overlay");
   const modalTitle        = document.getElementById("comp-modal-title");
   const modalBody         = document.getElementById("comp-modal-body");
@@ -497,6 +334,15 @@
       comfortFont = savedFont;
     }
     fontPicker.value = comfortFont;
+
+    // Restore zoom step
+    const savedZoom = localStorage.getItem(LS_ZOOMSTEP);
+    if (savedZoom !== null) {
+      zoomStep = Math.max(100, Math.min(120, parseInt(savedZoom, 10)));
+    }
+    zoomSlider.value = zoomStep;
+    zoomValue.textContent = zoomStep + "%";
+    applyZoom();
   }
 
   /* ---------- Bind all event listeners ---------- */
@@ -563,12 +409,11 @@
       if (mode === "preview") renderPreview();
     });
 
-    // Mode toggle buttons
-    btnEdit.addEventListener("click", function () {
-      setMode("edit");
-    });
-    btnPreview.addEventListener("click", function () {
-      setMode("preview");
+    // Mode toggle switch
+    document.getElementById("mode-switch").addEventListener("click", function (e) {
+      var label = e.target.closest(".mode-switch-label");
+      if (!label) return;
+      setMode(label.dataset.mode);
     });
 
     // Export icon buttons
@@ -582,6 +427,14 @@
       debounceTimer = setTimeout(function () {
         localStorage.setItem(LS_CONTENT, editor.value);
       }, 400);
+    });
+
+    // Zoom slider
+    zoomSlider.addEventListener("input", function () {
+      zoomStep = parseInt(this.value, 10);
+      zoomValue.textContent = zoomStep + "%";
+      localStorage.setItem(LS_ZOOMSTEP, zoomStep);
+      applyZoom();
     });
 
     // Markdown formatting toolbar (delegated click)
@@ -602,9 +455,37 @@
     modalInsertBtn.addEventListener("click", handleModalInsert);
     modalCancelBtn.addEventListener("click", closeComponentModal);
     modalCloseBtn.addEventListener("click", closeComponentModal);
-    modalOverlay.addEventListener("click", function (e) {
-      if (e.target === modalOverlay) closeComponentModal();
-    });
+
+    // Drag-to-move modal by its header
+    (function initModalDrag() {
+      var modal = document.getElementById("comp-modal");
+      var header = document.getElementById("comp-modal-title").parentElement;
+      var isDragging = false, startX, startY, startLeft, startTop;
+
+      header.addEventListener("mousedown", function (e) {
+        if (e.target.closest(".comp-modal-close")) return; // don't drag when clicking ×
+        isDragging = true;
+        var rect = modalOverlay.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = rect.left;
+        startTop = rect.top;
+        e.preventDefault();
+      });
+
+      window.addEventListener("mousemove", function (e) {
+        if (!isDragging) return;
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        modalOverlay.style.left = (startLeft + dx) + "px";
+        modalOverlay.style.top = (startTop + dy) + "px";
+        modalOverlay.style.right = "auto";
+      });
+
+      window.addEventListener("mouseup", function () {
+        isDragging = false;
+      });
+    })();
 
     // Keyboard shortcuts
     // Ctrl/Cmd + B → toggle edit/preview
@@ -634,6 +515,15 @@
   }
 
   /* ==========================================================================
+     Page zoom
+     ========================================================================== */
+
+  function applyZoom() {
+    var scale = zoomStep / 100;
+    document.querySelector('.app-shell').style.zoom = scale;
+  }
+
+  /* ==========================================================================
      Framework selection
      Frameworks only affect the preview and export — never the app shell.
      ========================================================================== */
@@ -642,7 +532,6 @@
     currentFramework = fwKey;
     document.documentElement.dataset.framework = fwKey;
     var fw = FRAMEWORKS[fwKey];
-    frameworkCurrent.textContent = "Active: " + (fw ? fw.label : fwKey);
 
     // Re-render component grid to enable/disable per framework
     renderComponentGrid();
@@ -686,20 +575,33 @@
      into the app shell.
      ========================================================================== */
 
+  var lastEditScrollRatio = 0; // remember scroll position between modes
+
   function setMode(newMode) {
     mode = newMode;
+    var modeSwitch = document.getElementById("mode-switch");
 
     if (mode === "edit") {
       editorWrap.classList.remove("hidden");
       previewWrap.classList.add("hidden");
       btnEdit.classList.add("active");
       btnPreview.classList.remove("active");
+      modeSwitch.classList.remove("preview");
     } else {
+      // Capture editor scroll ratio before switching
+      if (editor.scrollHeight > editor.clientHeight) {
+        lastEditScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+      } else {
+        // Use cursor position as ratio fallback
+        var text = editor.value || "";
+        lastEditScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
+      }
       renderPreview();
       editorWrap.classList.add("hidden");
       previewWrap.classList.remove("hidden");
       btnPreview.classList.add("active");
       btnEdit.classList.remove("active");
+      modeSwitch.classList.add("preview");
     }
   }
 
@@ -717,14 +619,9 @@
       + '&family=Lato:wght@300;400;700'
       + '&family=Inter:wght@300;400;600;700'
       + '&family=Merriweather:wght@300;400;700'
-      + '&family=Source+Code+Pro:wght@300;400;600;700'
-      + '&family=Playfair+Display:wght@400;600;700'
-      + '&family=Space+Grotesk:wght@300;400;600;700'
-      + '&family=Crimson+Text:wght@400;600;700'
-      + '&family=Outfit:wght@300;400;600;700'
-      + '&family=Bitter:wght@300;400;600;700'
-      + '&family=DM+Serif+Display'
       + '&family=JetBrains+Mono:wght@300;400;600;700'
+      + '&family=Playfair+Display:wght@400;600;700'
+      + '&family=Lora:wght@400;500;600;700'
       + '&display=swap';
 
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
@@ -745,7 +642,7 @@
       + 'h3 { margin-top: 1.4em !important; }'
       + 'h4 { margin-top: 1.2em !important; }'
       + 'img { max-width: 100%; }'
-      + 'pre, code { font-family: "Source Code Pro", monospace !important; }'
+      + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
       + 'pre { overflow-x: auto; }'
       + '</style>'
       + (fw.js ? '<script src="' + fw.js + '" defer></' + 'script>' : '')
@@ -753,6 +650,17 @@
 
     // Use srcdoc to avoid document.write parsing issues with <script> tags
     previewFrame.srcdoc = html;
+
+    // Scroll preview to match editor position after iframe loads
+    previewFrame.onload = function () {
+      try {
+        var iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        var scrollMax = iframeDoc.documentElement.scrollHeight - previewFrame.clientHeight;
+        if (scrollMax > 0) {
+          previewFrame.contentWindow.scrollTo(0, Math.round(lastEditScrollRatio * scrollMax));
+        }
+      } catch (e) { /* cross-origin safety */ }
+    };
   }
 
   /* ==========================================================================
@@ -881,6 +789,10 @@
       case "image":  buildImageForm();  break;
     }
 
+    // Reset position to default (top-right) and show
+    modalOverlay.style.left = "";
+    modalOverlay.style.top = "";
+    modalOverlay.style.right = "";
     modalOverlay.classList.remove("hidden");
     // Focus first input
     var firstInput = modalBody.querySelector("input, textarea, select");
@@ -905,6 +817,7 @@
     if (snippet) {
       if (mode !== "edit") setMode("edit");
       editorInsertBlock(snippet);
+      showToast("Inserted <strong>" + activeModalComponent + "</strong> component");
     }
     closeComponentModal();
   }
@@ -972,9 +885,9 @@
         + (subtitle ? '\n    <p>' + subtitle + '</p>' : '')
         + '\n  </div>\n  <div class="card-body">\n    <p>' + body + '</p>\n  </div>\n</div>';
     } else if (fw === "oat") {
-      return '<div class="card">\n  <h3>' + title + '</h3>'
-        + (subtitle ? '\n  <p><em>' + subtitle + '</em></p>' : '')
-        + '\n  <p>' + body + '</p>\n</div>';
+      return '<article class="card">\n  <header>\n    <h3>' + title + '</h3>'
+        + (subtitle ? '\n    <p>' + subtitle + '</p>' : '')
+        + '\n  </header>\n  <p>' + body + '</p>\n</article>';
     } else {
       return '<div class="card">\n  <div class="card-header">\n    <div class="card-title h5">' + title + '</div>'
         + (subtitle ? '\n    <div class="card-subtitle text-gray">' + subtitle + '</div>' : '')
@@ -1050,6 +963,29 @@
     return y + mo + d + "-" + h + mi;
   }
 
+  /* ==========================================================================
+     Toast feedback — uses PoshUI toast CSS classes loaded in the app shell
+     ========================================================================== */
+
+  function showToast(message) {
+    var toast = document.createElement("div");
+    toast.className = "toast toast-fixed";
+    toast.style.cssText = "position:fixed;top:16px;right:16px;z-index:2000;min-width:220px;max-width:360px;animation:modalSlideIn 0.25s ease;";
+    toast.innerHTML = '<div class="toast-head">'
+      + 'FlatWrite'
+      + '<button class="toast-cross" onclick="this.closest(\'.toast\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:inherit;margin-left:auto;">&times;</button>'
+      + '</div>'
+      + '<p class="toast-msg">' + message + '</p>';
+    document.body.appendChild(toast);
+    setTimeout(function () {
+      if (toast.parentNode) {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s ease";
+        setTimeout(function () { if (toast.parentNode) toast.remove(); }, 300);
+      }
+    }, 3000);
+  }
+
   function openInNewTab(content, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -1059,6 +995,7 @@
   function exportMarkdown() {
     const content = editor.value || "";
     openInNewTab(content, "text/plain;charset=utf-8");
+    showToast("Opened as <strong>.md</strong> in new tab");
   }
 
   /* Export full HTML page with the selected framework CSS */
@@ -1096,6 +1033,7 @@
       + '\n  </main>\n</body>\n</html>';
 
     openInNewTab(htmlString, "text/html;charset=utf-8");
+    showToast("Opened as <strong>.html</strong> in new tab");
   }
 
   /* Export as PDF — renders styled HTML then opens PDF in new tab */
@@ -1140,8 +1078,10 @@
       document.body.removeChild(container);
       var url = URL.createObjectURL(pdfBlob);
       window.open(url, "_blank");
+      showToast("Opened as <strong>.pdf</strong> in new tab");
     }).catch(function () {
       document.body.removeChild(container);
+      showToast("PDF generation failed");
     });
   }
 

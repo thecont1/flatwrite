@@ -46,7 +46,7 @@
 /* ---------- Body & Background ---------- */
 html, body {
   height: 100%;
-  overflow: hidden; /* no page-level scroll */
+  overflow: hidden;
 }
 
 body {
@@ -67,6 +67,27 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* ---------- PoshUI Override — protect app shell from framework globals ---------- */
+.app-shell button,
+.app-shell select,
+.app-shell input,
+.app-shell textarea {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.app-shell h1,
+.app-shell h2,
+.app-shell h3 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+}
+
+.app-shell a {
+  color: var(--accent);
 }
 
 /* ---------- App Shell ---------- */
@@ -369,7 +390,7 @@ body {
 
 /* Buttons (base) */
 .btn {
-  font-family: var(--font-display);
+  font-family: "Unbounded", system-ui, sans-serif;
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -394,16 +415,57 @@ body {
   transform: translateY(0);
 }
 
-/* Active mode button */
-.btn-mode.active {
-  background: var(--btn-active-bg);
-  border-color: var(--btn-active-border);
+/* ---------- Mode Toggle Switch (segmented control) ---------- */
+.mode-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.mode-switch-label {
+  position: relative;
+  z-index: 1;
+  font-family: "Unbounded", system-ui, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 6px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.25s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.mode-switch-label.active {
   color: var(--accent);
+}
+
+.mode-switch-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+  width: calc(50% - 3px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.mode-switch.preview .mode-switch-slider {
+  left: calc(50%);
 }
 
 /* Export icon buttons */
 .export-label {
-  font-family: var(--font-display);
+  font-family: "Unbounded", system-ui, sans-serif;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-muted);
@@ -415,14 +477,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: all 0.2s ease;
   padding: 0;
+  margin-right: 2px;
 }
 
 .export-icon-btn:hover {
@@ -430,8 +493,8 @@ body {
 }
 
 .export-icon-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   stroke-width: 2.5;
 }
 
@@ -488,6 +551,107 @@ body {
   background: rgba(180, 160, 200, 0.3);
   margin: 0 4px;
   flex-shrink: 0;
+}
+
+/* ---------- Sidebar Zoom Selector ---------- */
+.zoom-selector {
+  margin-bottom: 16px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.zoom-slider {
+  flex: 1;
+  height: 4px;
+  background: rgba(180, 160, 200, 0.3);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.zoom-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.zoom-slider:hover::-webkit-slider-thumb {
+  background: var(--accent-hover);
+}
+
+.zoom-slider:hover::-moz-range-thumb {
+  background: var(--accent-hover);
+}
+
+.zoom-value {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ---------- PoshUI Tooltips ---------- */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(45, 42, 62, 0.92);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  animation: tooltipFadeIn 0.2s ease;
+}
+
+[data-tooltip]:hover::after {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: rgba(45, 42, 62, 0.92);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(2px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 /* ---------- Editor ---------- */
@@ -556,83 +720,61 @@ body {
   display: none !important;
 }
 
-/* ---------- Footer ---------- */
-.app-footer {
-  flex-shrink: 0;
-  text-align: center;
-  padding: 14px 20px 18px;
-}
-
-.footer-brand {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  background: linear-gradient(135deg, #b06ab3, #4568dc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 2px;
-}
-
-.footer-copy {
-  font-size: 0.82rem;
-  color: rgba(45, 42, 62, 0.6);
+/* ---------- Sidebar Copyright ---------- */
+.sidebar-copy {
+  font-size: 0.85rem;
+  color: rgba(45, 42, 62, 0.4);
   letter-spacing: 0.01em;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  text-align: center;
 }
 
-.app-footer a {
+.sidebar-copy a {
   color: var(--accent);
   text-decoration: none;
   font-weight: 600;
-  transition: color 0.2s, text-decoration-color 0.2s;
+  transition: color 0.2s;
 }
 
-.app-footer a:hover {
+.sidebar-copy a:hover {
   color: var(--accent-hover);
   text-decoration: underline;
-  text-decoration-color: rgba(176, 106, 179, 0.4);
 }
 
 /* ==========================================================================
    Component Insert Modal
    ========================================================================== */
 
+/* Overlay is non-blocking — just a positioning wrapper, no backdrop */
 .comp-modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 80px;
+  right: 24px;
   z-index: 1000;
-  background: rgba(45, 42, 62, 0.45);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: modalFadeIn 0.2s ease;
+  pointer-events: none; /* let clicks pass through to editor */
 }
 
 .comp-modal-overlay.hidden {
   display: none;
 }
 
-@keyframes modalFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
 .comp-modal {
-  background: rgba(255, 255, 255, 0.92);
+  pointer-events: auto; /* modal itself captures clicks */
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(180, 160, 200, 0.35);
+  border: 1px solid rgba(180, 160, 200, 0.4);
   border-radius: 16px;
-  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.18), 0 2px 8px rgba(176, 106, 179, 0.1);
-  width: 90%;
-  max-width: 480px;
-  max-height: 85vh;
+  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
+  width: 380px;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
   animation: modalSlideIn 0.25s ease;
+  resize: vertical;
+  overflow: hidden;
 }
 
 @keyframes modalSlideIn {
@@ -644,8 +786,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 22px 12px;
+  padding: 14px 18px 10px;
   border-bottom: 1px solid rgba(180, 160, 200, 0.2);
+  cursor: grab;
+  user-select: none;
+}
+
+.comp-modal-header:active {
+  cursor: grabbing;
 }
 
 .comp-modal-title {
