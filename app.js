@@ -969,21 +969,16 @@
 
   function showToast(message) {
     var toast = document.createElement("div");
-    toast.className = "toast toast-fixed";
-    toast.style.cssText = "position:fixed;top:16px;right:16px;z-index:2000;min-width:220px;max-width:360px;animation:modalSlideIn 0.25s ease;";
-    toast.innerHTML = '<div class="toast-head">'
-      + 'FlatWrite'
-      + '<button class="toast-cross" onclick="this.closest(\'.toast\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:inherit;margin-left:auto;">&times;</button>'
-      + '</div>'
-      + '<p class="toast-msg">' + message + '</p>';
+    toast.className = "fw-toast";
+    toast.innerHTML = message;
     document.body.appendChild(toast);
+    // Trigger reflow then animate in
+    toast.offsetHeight;
+    toast.classList.add("fw-toast-visible");
     setTimeout(function () {
-      if (toast.parentNode) {
-        toast.style.opacity = "0";
-        toast.style.transition = "opacity 0.3s ease";
-        setTimeout(function () { if (toast.parentNode) toast.remove(); }, 300);
-      }
-    }, 3000);
+      toast.classList.remove("fw-toast-visible");
+      setTimeout(function () { if (toast.parentNode) toast.remove(); }, 300);
+    }, 2500);
   }
 
   function openInNewTab(content, mimeType) {
