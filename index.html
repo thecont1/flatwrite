@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-framework="poshui">
+<html lang="en" data-framework="spectre">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -47,9 +47,13 @@
         <div class="framework-selector">
           <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
           <select id="framework-dropdown" class="framework-dropdown">
+            <option value="spectre">Spectre.css</option>
             <option value="poshui">PoshUI</option>
             <option value="oat">Oat</option>
-            <option value="spectre">Spectre.css</option>
+            <option value="pico">Pico CSS</option>
+            <option value="milligram">Milligram</option>
+            <option value="chota">Chota</option>
+            <option value="simple">Simple.css</option>
           </select>
         </div>
 
@@ -68,8 +72,8 @@
 
         <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
         <div class="components-panel">
-          <p class="sidebar-section-label">UI Components</p>
-          <p class="components-hint">Click to insert · greyed = unsupported</p>
+          <p class="sidebar-section-label">Components</p>
+          <p class="components-hint">Click to insert</p>
           <div class="components-grid" id="components-grid">
             <!-- Populated dynamically by app.js based on selected framework -->
           </div>
