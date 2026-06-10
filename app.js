@@ -520,6 +520,12 @@
      localStorage persistence
      ========================================================================== */
 
+  function clampInt(value, min, max, fallback) {
+    var n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
+
   function restoreFromStorage() {
     var savedContent = localStorage.getItem(LS_CONTENT);
     if (savedContent !== null) editor.value = savedContent;
@@ -528,21 +534,17 @@
     if (savedFw && FRAMEWORKS[savedFw]) currentFramework = savedFw;
     frameworkDropdown.value = currentFramework;
 
-    var savedSize = localStorage.getItem(LS_SIZESTEP);
-    if (savedSize !== null) sizeStep = Math.max(SIZE_MIN, Math.min(SIZE_MAX, parseInt(savedSize, 10)));
+    sizeStep = clampInt(localStorage.getItem(LS_SIZESTEP), SIZE_MIN, SIZE_MAX, sizeStep);
 
-    var savedWeight = localStorage.getItem(LS_WEIGHTSTEP);
-    if (savedWeight !== null) weightStep = Math.max(WEIGHT_MIN, Math.min(WEIGHT_MAX, parseInt(savedWeight, 10)));
+    weightStep = clampInt(localStorage.getItem(LS_WEIGHTSTEP), WEIGHT_MIN, WEIGHT_MAX, weightStep);
 
-    var savedLine = localStorage.getItem(LS_LINESTEP);
-    if (savedLine !== null) lineStep = Math.max(LINE_MIN, Math.min(LINE_MAX, parseInt(savedLine, 10)));
+    lineStep = clampInt(localStorage.getItem(LS_LINESTEP), LINE_MIN, LINE_MAX, lineStep);
 
     var savedFont = localStorage.getItem(LS_FONT);
     if (savedFont && COMFORT_FONTS.some(function (f) { return f.value === savedFont; })) comfortFont = savedFont;
     fontPicker.value = comfortFont;
 
-    var savedZoom = localStorage.getItem(LS_ZOOMSTEP);
-    if (savedZoom !== null) zoomStep = Math.max(100, Math.min(120, parseInt(savedZoom, 10)));
+    zoomStep = clampInt(localStorage.getItem(LS_ZOOMSTEP), 100, 120, zoomStep);
     zoomSlider.value = zoomStep;
     zoomValue.textContent = zoomStep + "%";
     applyZoom();
@@ -552,12 +554,12 @@
     if (state.content !== undefined) editor.value = state.content;
     if (state.framework && FRAMEWORKS[state.framework]) currentFramework = state.framework;
     frameworkDropdown.value = currentFramework;
-    if (state.sizeStep !== undefined) sizeStep = Math.max(SIZE_MIN, Math.min(SIZE_MAX, state.sizeStep));
-    if (state.weightStep !== undefined) weightStep = Math.max(WEIGHT_MIN, Math.min(WEIGHT_MAX, state.weightStep));
-    if (state.lineStep !== undefined) lineStep = Math.max(LINE_MIN, Math.min(LINE_MAX, state.lineStep));
+    if (state.sizeStep !== undefined) sizeStep = clampInt(state.sizeStep, SIZE_MIN, SIZE_MAX, sizeStep);
+    if (state.weightStep !== undefined) weightStep = clampInt(state.weightStep, WEIGHT_MIN, WEIGHT_MAX, weightStep);
+    if (state.lineStep !== undefined) lineStep = clampInt(state.lineStep, LINE_MIN, LINE_MAX, lineStep);
     if (state.font && COMFORT_FONTS.some(function (f) { return f.value === state.font; })) comfortFont = state.font;
     fontPicker.value = comfortFont;
-    if (state.zoomStep !== undefined) zoomStep = Math.max(100, Math.min(120, state.zoomStep));
+    if (state.zoomStep !== undefined) zoomStep = clampInt(state.zoomStep, 100, 120, zoomStep);
     zoomSlider.value = zoomStep;
     zoomValue.textContent = zoomStep + "%";
     applyZoom();
