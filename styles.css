@@ -419,7 +419,7 @@ body {
 .mode-switch {
   position: relative;
   display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   background: rgba(255, 255, 255, 0.35);
   border: 1px solid var(--glass-border);
   border-radius: 10px;
@@ -451,7 +451,7 @@ body {
   top: 3px;
   left: 3px;
   height: calc(100% - 6px);
-  width: calc(50% - 3px);
+  width: calc(33.333% - 3px);
   background: rgba(255, 255, 255, 0.85);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
@@ -460,7 +460,11 @@ body {
 }
 
 .mode-switch.preview .mode-switch-slider {
-  left: calc(50%);
+  left: calc(33.333%);
+}
+
+.mode-switch.read .mode-switch-slider {
+  left: calc(66.666%);
 }
 
 /* Export icon buttons */
@@ -1044,4 +1048,67 @@ body {
     font-size: 0.88rem;
     padding: 12px 14px;
   }
+}
+
+/* ==========================================================================
+   Read mode — focused document view
+   Dims everything except logo, mode switch, and the document.
+   Document is centered in viewport.
+   ========================================================================== */
+
+/* Dim the chrome */
+.app-shell.focus-mode .sidebar-inner,
+.app-shell.focus-mode .toolbar-center,
+.app-shell.focus-mode .toolbar-right,
+.app-shell.focus-mode .md-toolbar,
+.app-shell.focus-mode .editor-label {
+  filter: grayscale(1);
+  opacity: 0.12;
+  transition: filter 0.3s, opacity 0.3s;
+  pointer-events: none;
+}
+
+/* Keep logo fully visible — highest specificity overrides sidebar-inner dimming */
+.app-shell.focus-mode .sidebar-inner .app-title,
+.app-shell.focus-mode .sidebar-inner .app-title ~ * {
+  pointer-events: none;
+}
+
+.app-shell.focus-mode .sidebar-inner .app-title {
+  filter: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Keep mode switch fully visible — overrides toolbar-right dimming */
+.app-shell.focus-mode .toolbar-right .mode-switch,
+.app-shell.focus-mode .mode-switch-label,
+.app-shell.focus-mode .mode-switch-slider {
+  filter: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Override: mode-switch-label active state stays colored */
+.app-shell.focus-mode .mode-switch-label.active {
+  color: var(--accent) !important;
+}
+
+.app-shell.focus-mode .preview-wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.app-shell.focus-mode .preview-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
 }

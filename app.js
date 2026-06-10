@@ -2,6 +2,48 @@
   "use strict";
 
   /* ==========================================================================
+     State compression for URL sharing
+     Uses browser-native gzip when available, base64 fallback.
+     ========================================================================== */
+
+  function compressState(state) {
+    var json = JSON.stringify(state);
+    var bytes = new TextEncoder().encode(json);
+    var binary = "";
+    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function decompressState(hash) {
+    var padded = hash.replace(/-/g, "+").replace(/_/g, "/");
+    while (padded.length % 4) padded += "=";
+    var binary = atob(padded);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    try {
+      if (typeof DecompressionStream !== "undefined") {
+        var ds = new DecompressionStream("gzip");
+        var writer = ds.writable.getWriter();
+        writer.write(bytes);
+        writer.close();
+        var chunks = [];
+        var reader = ds.readable.getReader();
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+          chunks.push(result.value);
+        }
+        var total = chunks.reduce(function (a, c) { return a + c.length; }, 0);
+        var merged = new Uint8Array(total);
+        var offset = 0;
+        chunks.forEach(function (c) { merged.set(c, offset); offset += c.length; });
+        return JSON.parse(new TextDecoder().decode(merged));
+      }
+    } catch (e) { /* fall through */ }
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  /* ==========================================================================
      Framework registry
      Each framework: label, css/js URLs, category, style function.
      style(doc) applies framework-specific classes to DOM elements in preview.
@@ -419,6 +461,7 @@
   var modalInsertBtn    = document.getElementById("comp-modal-insert");
   var modalCancelBtn    = document.getElementById("comp-modal-cancel");
   var modalCloseBtn     = document.getElementById("comp-modal-close");
+  var btnShare          = document.getElementById("btn-share");
 
   /* ==========================================================================
      Init
@@ -426,9 +469,22 @@
 
   function init() {
     marked.setOptions({ html: true, gfm: true, breaks: false });
-    restoreFromStorage();
-    renderComponentGrid();
-    bindEvents();
+    var hash = window.location.hash.slice(1);
+    if (hash) {
+      decompressState(hash).then(function (state) {
+        restoreFromState(state);
+        renderComponentGrid();
+        bindEvents();
+      }).catch(function () {
+        restoreFromStorage();
+        renderComponentGrid();
+        bindEvents();
+      });
+    } else {
+      restoreFromStorage();
+      renderComponentGrid();
+      bindEvents();
+    }
   }
 
   /* ==========================================================================
@@ -463,6 +519,40 @@
     applyZoom();
   }
 
+  function restoreFromState(state) {
+    if (state.content !== undefined) editor.value = state.content;
+    if (state.framework && FRAMEWORKS[state.framework]) currentFramework = state.framework;
+    frameworkDropdown.value = currentFramework;
+    if (state.sizeStep !== undefined) sizeStep = Math.max(SIZE_MIN, Math.min(SIZE_MAX, state.sizeStep));
+    if (state.weightStep !== undefined) weightStep = Math.max(WEIGHT_MIN, Math.min(WEIGHT_MAX, state.weightStep));
+    if (state.lineStep !== undefined) lineStep = Math.max(LINE_MIN, Math.min(LINE_MAX, state.lineStep));
+    if (state.font && COMFORT_FONTS.some(function (f) { return f.value === state.font; })) comfortFont = state.font;
+    fontPicker.value = comfortFont;
+    if (state.zoomStep !== undefined) zoomStep = Math.max(100, Math.min(120, state.zoomStep));
+    zoomSlider.value = zoomStep;
+    zoomValue.textContent = zoomStep + "%";
+    applyZoom();
+  }
+
+  function shareState() {
+    var state = {
+      content: editor.value,
+      framework: currentFramework,
+      sizeStep: sizeStep,
+      weightStep: weightStep,
+      lineStep: lineStep,
+      font: comfortFont,
+      zoomStep: zoomStep
+    };
+    var encoded = compressState(state);
+    var url = window.location.origin + window.location.pathname + "#" + encoded;
+    navigator.clipboard.writeText(url).then(function () {
+      showToast("Copied share URL to clipboard");
+    }).catch(function () {
+      prompt("Copy this URL:", url);
+    });
+  }
+
   /* ==========================================================================
      Event binding
      ========================================================================== */
@@ -483,6 +573,7 @@
     btnExportMd.addEventListener("click", exportMarkdown);
     btnExportHtml.addEventListener("click", exportHTML);
     btnExportPdf.addEventListener("click", exportPDF);
+    btnShare.addEventListener("click", shareState);
 
     componentsGrid.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-component]");
@@ -702,13 +793,19 @@
   function setMode(newMode) {
     mode = newMode;
     var modeSwitch = document.getElementById("mode-switch");
+    var appShell = document.querySelector(".app-shell");
+
+    appShell.classList.remove("focus-mode");
+    editorWrap.classList.add("hidden");
+    previewWrap.classList.add("hidden");
+    btnEdit.classList.remove("active");
+    btnPreview.classList.remove("active");
+    document.getElementById("btn-read").classList.remove("active");
+    modeSwitch.classList.remove("preview", "read");
 
     if (mode === "edit") {
       editorWrap.classList.remove("hidden");
-      previewWrap.classList.add("hidden");
       btnEdit.classList.add("active");
-      btnPreview.classList.remove("active");
-      modeSwitch.classList.remove("preview");
     } else {
       if (editor.scrollHeight > editor.clientHeight) {
         lastEditScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
@@ -717,11 +814,16 @@
         lastEditScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
       }
       renderPreview();
-      editorWrap.classList.add("hidden");
       previewWrap.classList.remove("hidden");
-      btnPreview.classList.add("active");
-      btnEdit.classList.remove("active");
-      modeSwitch.classList.add("preview");
+
+      if (mode === "read") {
+        appShell.classList.add("focus-mode");
+        document.getElementById("btn-read").classList.add("active");
+        modeSwitch.classList.add("read");
+      } else {
+        btnPreview.classList.add("active");
+        modeSwitch.classList.add("preview");
+      }
     }
   }
 
