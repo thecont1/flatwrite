@@ -708,6 +708,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .preview-frame {
@@ -1051,64 +1052,76 @@ body {
 }
 
 /* ==========================================================================
-   Read mode — focused document view
-   Dims everything except logo, mode switch, and the document.
-   Document is centered in viewport.
+   Read mode — pure reading focus
+   All chrome dims to 0.1 alpha and stops responding to clicks.
+   Document stays pixel-for-pixel in place. Logo stays fully visible.
    ========================================================================== */
 
-/* Dim the chrome */
-.app-shell.focus-mode .sidebar-inner,
-.app-shell.focus-mode .toolbar-center,
-.app-shell.focus-mode .toolbar-right,
+/* Strip sidebar glass so only the logo remains */
+.app-shell.focus-mode .sidebar-inner {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Dim all sidebar children except the logo */
+.app-shell.focus-mode .sidebar-inner .tagline,
+.app-shell.focus-mode .sidebar-inner .sidebar-divider,
+.app-shell.focus-mode .sidebar-inner .framework-selector,
+.app-shell.focus-mode .sidebar-inner .zoom-selector,
+.app-shell.focus-mode .sidebar-inner .components-panel,
+.app-shell.focus-mode .sidebar-inner .sidebar-copy {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Dim toolbar — mode switch, typography, exports all vanish */
+.app-shell.focus-mode .toolbar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Dim editor chrome */
 .app-shell.focus-mode .md-toolbar,
 .app-shell.focus-mode .editor-label {
-  filter: grayscale(1);
-  opacity: 0.12;
-  transition: filter 0.3s, opacity 0.3s;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 0.3s;
 }
 
-/* Keep logo fully visible — highest specificity overrides sidebar-inner dimming */
-.app-shell.focus-mode .sidebar-inner .app-title,
-.app-shell.focus-mode .sidebar-inner .app-title ~ * {
-  pointer-events: none;
+/* ---------- Close button for read mode ---------- */
+.read-close-btn {
+  display: none;
 }
 
-.app-shell.focus-mode .sidebar-inner .app-title {
-  filter: none !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
-/* Keep mode switch fully visible — overrides toolbar-right dimming */
-.app-shell.focus-mode .toolbar-right .mode-switch,
-.app-shell.focus-mode .mode-switch-label,
-.app-shell.focus-mode .mode-switch-slider {
-  filter: none !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
-/* Override: mode-switch-label active state stays colored */
-.app-shell.focus-mode .mode-switch-label.active {
-  color: var(--accent) !important;
-}
-
-.app-shell.focus-mode .preview-wrap {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 100;
+.app-shell.focus-mode .read-close-btn {
   display: flex;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: opacity 0.2s, color 0.2s;
+  pointer-events: auto;
+  opacity: 0.6;
 }
 
-.app-shell.focus-mode .preview-frame {
-  width: 100%;
-  height: 100%;
-  border: none;
+.app-shell.focus-mode .read-close-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
 }
