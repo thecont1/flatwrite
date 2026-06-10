@@ -1217,7 +1217,9 @@
 
   function openInNewTab(content, mimeType) {
     var blob = new Blob([content], { type: mimeType });
-    window.open(URL.createObjectURL(blob), "_blank");
+    var url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
   }
 
   function exportMarkdown() {
