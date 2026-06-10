@@ -488,6 +488,35 @@
   }
 
   /* ==========================================================================
+     HTML sanitization — defense-in-depth against XSS via markdown content
+     ========================================================================== */
+
+  function sanitizeHTML(raw) {
+    if (typeof DOMPurify !== "undefined") {
+      return DOMPurify.sanitize(raw, {
+        ALLOWED_TAGS: [
+          "h1","h2","h3","h4","h5","h6","p","a","img","ul","ol","li",
+          "blockquote","pre","code","strong","em","del","s","table",
+          "thead","tbody","tr","th","td","br","hr","div","span","input",
+          "label","select","option","textarea","button","form","details",
+          "summary","main","section","article","aside","header","footer",
+          "nav","figure","figcaption","dl","dt","dd","sub","sup","small",
+          "mark","abbr","cite","q","pre","kbd","sup"
+        ],
+        ALLOWED_ATTR: [
+          "href","src","alt","width","height","class","id","type","name",
+          "value","placeholder","checked","disabled","for","role",
+          "aria-label","aria-hidden","tabindex","colspan","rowspan","style",
+          "data-md","data-component","data-tooltip","target","rel","title",
+          "open","align","valign","border","cellpadding","cellspacing"
+        ],
+        ALLOW_DATA_ATTR: false
+      });
+    }
+    return raw;
+  }
+
+  /* ==========================================================================
      localStorage persistence
      ========================================================================== */
 
@@ -651,6 +680,14 @@
       if (e.key === "b" || e.key === "B") { e.preventDefault(); setMode(mode === "edit" ? "preview" : "edit"); }
       if (e.key === "e" || e.key === "E") { e.preventDefault(); exportMarkdown(); }
     });
+
+    /* postMessage listener — receives scroll position from sandboxed iframe */
+    window.addEventListener("message", function (e) {
+      if (e.source !== previewFrame.contentWindow) return;
+      if (e.data && e.data.type === "scroll") {
+        lastScrollRatio = e.data.ratio;
+      }
+    });
   }
 
   function initModalDrag() {
@@ -709,37 +746,30 @@
   }
 
   /* ==========================================================================
-     Framework class application
-     ========================================================================== */
-
-  function applyFrameworkClasses(iframeDoc, fwKey) {
-    var fw = FRAMEWORKS[fwKey];
-    if (fw && typeof fw.style === "function") {
-      fw.style(iframeDoc);
-    }
-  }
-
-  /* ==========================================================================
      Preview rendering
      ========================================================================== */
 
   function savePreviewScroll() {
-    try {
-      var iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
-      var scrollMax = iframeDoc.documentElement.scrollHeight - previewFrame.clientHeight;
-      if (scrollMax > 0) {
-        lastScrollRatio = previewFrame.contentWindow.scrollY / scrollMax;
-      }
-    } catch (e) { /* sandbox safety */ }
+    /* Scroll ratio is kept current by postMessage from the sandboxed iframe.
+       No direct contentDocument access needed. */
   }
 
   function renderPreview() {
     var fw = FRAMEWORKS[currentFramework];
-    var renderedHTML = marked.parse(editor.value || "");
+    var rawHTML = marked.parse(editor.value || "");
+    var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
     var fontStack = '"' + comfortFont + '", system-ui, sans-serif';
+
+    /* Serialize the framework style function so the sandboxed iframe can
+       apply framework-specific classes without parent↔iframe DOM access. */
+    var styleFnStr = (fw && typeof fw.style === "function")
+      ? fw.style.toString()
+      : "function(doc){}";
+
+    var scrollRatio = lastScrollRatio;
 
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
       + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
@@ -774,35 +804,48 @@
       + (fw.js ? '<script src="' + fw.js + '" defer><' + '/script>' : '')
       + '</head><body><main>' + renderedHTML + '</main>'
       + '<script>'
+      /* --- In-iframe runtime: framework classes, scroll, messaging --- */
+      + '(function(){'
+      /* Apply framework-specific classes */
+      + 'var styleFn = (' + styleFnStr + ');'
+      + 'if (typeof styleFn === "function") styleFn(document);'
+      /* Restore scroll from parent */
+      + 'var _scrollRatio = ' + scrollRatio + ';'
+      + 'var _max = document.documentElement.scrollHeight - window.innerHeight;'
+      + 'if (_max > 0) window.scrollTo(0, Math.round(_scrollRatio * _max));'
+      /* Report scroll changes to parent (debounced) */
+      + 'var _scrollTimer;'
+      + 'window.addEventListener("scroll", function(){'
+      + '  clearTimeout(_scrollTimer);'
+      + '  _scrollTimer = setTimeout(function(){'
+      + '    var m = document.documentElement.scrollHeight - window.innerHeight;'
+      + '    var r = m > 0 ? window.scrollY / m : 0;'
+      + '    parent.postMessage({type:"scroll",ratio:r}, "*");'
+      + '  }, 150);'
+      + '});'
+      /* Receive scroll commands from parent */
+      + 'window.addEventListener("message", function(e){'
+      + '  if (e.data && e.data.type === "setScroll") {'
+      + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
+      + '  }'
+      + '});'
+      + '})();'
+      + '<' + '/script>'
+      + '<script>'
+      /* Component interaction stubs */
       + 'document.addEventListener("click", function(e) {'
       + '  var btn = e.target.closest("button");'
       + '  if (!btn || btn.closest("form")) return;'
       + '  e.preventDefault();'
-      + '  alert("Clicked: " + btn.textContent.trim());'
       + '});'
       + 'document.addEventListener("submit", function(e) {'
       + '  e.preventDefault();'
-      + '  var form = e.target;'
-      + '  var data = new FormData(form);'
-      + '  var out = [];'
-      + '  data.forEach(function(v, k) { out.push(k + "=" + v); });'
-      + '  alert("Form submitted! " + out.join(", "));'
       + '});'
-      + '</' + 'script>'
+      + '<' + '/script>'
       + '</body></html>';
 
     previewFrame.srcdoc = html;
-
-    previewFrame.onload = function () {
-      try {
-        var iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
-        applyFrameworkClasses(iframeDoc, currentFramework);
-        var scrollMax = iframeDoc.documentElement.scrollHeight - previewFrame.clientHeight;
-        if (scrollMax > 0) {
-          previewFrame.contentWindow.scrollTo(0, Math.round(lastScrollRatio * scrollMax));
-        }
-      } catch (e) { /* sandbox safety */ }
-    };
   }
 
   /* ==========================================================================
@@ -1139,7 +1182,8 @@
   }
 
   function exportHTML() {
-    var renderedHTML = marked.parse(editor.value || "");
+    var rawHTML = marked.parse(editor.value || "");
+    var renderedHTML = sanitizeHTML(rawHTML);
     var fw = FRAMEWORKS[currentFramework];
 
     var htmlString = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
@@ -1172,7 +1216,8 @@
   }
 
   function exportPDF() {
-    var renderedHTML = marked.parse(editor.value || "");
+    var rawHTML = marked.parse(editor.value || "");
+    var renderedHTML = sanitizeHTML(rawHTML);
     var container = document.createElement("div");
     container.innerHTML = renderedHTML;
     container.style.fontFamily = '"Lato", system-ui, sans-serif';

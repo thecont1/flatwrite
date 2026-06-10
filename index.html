@@ -25,6 +25,9 @@
   <!-- marked.js for Markdown → HTML -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- DOMPurify for HTML sanitization -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
+
   <!-- html2pdf.js for PDF export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 
@@ -182,7 +185,7 @@
         <!-- Preview pane (hidden by default) — uses iframe to sandbox framework CSS -->
         <div class="preview-wrap hidden" id="preview-wrap">
           <button class="read-close-btn" id="read-close-btn" type="button" title="Exit read mode">&times;</button>
-          <iframe id="preview-frame" class="preview-frame" title="Preview"></iframe>
+          <iframe id="preview-frame" class="preview-frame" title="Preview" sandbox="allow-scripts"></iframe>
         </div>
 
       </div>
