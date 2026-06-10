@@ -3,15 +3,47 @@
 
   /* ==========================================================================
      State compression for URL sharing
-     Uses browser-native gzip when available, base64 fallback.
+     Uses browser-native gzip when available, base64url fallback.
      ========================================================================== */
 
-  function compressState(state) {
+  /** Efficient Uint8Array → base64url (chunked to avoid quadratic strings). */
+  function uint8ToB64url(bytes) {
+    var CHUNK = 8192;
+    var parts = [];
+    for (var i = 0; i < bytes.length; i += CHUNK) {
+      var slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+      parts.push(String.fromCharCode.apply(null, slice));
+    }
+    return btoa(parts.join("")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function compressState(state) {
     var json = JSON.stringify(state);
     var bytes = new TextEncoder().encode(json);
-    var binary = "";
-    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+    /* Use gzip when CompressionStream is available (all modern browsers). */
+    if (typeof CompressionStream !== "undefined") {
+      try {
+        var cs = new CompressionStream("gzip");
+        var writer = cs.writable.getWriter();
+        writer.write(bytes);
+        writer.close();
+        var chunks = [];
+        var reader = cs.readable.getReader();
+        while (true) {
+          var r = await reader.read();
+          if (r.done) break;
+          chunks.push(r.value);
+        }
+        var total = chunks.reduce(function (a, c) { return a + c.length; }, 0);
+        var merged = new Uint8Array(total);
+        var off = 0;
+        chunks.forEach(function (c) { merged.set(c, off); off += c.length; });
+        return uint8ToB64url(merged);
+      } catch (e) { /* fall through to plain */ }
+    }
+
+    return uint8ToB64url(bytes);
   }
 
   async function decompressState(hash) {
@@ -20,8 +52,10 @@
     var binary = atob(padded);
     var bytes = new Uint8Array(binary.length);
     for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    try {
-      if (typeof DecompressionStream !== "undefined") {
+
+    /* Try gzip first — matches compressState() output. */
+    if (typeof DecompressionStream !== "undefined") {
+      try {
         var ds = new DecompressionStream("gzip");
         var writer = ds.writable.getWriter();
         writer.write(bytes);
@@ -38,8 +72,10 @@
         var offset = 0;
         chunks.forEach(function (c) { merged.set(c, offset); offset += c.length; });
         return JSON.parse(new TextDecoder().decode(merged));
-      }
-    } catch (e) { /* fall through */ }
+      } catch (e) { /* not gzip — fall through */ }
+    }
+
+    /* Plain base64url (no gzip). */
     return JSON.parse(new TextDecoder().decode(bytes));
   }
 
@@ -565,7 +601,7 @@
     applyZoom();
   }
 
-  function shareState() {
+  async function shareState() {
     var state = {
       content: editor.value,
       framework: currentFramework,
@@ -575,8 +611,13 @@
       font: comfortFont,
       zoomStep: zoomStep
     };
-    var encoded = compressState(state);
+    var encoded = await compressState(state);
     var url = window.location.origin + window.location.pathname + "#" + encoded;
+
+    if (url.length > 8000) {
+      showToast("URL is " + url.length + " chars — may be too long for some browsers");
+    }
+
     navigator.clipboard.writeText(url).then(function () {
       showToast("Copied share URL to clipboard");
     }).catch(function () {
