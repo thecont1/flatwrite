@@ -428,7 +428,7 @@
   var zoomStep = 100;
   var debounceTimer = null;
   var activeModalComponent = null;
-  var lastEditScrollRatio = 0;
+  var lastScrollRatio = 0;
 
   /* ==========================================================================
      DOM references
@@ -570,6 +570,10 @@
       if (label) setMode(label.dataset.mode);
     });
 
+    document.getElementById("read-close-btn").addEventListener("click", function () {
+      setMode("preview");
+    });
+
     btnExportMd.addEventListener("click", exportMarkdown);
     btnExportHtml.addEventListener("click", exportHTML);
     btnExportPdf.addEventListener("click", exportPDF);
@@ -635,6 +639,11 @@
       if (e.key === "Escape" && !modalOverlay.classList.contains("hidden")) {
         e.preventDefault();
         closeComponentModal();
+        return;
+      }
+      if (e.key === "Escape" && mode === "read") {
+        e.preventDefault();
+        setMode("preview");
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
@@ -714,6 +723,16 @@
      Preview rendering
      ========================================================================== */
 
+  function savePreviewScroll() {
+    try {
+      var iframeDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+      var scrollMax = iframeDoc.documentElement.scrollHeight - previewFrame.clientHeight;
+      if (scrollMax > 0) {
+        lastScrollRatio = previewFrame.contentWindow.scrollY / scrollMax;
+      }
+    } catch (e) { /* sandbox safety */ }
+  }
+
   function renderPreview() {
     var fw = FRAMEWORKS[currentFramework];
     var renderedHTML = marked.parse(editor.value || "");
@@ -780,7 +799,7 @@
         applyFrameworkClasses(iframeDoc, currentFramework);
         var scrollMax = iframeDoc.documentElement.scrollHeight - previewFrame.clientHeight;
         if (scrollMax > 0) {
-          previewFrame.contentWindow.scrollTo(0, Math.round(lastEditScrollRatio * scrollMax));
+          previewFrame.contentWindow.scrollTo(0, Math.round(lastScrollRatio * scrollMax));
         }
       } catch (e) { /* sandbox safety */ }
     };
@@ -791,6 +810,7 @@
      ========================================================================== */
 
   function setMode(newMode) {
+    var prevMode = mode;
     mode = newMode;
     var modeSwitch = document.getElementById("mode-switch");
     var appShell = document.querySelector(".app-shell");
@@ -804,16 +824,23 @@
     modeSwitch.classList.remove("preview", "read");
 
     if (mode === "edit") {
+      // Save preview scroll before hiding it
+      if (prevMode !== "edit") savePreviewScroll();
       editorWrap.classList.remove("hidden");
       btnEdit.classList.add("active");
     } else {
-      if (editor.scrollHeight > editor.clientHeight) {
-        lastEditScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
-      } else {
-        var text = editor.value || "";
-        lastEditScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
+      // Only re-render if coming from edit (content may have changed)
+      // READ ↔ VIEW keeps the same iframe — no re-render, no jump
+      if (prevMode === "edit") {
+        if (editor.scrollHeight > editor.clientHeight) {
+          lastScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+        } else {
+          var text = editor.value || "";
+          lastScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
+        }
+        renderPreview();
       }
-      renderPreview();
+
       previewWrap.classList.remove("hidden");
 
       if (mode === "read") {
