@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-framework="poshui">
+<html lang="en" data-framework="spectre">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -25,6 +25,9 @@
   <!-- marked.js for Markdown → HTML -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- DOMPurify for HTML sanitization -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
+
   <!-- html2pdf.js for PDF export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 
@@ -47,9 +50,13 @@
         <div class="framework-selector">
           <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
           <select id="framework-dropdown" class="framework-dropdown">
+            <option value="spectre">Spectre.css</option>
             <option value="poshui">PoshUI</option>
             <option value="oat">Oat</option>
-            <option value="spectre">Spectre.css</option>
+            <option value="pico">Pico CSS</option>
+            <option value="milligram">Milligram</option>
+            <option value="chota">Chota</option>
+            <option value="simple">Simple.css</option>
           </select>
         </div>
 
@@ -68,8 +75,8 @@
 
         <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
         <div class="components-panel">
-          <p class="sidebar-section-label">UI Components</p>
-          <p class="components-hint">Click to insert · greyed = unsupported</p>
+          <p class="sidebar-section-label">Components</p>
+          <p class="components-hint">Click to insert</p>
           <div class="components-grid" id="components-grid">
             <!-- Populated dynamically by app.js based on selected framework -->
           </div>
@@ -89,7 +96,8 @@
           <div class="toolbar-left">
             <div class="mode-switch" id="mode-switch">
               <span class="mode-switch-label active" id="btn-edit" data-mode="edit">Edit</span>
-              <span class="mode-switch-label" id="btn-preview" data-mode="preview">Preview</span>
+              <span class="mode-switch-label" id="btn-preview" data-mode="preview">View</span>
+              <span class="mode-switch-label" id="btn-read" data-mode="read">Read</span>
               <span class="mode-switch-slider" id="mode-switch-slider"></span>
             </div>
           </div>
@@ -122,6 +130,9 @@
             </div>
           </div>
           <div class="toolbar-right">
+            <button class="export-icon-btn" id="btn-share" type="button" title="Share state as URL">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 8 8"><path d="M.75 0C.34 0 0 .34 0 .75v5.5c0 .41.34.75.75.75h4.5c.41 0 .75-.34.75-.75V5H5v1H1V1h2V0H.75zM6 0v1C3.95 1 2.3 2.54 2.06 4.53 2.27 3.65 3.05 3 4 3h2v1l2-2-2-2z"/></svg>
+            </button>
             <span class="export-label">Download</span>
             <button class="export-icon-btn" id="btn-export-md" type="button" data-tooltip="Open as .md">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M14 4.5V14a2 2 0 0 1-2 2H9v-1h3a1 1 0 0 0 1-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5zM.706 13.189v2.66H0V11.85h.806l1.14 2.596h.026l1.14-2.596h.8v3.999h-.716v-2.66h-.038l-.946 2.159h-.516l-.952-2.16H.706Zm3.919 2.66V11.85h1.459q.609 0 1.005.234t.589.68q.195.445.196 1.075 0 .634-.196 1.084-.197.451-.595.689-.396.237-1 .237H4.626Zm1.353-3.354h-.562v2.707h.562q.279 0 .484-.082a.8.8 0 0 0 .334-.252 1.1 1.1 0 0 0 .196-.422q.067-.252.067-.592a2.1 2.1 0 0 0-.117-.753.9.9 0 0 0-.354-.454q-.238-.152-.61-.152"/></svg>
@@ -173,7 +184,8 @@
 
         <!-- Preview pane (hidden by default) — uses iframe to sandbox framework CSS -->
         <div class="preview-wrap hidden" id="preview-wrap">
-          <iframe id="preview-frame" class="preview-frame" title="Preview"></iframe>
+          <button class="read-close-btn" id="read-close-btn" type="button" title="Exit read mode">&times;</button>
+          <iframe id="preview-frame" class="preview-frame" title="Preview" sandbox="allow-scripts"></iframe>
         </div>
 
       </div>

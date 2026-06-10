@@ -419,7 +419,7 @@ body {
 .mode-switch {
   position: relative;
   display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   background: rgba(255, 255, 255, 0.35);
   border: 1px solid var(--glass-border);
   border-radius: 10px;
@@ -451,7 +451,7 @@ body {
   top: 3px;
   left: 3px;
   height: calc(100% - 6px);
-  width: calc(50% - 3px);
+  width: calc(33.333% - 3px);
   background: rgba(255, 255, 255, 0.85);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
@@ -460,7 +460,11 @@ body {
 }
 
 .mode-switch.preview .mode-switch-slider {
-  left: calc(50%);
+  left: calc(33.333%);
+}
+
+.mode-switch.read .mode-switch-slider {
+  left: calc(66.666%);
 }
 
 /* Export icon buttons */
@@ -704,6 +708,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .preview-frame {
@@ -1044,4 +1049,79 @@ body {
     font-size: 0.88rem;
     padding: 12px 14px;
   }
+}
+
+/* ==========================================================================
+   Read mode — pure reading focus
+   All chrome dims to 0.1 alpha and stops responding to clicks.
+   Document stays pixel-for-pixel in place. Logo stays fully visible.
+   ========================================================================== */
+
+/* Strip sidebar glass so only the logo remains */
+.app-shell.focus-mode .sidebar-inner {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Dim all sidebar children except the logo */
+.app-shell.focus-mode .sidebar-inner .tagline,
+.app-shell.focus-mode .sidebar-inner .sidebar-divider,
+.app-shell.focus-mode .sidebar-inner .framework-selector,
+.app-shell.focus-mode .sidebar-inner .zoom-selector,
+.app-shell.focus-mode .sidebar-inner .components-panel,
+.app-shell.focus-mode .sidebar-inner .sidebar-copy {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Dim toolbar — mode switch, typography, exports all vanish */
+.app-shell.focus-mode .toolbar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Dim editor chrome */
+.app-shell.focus-mode .md-toolbar,
+.app-shell.focus-mode .editor-label {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* ---------- Close button for read mode ---------- */
+.read-close-btn {
+  display: none;
+}
+
+.app-shell.focus-mode .read-close-btn {
+  display: flex;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: opacity 0.2s, color 0.2s;
+  pointer-events: auto;
+  opacity: 0.6;
+}
+
+.app-shell.focus-mode .read-close-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
 }
