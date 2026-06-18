@@ -417,6 +417,7 @@
   var LS_LINESTEP  = "flatwrite_linestep";
   var LS_FONT      = "flatwrite_comfortfont";
   var LS_ZOOMSTEP  = "flatwrite_zoomstep";
+  var LS_CONTENTWIDTH = "flatwrite_contentwidth";
 
   /* ==========================================================================
      Typography presets
@@ -500,6 +501,56 @@
   var modalCloseBtn     = document.getElementById("comp-modal-close");
   var btnShare          = document.getElementById("btn-share");
 
+  /* Load sidebar DOM refs */
+  var btnLoadUrl        = document.getElementById("btn-load-url");
+  var btnLoadLocal      = document.getElementById("btn-load-local");
+
+  /* Hidden file input for disk load */
+  var loadFileInput     = document.getElementById("load-file-input");
+
+  /* Width handle DOM refs */
+  var widthHandleLeft   = document.getElementById("width-handle-left");
+  var widthHandleRight  = document.getElementById("width-handle-right");
+
+  /* ==========================================================================
+     Markdown Loader
+     ========================================================================== */
+
+  var initialEditorContent = "";
+  var contentWidth = 780;
+  var LS_CONTENTWIDTH = "flatwrite_contentwidth";
+
+  function rewriteGitHubUrl(url) {
+    var m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+    if (m) {
+      return "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/" + m[4];
+    }
+    return url;
+  }
+
+  function isEditorDirty() {
+    return editor.value !== initialEditorContent;
+  }
+
+  function setEditorContent(text) {
+    editor.value = text;
+    editor.dispatchEvent(new Event("input"));
+    localStorage.setItem(LS_CONTENT, text);
+  }
+
+  function handleFileUpload(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      if (isEditorDirty()) {
+        var ok = confirm("Replace current content with loaded file?");
+        if (!ok) return;
+      }
+      setEditorContent(reader.result);
+    };
+    reader.readAsText(file);
+  }
+
   /* ==========================================================================
      Init
      ========================================================================== */
@@ -511,15 +562,18 @@
     if (hash) {
       decompressState(hash).then(function (state) {
         restoreFromState(state);
+        initialEditorContent = editor.value;
         renderComponentGrid();
         bindEvents();
       }).catch(function () {
         restoreFromStorage();
+        initialEditorContent = editor.value;
         renderComponentGrid();
         bindEvents();
       });
     } else {
       restoreFromStorage();
+      initialEditorContent = editor.value;
       renderComponentGrid();
       bindEvents();
     }
@@ -586,6 +640,10 @@
     zoomSlider.value = zoomStep;
     zoomValue.textContent = zoomStep + "%";
     applyZoom();
+
+    var savedWidth = parseInt(localStorage.getItem(LS_CONTENTWIDTH), 10);
+    if (Number.isFinite(savedWidth) && savedWidth >= 400 && savedWidth <= 1200) contentWidth = savedWidth;
+    applyContentWidth();
   }
 
   function restoreFromState(state) {
@@ -601,6 +659,10 @@
     zoomSlider.value = zoomStep;
     zoomValue.textContent = zoomStep + "%";
     applyZoom();
+    if (state.contentWidth !== undefined) {
+      contentWidth = clampInt(state.contentWidth, 400, 1200, contentWidth);
+      applyContentWidth();
+    }
   }
 
   async function shareState() {
@@ -611,7 +673,8 @@
       weightStep: weightStep,
       lineStep: lineStep,
       font: comfortFont,
-      zoomStep: zoomStep
+      zoomStep: zoomStep,
+      contentWidth: contentWidth
     };
     var encoded = await compressState(state);
     var url = window.location.origin + window.location.pathname + "#" + encoded;
@@ -646,6 +709,58 @@
 
     document.getElementById("read-close-btn").addEventListener("click", function () {
       setMode("preview");
+    });
+
+    /* Sidebar Load events */
+    btnLoadUrl.addEventListener("click", function () {
+      openComponentModal("load-url", null);
+    });
+
+    btnLoadLocal.addEventListener("click", function () {
+      loadFileInput.value = "";
+      loadFileInput.click();
+    });
+
+    loadFileInput.addEventListener("change", function () {
+      var file = loadFileInput.files && loadFileInput.files[0];
+      handleFileUpload(file);
+    });
+
+    /* Width handle drag */
+    function initWidthHandle(handle, side) {
+      var dragging = false, startX, startWidth;
+      handle.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        dragging = true;
+        startX = e.clientX;
+        startWidth = contentWidth;
+        handle.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      });
+      window.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        var delta = e.clientX - startX;
+        if (side === "left") delta = -delta;
+        var newWidth = Math.max(400, Math.min(1200, startWidth + delta * 2));
+        contentWidth = newWidth;
+        applyContentWidth();
+      });
+      window.addEventListener("mouseup", function () {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove("dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        localStorage.setItem(LS_CONTENTWIDTH, contentWidth);
+      });
+    }
+
+    initWidthHandle(widthHandleLeft, "left");
+    initWidthHandle(widthHandleRight, "right");
+
+    window.addEventListener("resize", function () {
+      if (mode === "preview" || mode === "read") positionWidthHandles();
     });
 
     btnExportMd.addEventListener("click", exportMarkdown);
@@ -746,6 +861,39 @@
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
       }
+      if (e.data && e.data.type === "dblclick" && mode === "preview") {
+        setMode("edit");
+        editor.focus();
+        if (e.data.blockText) {
+          var md = editor.value;
+          var bt = e.data.blockText;
+          var pos = -1;
+          var normBt = bt.replace(/\s+/g, " ").toLowerCase();
+          for (var i = 0; i < md.length - 20; i++) {
+            var chunk = md.substring(i, i + 200).replace(/\s+/g, " ").toLowerCase();
+            if (chunk.indexOf(normBt.substring(0, 60)) !== -1) {
+              pos = i;
+              break;
+            }
+          }
+          if (pos === -1) {
+            var words = normBt.split(" ").filter(function (w) { return w.length > 3; }).slice(0, 4);
+            if (words.length > 0) {
+              for (var j = 0; j < md.length - 20; j++) {
+                var c2 = md.substring(j, j + 500).toLowerCase();
+                var allFound = words.every(function (w) { return c2.indexOf(w) !== -1; });
+                if (allFound) { pos = j; break; }
+              }
+            }
+          }
+          if (pos !== -1) {
+            editor.setSelectionRange(pos, pos);
+            var lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+            var linesBefore = md.substring(0, pos).split("\n").length;
+            editor.scrollTop = Math.max(0, (linesBefore - 5) * lineHeight);
+          }
+        }
+      }
     });
   }
 
@@ -779,6 +927,30 @@
     document.querySelector(".app-shell").style.zoom = zoomStep / 100;
   }
 
+  function applyContentWidth() {
+    var frame = document.getElementById("preview-frame");
+    if (!frame) return;
+    frame.style.maxWidth = contentWidth + "px";
+    frame.style.margin = "0 auto";
+    positionWidthHandles();
+  }
+
+  function positionWidthHandles() {
+    var frame = document.getElementById("preview-frame");
+    var hLeft = document.getElementById("width-handle-left");
+    var hRight = document.getElementById("width-handle-right");
+    if (!frame || !hLeft || !hRight) return;
+    var wrap = frame.parentElement;
+    var wrapRect = wrap.getBoundingClientRect();
+    var frameRect = frame.getBoundingClientRect();
+    var leftOff = frameRect.left - wrapRect.left;
+    var rightOff = wrapRect.right - frameRect.right;
+    hLeft.style.left = (leftOff - 4) + "px";
+    hLeft.style.right = "auto";
+    hRight.style.right = (rightOff - 4) + "px";
+    hRight.style.left = "auto";
+  }
+
   /* ==========================================================================
      Component grid — shows all 15, greys out unsupported for current framework
      ========================================================================== */
@@ -791,7 +963,7 @@
       btn.type = "button";
       btn.dataset.component = comp.id;
       btn.title = comp.label;
-      btn.textContent = comp.emoji + " " + comp.label;
+      btn.textContent = comp.label;
 
       var supported = comp.support[currentFramework];
       if (!supported) {
@@ -841,7 +1013,7 @@
       + 'body { font-size: 15px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' max-width: 780px; margin: 1.5rem auto; padding: 0 1.5rem;'
+      + ' max-width: ' + contentWidth + 'px; margin: 1.5rem auto; padding: 0 1.5rem;'
       + ' zoom: ' + scale + '; }'
       + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; }'
       + 'h2 { margin-top: 1.8em !important; }'
@@ -901,10 +1073,24 @@
       + 'document.addEventListener("submit", function(e) {'
       + '  e.preventDefault();'
       + '});'
+      /* Double-click → tell parent to switch to Edit mode at clicked position */
+      + 'document.addEventListener("dblclick", function(e) {'
+      + '  var node = e.target;'
+      + '  while (node && node !== document.body) {'
+      + '    var d = window.getComputedStyle(node).display;'
+      + '    if (d === "block" || d === "list-item" || d === "table-cell") break;'
+      + '    node = node.parentNode;'
+      + '  }'
+      + '  var blockText = (node && node.textContent) ? node.textContent.trim().substring(0, 120) : "";'
+      + '  parent.postMessage({type:"dblclick", blockText: blockText}, "*");'
+      + '});'
       + '<' + '/script>'
       + '</body></html>';
 
     previewFrame.srcdoc = html;
+    /* Reposition width handles after iframe content loads */
+    previewFrame.onload = positionWidthHandles;
+    setTimeout(positionWidthHandles, 150);
   }
 
   /* ==========================================================================
@@ -1011,7 +1197,6 @@
     floater.classList.remove("settled");
     floater.classList.add("sliding");
     floater.style.left = dst.left + "px";
-    floater.style.top = dst.top + "px";
 
     appShell.classList.remove("focus-mode");
 
@@ -1053,7 +1238,11 @@
 
   function openComponentModal(componentId, comp) {
     activeModalComponent = componentId;
-    modalTitle.textContent = comp.emoji + " Insert " + comp.label;
+    if (comp) {
+      modalTitle.textContent = "Insert " + comp.label;
+    } else if (componentId === "load-url") {
+      modalTitle.textContent = "Load from URL";
+    }
     modalBody.innerHTML = "";
 
     switch (componentId) {
@@ -1061,6 +1250,7 @@
       case "card":  buildCardForm();  break;
       case "list":  buildListForm();  break;
       case "image": buildImageForm(); break;
+      case "load-url": buildLoadUrlForm(); break;
     }
 
     modalOverlay.style.left = "";
@@ -1078,12 +1268,16 @@
   }
 
   function handleModalInsert() {
+    if (activeModalComponent === "load-url") {
+      handleLoadUrlModalInsert();
+      return;
+    }
     var snippet = "";
     switch (activeModalComponent) {
       case "table": snippet = generateTableSnippet(); break;
       case "card":  snippet = generateCardSnippet();  break;
       case "list":  snippet = generateListSnippet();  break;
-      case "image": snippet = generateImageSnippet();  break;
+      case "image": snippet = generateImageSnippet(); break;
     }
     if (snippet) {
       if (mode !== "edit") setMode("edit");
@@ -1218,6 +1412,64 @@
     return md;
   }
 
+  /* LOAD URL form & handler */
+
+  function buildLoadUrlForm() {
+    modalBody.innerHTML =
+      '<label for="load-url-modal-input">Markdown URL</label>'
+      + '<input type="url" id="load-url-modal-input" placeholder="https://github.com/user/repo/blob/main/README.md" />'
+      + '<p class="modal-hint">GitHub blob URLs are auto-converted to raw URLs.</p>'
+      + '<div class="load-modal-error hidden" id="load-modal-error" role="alert" style="color:#c0392b;font-size:0.78rem;margin-top:4px"></div>';
+  }
+
+  async function handleLoadUrlModalInsert() {
+    var input = document.getElementById("load-url-modal-input");
+    var errorEl = document.getElementById("load-modal-error");
+    var url = (input ? input.value.trim() : "");
+
+    if (errorEl) { errorEl.textContent = ""; errorEl.classList.add("hidden"); }
+
+    if (!url) {
+      if (errorEl) { errorEl.textContent = "Please enter a URL."; errorEl.classList.remove("hidden"); }
+      return;
+    }
+
+    var rewritten = rewriteGitHubUrl(url);
+    var insertBtn = document.getElementById("comp-modal-insert");
+    if (insertBtn) { insertBtn.disabled = true; insertBtn.textContent = "Fetching\u2026"; }
+
+    try {
+      var res = await fetch(rewritten);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      var text = await res.text();
+      if (isEditorDirty()) {
+        var ok = confirm("Replace current content with loaded markdown?");
+        if (!ok) return;
+      }
+      setEditorContent(text);
+      closeComponentModal();
+      showToast("Loaded markdown from URL");
+    } catch (e) {
+      try {
+        var proxy = "https://corsproxy.io/?" + encodeURIComponent(rewritten);
+        var res2 = await fetch(proxy);
+        if (!res2.ok) throw new Error("HTTP " + res2.status);
+        var text2 = await res2.text();
+        if (isEditorDirty()) {
+          var ok2 = confirm("Replace current content with loaded markdown?");
+          if (!ok2) return;
+        }
+        setEditorContent(text2);
+        closeComponentModal();
+        showToast("Loaded markdown from URL");
+      } catch (e2) {
+        if (errorEl) { errorEl.textContent = "Could not fetch URL. Check the link and try again."; errorEl.classList.remove("hidden"); }
+      }
+    } finally {
+      if (insertBtn) { insertBtn.disabled = false; insertBtn.textContent = "Insert"; }
+    }
+  }
+
   /* ==========================================================================
      Markdown formatting toolbar
      ========================================================================== */
@@ -1328,7 +1580,7 @@
       + '    body {\n'
       + '      font-family: "' + comfortFont + '", system-ui, sans-serif;\n'
       + '      line-height: 1.7;\n'
-      + '      max-width: 780px;\n'
+      + '      max-width: ' + contentWidth + 'px;\n'
       + '      margin: 2rem auto;\n'
       + '      padding: 0 1.5rem;\n'
       + '      color: #2d2a3e;\n'
@@ -1352,7 +1604,7 @@
     container.innerHTML = renderedHTML;
     container.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
     container.style.lineHeight = "1.7";
-    container.style.maxWidth = "780px";
+    container.style.maxWidth = contentWidth + "px";
     container.style.margin = "0 auto";
     container.style.padding = "0 1.5rem";
     container.style.color = "#2d2a3e";

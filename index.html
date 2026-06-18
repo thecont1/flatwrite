@@ -46,6 +46,18 @@
 
         <hr class="sidebar-divider" />
 
+        <!-- Load section -->
+        <div class="load-panel">
+          <p class="sidebar-section-label">Load</p>
+          <div class="load-buttons">
+            <button class="comp-btn load-btn" id="btn-load-url" type="button">From URL</button>
+            <button class="comp-btn load-btn" id="btn-load-local" type="button">From Disk</button>
+          </div>
+          <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" />
+        </div>
+
+        <hr class="sidebar-divider" />
+
         <!-- Framework selector -->
         <div class="framework-selector">
           <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
@@ -62,23 +74,22 @@
 
         <hr class="sidebar-divider" />
 
+        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
+        <div class="components-panel">
+          <label for="components-grid" class="sidebar-section-label">Components</label>
+          <div class="components-grid" id="components-grid">
+            <!-- Populated dynamically by app.js based on selected framework -->
+          </div>
+        </div>
+
+        <hr class="sidebar-divider" />
+
         <!-- UI Zoom -->
         <div class="zoom-selector">
           <label for="zoom-slider" class="sidebar-section-label">UI Zoom</label>
           <div class="zoom-controls">
             <input type="range" id="zoom-slider" class="zoom-slider" min="100" max="120" value="100" step="1" />
             <span class="zoom-value" id="zoom-value">100%</span>
-          </div>
-        </div>
-
-        <hr class="sidebar-divider" />
-
-        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
-        <div class="components-panel">
-          <p class="sidebar-section-label">Components</p>
-          <p class="components-hint">Click to insert</p>
-          <div class="components-grid" id="components-grid">
-            <!-- Populated dynamically by app.js based on selected framework -->
           </div>
         </div>
 
@@ -170,8 +181,10 @@
 
           <!-- Preview pane (hidden by default) — uses iframe to sandbox framework CSS -->
           <div class="preview-wrap hidden" id="preview-wrap">
+            <div class="width-handle width-handle-left" id="width-handle-left" title="Drag to resize"></div>
             <button class="read-close-btn" id="read-close-btn" type="button" title="Exit read mode">&times;</button>
             <iframe id="preview-frame" class="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin"></iframe>
+            <div class="width-handle width-handle-right" id="width-handle-right" title="Drag to resize"></div>
           </div>
 
         </div>
