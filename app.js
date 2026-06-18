@@ -425,10 +425,11 @@
 
   var COMFORT_FONTS = [
     { value: "Inter",            label: "Inter" },
+    { value: "JetBrains Mono",   label: "JetBrains Mono" },
+    { value: "Lora",             label: "Lora" },
     { value: "Merriweather",     label: "Merriweather" },
     { value: "Playfair Display", label: "Playfair Display" },
-    { value: "Lora",             label: "Lora" },
-    { value: "JetBrains Mono",   label: "JetBrains Mono" }
+    { value: "Unbounded",        label: "Unbounded" }
   ];
 
   var SIZE_SCALE = { "-3": 0.76, "-2": 0.84, "-1": 0.92, "0": 1, "1": 1.1, "2": 1.2, "3": 1.32, "4": 1.46 };
@@ -484,7 +485,10 @@
   var btnExportPdf      = document.getElementById("btn-export-pdf");
   var mdToolbar         = document.getElementById("md-toolbar");
   var componentsGrid    = document.getElementById("components-grid");
-  var fontPicker        = document.getElementById("font-picker");
+  var fontPicker        = document.getElementById("font-dropdown-btn");
+  var fontPickerList    = null;
+  var fontPickerLabel   = document.getElementById("font-dropdown-label");
+  var fontPickerWrap    = document.getElementById("font-dropdown");
   var sizeDownBtn       = document.getElementById("size-down");
   var sizeUpBtn         = document.getElementById("size-up");
   var weightDownBtn     = document.getElementById("weight-down");
@@ -577,17 +581,20 @@
       decompressState(hash).then(function (state) {
         restoreFromState(state);
         initialEditorContent = editor.value;
+        buildFontDropdown();
         renderComponentGrid();
         bindEvents();
       }).catch(function () {
         restoreFromStorage();
         initialEditorContent = editor.value;
+        buildFontDropdown();
         renderComponentGrid();
         bindEvents();
       });
     } else {
       restoreFromStorage();
       initialEditorContent = editor.value;
+      buildFontDropdown();
       renderComponentGrid();
       bindEvents();
     }
@@ -648,7 +655,7 @@
 
     var savedFont = localStorage.getItem(LS_FONT);
     if (savedFont && COMFORT_FONTS.some(function (f) { return f.value === savedFont; })) comfortFont = savedFont;
-    fontPicker.value = comfortFont;
+    fontPickerLabel.textContent = comfortFont;
 
     zoomStep = clampInt(localStorage.getItem(LS_ZOOMSTEP), 100, 120, zoomStep);
     zoomSlider.value = zoomStep;
@@ -668,7 +675,7 @@
     if (state.weightStep !== undefined) weightStep = clampInt(state.weightStep, WEIGHT_MIN, WEIGHT_MAX, weightStep);
     if (state.lineStep !== undefined) lineStep = clampInt(state.lineStep, LINE_MIN, LINE_MAX, lineStep);
     if (state.font && COMFORT_FONTS.some(function (f) { return f.value === state.font; })) comfortFont = state.font;
-    fontPicker.value = comfortFont;
+    fontPickerLabel.textContent = comfortFont;
     if (state.zoomStep !== undefined) zoomStep = clampInt(state.zoomStep, 100, 120, zoomStep);
     zoomSlider.value = zoomStep;
     zoomValue.textContent = zoomStep + "%";
@@ -817,8 +824,44 @@
       }
     });
 
-    fontPicker.addEventListener("change", function () {
-      comfortFont = fontPicker.value;
+    fontPicker.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (!fontPickerList) return;
+      var isOpen = !fontPickerList.classList.contains("hidden");
+      fontPickerList.classList.add("hidden");
+      if (!isOpen) {
+        var zoom = zoomStep / 100;
+        var rect = fontPicker.getBoundingClientRect();
+        fontPickerList.style.left = (rect.left / zoom) + "px";
+        fontPickerList.style.top = ((rect.bottom / zoom) + 4) + "px";
+        fontPickerList.style.width = (rect.width / zoom) + "px";
+        fontPickerList.classList.remove("hidden");
+      }
+    });
+
+    function closeFontDropdown() {
+      if (fontPickerList && !fontPickerList.classList.contains("hidden")) {
+        fontPickerList.classList.add("hidden");
+      }
+    }
+
+    document.addEventListener("pointerdown", function (e) {
+      if (!fontPickerList) return;
+      if (fontPickerList.classList.contains("hidden")) return;
+      if (fontPickerList.contains(e.target)) return;
+      if (fontPicker.contains(e.target)) return;
+      fontPickerList.classList.add("hidden");
+    });
+
+    fontPickerList.addEventListener("click", function (e) {
+      var item = e.target.closest(".font-dropdown-item");
+      if (!item) return;
+      comfortFont = item.dataset.font;
+      fontPickerLabel.textContent = comfortFont;
+      fontPickerList.querySelectorAll(".font-dropdown-item").forEach(function (el) {
+        el.classList.toggle("selected", el.dataset.font === comfortFont);
+      });
+      fontPickerList.classList.add("hidden");
       localStorage.setItem(LS_FONT, comfortFont);
       if (mode === "preview") renderPreview();
     });
@@ -882,6 +925,9 @@
       if (e.source !== previewFrame.contentWindow) return;
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
+      }
+      if (e.data && e.data.type === "iframe-pointerdown") {
+        closeFontDropdown();
       }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
@@ -988,6 +1034,24 @@
   /* ==========================================================================
      Component grid — shows all 15, greys out unsupported for current framework
      ========================================================================== */
+
+  function buildFontDropdown() {
+    if (!fontPickerList) {
+      fontPickerList = document.createElement("div");
+      fontPickerList.className = "font-dropdown-list hidden";
+      document.body.appendChild(fontPickerList);
+    }
+    fontPickerList.innerHTML = "";
+    COMFORT_FONTS.forEach(function (f) {
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "font-dropdown-item" + (f.value === comfortFont ? " selected" : "");
+      item.dataset.font = f.value;
+      item.textContent = f.label;
+      item.style.fontFamily = '"' + f.value + '", system-ui, sans-serif';
+      fontPickerList.appendChild(item);
+    });
+  }
 
   function renderComponentGrid() {
     componentsGrid.innerHTML = "";
@@ -1107,6 +1171,9 @@
       + '  if (e.data && e.data.type === "setContentWidth") {'
       + '    document.body.style.maxWidth = e.data.width + "px";'
       + '  }'
+      + '});'
+      + 'document.addEventListener("pointerdown", function(){'
+      + '  parent.postMessage({type:"iframe-pointerdown"}, "*");'
       + '});'
       + '})();'
       + '<' + '/script>'

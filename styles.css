@@ -292,6 +292,76 @@ body {
   border-color: var(--accent);
 }
 
+/* ---------- Font Dropdown ---------- */
+.font-dropdown {
+  position: relative;
+}
+
+.font-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 140px;
+  white-space: nowrap;
+}
+
+.font-dropdown-btn:hover {
+  border-color: var(--accent);
+}
+
+.font-dropdown-arrow {
+  font-size: 0.5rem;
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.font-dropdown-list {
+  position: fixed;
+  min-width: 180px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.font-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 1rem;
+}
+
+.font-dropdown-item:hover {
+  background: rgba(176, 106, 179, 0.1);
+}
+
+.font-dropdown-item.selected {
+  background: rgba(176, 106, 179, 0.18);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------- UI Components Panel (Sidebar) ---------- */
 .components-panel {
   margin-top: 0;

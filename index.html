@@ -141,15 +141,12 @@
                 </div>
                 <!-- Typography controls (View mode) -->
                 <div class="toolbar-slide typo-controls">
-                  <select id="font-picker" class="typo-font-picker" title="Preview font" style="width: 220px;">
-                    <option value="Inter">Inter</option>
-                    <option value="Merriweather">Merriweather</option>
-                    <option value="Playfair Display">Playfair Display</option>
-                    <option value="Lora">Lora</option>
-                    <option value="Lato">Lato</option>
-                    <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
-                    <option value="JetBrains Mono">JetBrains Mono</option>
-                  </select>
+                  <div class="font-dropdown" id="font-dropdown">
+                    <button class="font-dropdown-btn" id="font-dropdown-btn" type="button">
+                      <span id="font-dropdown-label">Inter</span>
+                      <span class="font-dropdown-arrow">&#x25BC;</span>
+                    </button>
+                  </div>
                   <span class="typo-sep"></span>
                   <span class="typo-label">Size</span>
                   <button class="typo-btn" id="size-down" type="button" title="Decrease size">−</button>
