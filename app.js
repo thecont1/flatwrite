@@ -893,18 +893,32 @@
         var mdLow = md.toLowerCase();
         var wordLow = word.toLowerCase();
 
-        if (ctx && word) {
+        if (ctx && wordLow.length >= 2) {
           var ctxLow = ctx.toLowerCase();
-          var searchPhrase = ctxLow + " " + wordLow;
-          var phraseIdx = mdLow.indexOf(searchPhrase);
-          if (phraseIdx !== -1) {
-            pos = phraseIdx + ctxLow.length + 1;
+          var ctxIdx = mdLow.indexOf(ctxLow);
+          if (ctxIdx !== -1) {
+            var searchFrom = ctxIdx + ctxLow.length;
+            var wIdx = mdLow.indexOf(wordLow, searchFrom);
+            if (wIdx !== -1 && wIdx < searchFrom + 80) {
+              pos = wIdx;
+            }
+          }
+          if (pos === -1) {
+            var words = ctxLow.split(/\s+/).filter(function (w) { return w.length > 3; });
+            for (var k = 0; k < words.length && pos === -1; k++) {
+              var wIdx2 = mdLow.indexOf(words[k]);
+              if (wIdx2 !== -1) {
+                var wIdx3 = mdLow.indexOf(wordLow, wIdx2);
+                if (wIdx3 !== -1 && wIdx3 < wIdx2 + 120) {
+                  pos = wIdx3;
+                }
+              }
+            }
           }
         }
 
         if (pos === -1 && wordLow.length >= 2) {
-          var first = mdLow.indexOf(wordLow);
-          if (first !== -1) pos = first;
+          pos = mdLow.indexOf(wordLow);
         }
 
         if (pos !== -1) {
@@ -1045,6 +1059,11 @@
       + 'table { table-layout: fixed; width: 100%; overflow: hidden; }'
       + 'td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
       + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
+      + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
+      + 'li { margin: 0.15em 0; display: list-item; }'
+      + 'li > ul, li > ol { margin: 0.15em 0; }'
+      + 'li::marker { display: inline; }'
+      + 'p { margin: 0.4em 0; }'
       + '.fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }'
       + '.fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }'
       + '.fw-card-header { padding: 1rem 1.2rem 0.4rem; }'
@@ -1103,7 +1122,10 @@
       /* Double-click → tell parent to switch to Edit mode at clicked word */
       + 'document.addEventListener("dblclick", function(e) {'
       + '  var sel = window.getSelection();'
-      + '  var word = sel ? sel.toString().trim() : "";'
+      + '  if (!sel || sel.rangeCount === 0) return;'
+      + '  var word = sel.toString().trim();'
+      + '  if (!word) return;'
+      + '  var range = sel.getRangeAt(0);'
       + '  var node = e.target;'
       + '  while (node && node !== document.body) {'
       + '    var d = window.getComputedStyle(node).display;'
@@ -1111,12 +1133,22 @@
       + '    node = node.parentNode;'
       + '  }'
       + '  var textBefore = "";'
-      + '  if (node && word) {'
+      + '  if (node) {'
+      + '    var walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null, false);'
+      + '    var chars = 0;'
+      + '    var targetOffset = -1;'
+      + '    var n;'
+      + '    while ((n = walk.nextNode())) {'
+      + '      if (n === range.startContainer) { targetOffset = chars + range.startOffset; break; }'
+      + '      chars += n.textContent.length;'
+      + '    }'
       + '    var full = node.textContent;'
-      + '    var idx = full.indexOf(word);'
-      + '    if (idx > -1) textBefore = full.substring(Math.max(0, idx - 60), idx).trim();'
+      + '    if (targetOffset > -1) {'
+      + '      var start = Math.max(0, targetOffset - 60);'
+      + '      textBefore = full.substring(start, targetOffset).trim();'
+      + '    }'
       + '  }'
-      + '  if (word) parent.postMessage({type:"dblclick", word:word, ctx:textBefore}, "*");'
+      + '  parent.postMessage({type:"dblclick", word:word, ctx:textBefore}, "*");'
       + '});'
       + '<' + '/script>'
       + '</body></html>';
