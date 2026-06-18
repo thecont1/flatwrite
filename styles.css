@@ -23,7 +23,7 @@
   /* Glass panel */
   --glass-bg: rgba(255, 255, 255, 0.35);
   --glass-border: rgba(255, 255, 255, 0.5);
-  --glass-shadow: 0 8px 32px rgba(93, 122, 142, 0.18);
+  --glass-shadow: 0 2px 8px oklch(0.2 0.01 80 / 0.06);
   --glass-radius: 18px;
   --glass-blur: 14px;
 
@@ -73,7 +73,7 @@ body {
 .app-shell button,
 .app-shell select,
 .app-shell input,
-.app-shell textarea {
+.app-shell textarea:not(.editor) {
   font-family: var(--font-body);
   color: var(--text-primary);
   box-shadow: none;
@@ -92,21 +92,29 @@ body {
 
 /* ---------- App Shell ---------- */
 .app-shell {
+  position: fixed;
+  inset: 0;
   display: flex;
-  flex: 1;
-  min-height: 0; /* allow flex children to shrink */
-  max-width: 1440px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 16px 20px 0;
-  gap: 20px;
+  flex-direction: row;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 10px;
+  gap: 0;
 }
 
 /* ---------- Sidebar ---------- */
 .sidebar {
-  flex: 0 0 var(--sidebar-width);
-  max-width: var(--sidebar-width);
-  min-height: 0; /* allow shrink for scroll */
+  flex-shrink: 0;
+  width: var(--sidebar-width);
+  margin: 10px;
+  overflow-y: auto;
+  z-index: 10;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.4s ease;
+}
+
+.sidebar.panel-hidden {
+  transform: translateX(-100%);
 }
 
 .sidebar-inner {
@@ -116,9 +124,29 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: var(--glass-radius);
   box-shadow: var(--glass-shadow);
-  padding: 28px 22px;
-  max-height: 100%;
+  padding: 18px 22px 28px;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+/* ---------- Main Panel ---------- */
+.main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+  margin: 10px;
+  max-width: calc(100vw - var(--sidebar-width) * 2 - 60px);
+}
+
+.main-inner {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 0;
 }
 
 .app-title {
@@ -192,13 +220,15 @@ body {
 .typo-controls {
   display: flex;
   flex-direction: row;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .typo-label {
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
@@ -206,17 +236,17 @@ body {
 }
 
 .typo-btn {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--btn-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--btn-bg);
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -236,25 +266,25 @@ body {
 
 .typo-sep {
   width: 1px;
-  height: 18px;
+  height: 22px;
   background: rgba(180, 160, 200, 0.3);
   margin: 0 4px;
   flex-shrink: 0;
 }
 
 .typo-font-picker {
-  padding: 4px 8px;
+  padding: 5px 10px;
   border: 1px solid var(--btn-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--btn-bg);
   font-family: var(--font-body);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
   transition: border-color 0.2s;
   appearance: auto;
-  max-width: 130px;
+  max-width: 150px;
 }
 
 .typo-font-picker:focus {
@@ -357,12 +387,47 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: var(--glass-radius);
   box-shadow: var(--glass-shadow);
-  padding: 18px 26px 20px;
+  padding: 18px 26px 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- Export actions in sidebar ---------- */
+.export-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.mode-read .export-actions {
+  display: none;
+}
+
+.export-icon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.export-icon svg {
+  width: 100%;
+  height: auto;
+  max-width: 40px;
+}
+
+.export-icon:hover {
+  color: var(--accent);
 }
 
 /* ---------- Toolbar ---------- */
@@ -370,7 +435,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
   flex-shrink: 0;
 }
@@ -379,22 +444,72 @@ body {
 .toolbar-right {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .toolbar-center {
   display: flex;
   align-items: center;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- Toolbar slides container ---------- */
+.toolbar-slides {
+  position: relative;
+  overflow: hidden;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-slide {
+  white-space: nowrap;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.35s ease;
+  flex-shrink: 0;
+}
+
+/* ---------- Mode-specific toolbar visibility ---------- */
+.mode-edit .toolbar-slides .typo-controls {
+  transform: translateY(-100%);
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mode-preview .toolbar-slides .md-toolbar {
+  transform: translateY(100%);
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mode-edit .toolbar-right {
+  display: none;
+}
+
+.mode-read .toolbar-right {
+  display: none;
+}
+
+.mode-read .toolbar-center {
+  display: none;
 }
 
 /* Buttons (base) */
 .btn {
   font-family: "Unbounded", system-ui, sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 8px 18px;
+  padding: 10px 22px;
   border: 1px solid var(--btn-border);
   border-radius: 10px;
   background: var(--btn-bg);
@@ -430,10 +545,10 @@ body {
   position: relative;
   z-index: 1;
   font-family: "Unbounded", system-ui, sans-serif;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 6px 20px;
+  padding: 8px 24px;
   text-align: center;
   color: var(--text-muted);
   cursor: pointer;
@@ -509,23 +624,21 @@ body {
 
 /* ---------- Markdown Formatting Toolbar ---------- */
 .md-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(180, 160, 200, 0.3);
-  border-radius: 10px;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  padding: 5px 8px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .md-btn {
   font-family: var(--font-body);
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   font-weight: 700;
-  padding: 4px 10px;
+  padding: 5px 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -551,9 +664,9 @@ body {
 
 .md-toolbar-sep {
   width: 1px;
-  height: 18px;
+  height: 22px;
   background: rgba(180, 160, 200, 0.3);
-  margin: 0 4px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
@@ -680,14 +793,18 @@ body {
   width: 100%;
   flex: 1;
   min-height: 120px;
-  padding: 18px 20px;
-  font-family: var(--font-body);
-  font-size: 0.95rem;
+  padding: 18px 46px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9rem;
   line-height: 1.7;
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(180, 160, 200, 0.3);
-  border-radius: 12px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  border-bottom-left-radius: var(--glass-radius);
+  border-bottom-right-radius: var(--glass-radius);
+  border-bottom: none;
   resize: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -716,8 +833,12 @@ body {
   flex: 1;
   min-height: 120px;
   border: 1px solid rgba(180, 160, 200, 0.3);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.85);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  border-bottom-left-radius: var(--glass-radius);
+  border-bottom-right-radius: var(--glass-radius);
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.95);
 }
 
 /* ---------- Hidden utility ---------- */
@@ -997,7 +1118,16 @@ body {
   }
 
   .toolbar-center {
-    display: none;
+    width: 100%;
+    order: 3;
+  }
+
+  .toolbar-slides {
+    min-height: auto;
+  }
+
+  .toolbar-slide {
+    flex-wrap: wrap;
   }
 
   .md-toolbar {
@@ -1010,12 +1140,31 @@ body {
     font-size: 0.7rem;
   }
 
+  .app-shell {
+    position: relative;
+    flex-direction: column;
+  }
+
   .main-panel {
-    min-height: 60vh;
+    height: auto;
   }
 
   .main-inner {
     padding: 14px 14px 18px;
+  }
+
+  .sidebar {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+  }
+
+  .sidebar-inner {
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
   }
 
   .editor {
@@ -1053,18 +1202,61 @@ body {
 
 /* ==========================================================================
    Read mode — pure reading focus
-   All chrome dims to 0.1 alpha and stops responding to clicks.
-   Document stays pixel-for-pixel in place. Logo stays fully visible.
+   Single logo element slides from sidebar to center. Everything else vanishes.
    ========================================================================== */
 
-/* Strip sidebar glass so only the logo remains */
+/* ---------- Read-mode floating logo ---------- */
+.read-logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #b06ab3, #4568dc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.read-logo.sliding {
+  transition: left 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease;
+}
+
+.read-logo.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.read-logo.settled {
+  transition: opacity 0.3s ease;
+}
+
+/* Hide sidebar logo when floating logo is active */
+.app-shell.logo-in-flight .sidebar-inner .app-title {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Hide sidebar in Read mode (fade) */
+.app-shell.focus-mode .sidebar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Strip sidebar glass */
 .app-shell.focus-mode .sidebar-inner {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
-/* Dim all sidebar children except the logo */
+/* Fade all sidebar children */
+.app-shell.focus-mode .sidebar-inner .app-title,
 .app-shell.focus-mode .sidebar-inner .tagline,
 .app-shell.focus-mode .sidebar-inner .sidebar-divider,
 .app-shell.focus-mode .sidebar-inner .framework-selector,
@@ -1076,7 +1268,7 @@ body {
   transition: opacity 0.3s;
 }
 
-/* Dim toolbar — mode switch, typography, exports all vanish */
+/* Dim toolbar */
 .app-shell.focus-mode .toolbar {
   opacity: 0;
   pointer-events: none;

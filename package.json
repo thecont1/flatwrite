@@ -1,0 +1,9 @@
+{
+  "name": "flatwrite",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bunx serve .",
+    "start": "node server.js"
+  }
+}

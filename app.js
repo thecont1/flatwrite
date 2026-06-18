@@ -449,6 +449,7 @@
     + "&family=JetBrains+Mono:wght@300;400;600;700"
     + "&family=Playfair+Display:wght@400;600;700"
     + "&family=Lora:wght@400;500;600;700"
+    + "&family=Plus+Jakarta+Sans:wght@400;500;600;700"
     + "&display=swap";
 
   /* ==========================================================================
@@ -504,7 +505,8 @@
      ========================================================================== */
 
   function init() {
-    marked.setOptions({ html: true, gfm: true, breaks: false });
+    marked.use({ html: true, gfm: true, breaks: false, async: false });
+    document.querySelector(".app-shell").classList.add("mode-" + mode);
     var hash = window.location.hash.slice(1);
     if (hash) {
       decompressState(hash).then(function (state) {
@@ -662,6 +664,20 @@
       debounceTimer = setTimeout(function () {
         localStorage.setItem(LS_CONTENT, editor.value);
       }, 400);
+    });
+
+    editor.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        var lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+        var direction = e.key === "ArrowUp" ? -1 : 1;
+        var scrollTopBefore = editor.scrollTop;
+        requestAnimationFrame(function () {
+          var delta = editor.scrollTop - scrollTopBefore;
+          if (Math.abs(delta) > lineHeight * 1.5) {
+            editor.scrollTop = scrollTopBefore + direction * lineHeight;
+          }
+        });
+      }
     });
 
     fontPicker.addEventListener("change", function () {
@@ -901,7 +917,9 @@
     var modeSwitch = document.getElementById("mode-switch");
     var appShell = document.querySelector(".app-shell");
 
-    appShell.classList.remove("focus-mode");
+    appShell.classList.remove("mode-edit", "mode-preview", "mode-read");
+    appShell.classList.add("mode-" + mode);
+
     editorWrap.classList.add("hidden");
     previewWrap.classList.add("hidden");
     btnEdit.classList.remove("active");
@@ -910,13 +928,16 @@
     modeSwitch.classList.remove("preview", "read");
 
     if (mode === "edit") {
-      // Save preview scroll before hiding it
       if (prevMode !== "edit") savePreviewScroll();
       editorWrap.classList.remove("hidden");
       btnEdit.classList.add("active");
+
+      if (prevMode === "read") {
+        animateLogoBack(appShell);
+      } else {
+        appShell.classList.remove("focus-mode");
+      }
     } else {
-      // Only re-render if coming from edit (content may have changed)
-      // READ ↔ VIEW keeps the same iframe — no re-render, no jump
       if (prevMode === "edit") {
         if (editor.scrollHeight > editor.clientHeight) {
           lastScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
@@ -930,14 +951,78 @@
       previewWrap.classList.remove("hidden");
 
       if (mode === "read") {
-        appShell.classList.add("focus-mode");
         document.getElementById("btn-read").classList.add("active");
         modeSwitch.classList.add("read");
+        animateLogoToCenter(appShell);
       } else {
         btnPreview.classList.add("active");
         modeSwitch.classList.add("preview");
+        if (prevMode === "read") {
+          animateLogoBack(appShell);
+        } else {
+          appShell.classList.remove("focus-mode");
+        }
       }
     }
+  }
+
+  function animateLogoToCenter(appShell) {
+    var sidebarLogo = document.querySelector(".app-title");
+    var editBtn = document.getElementById("btn-edit");
+    if (!sidebarLogo || !editBtn) return;
+
+    var src = sidebarLogo.getBoundingClientRect();
+    var range = document.createRange();
+    range.selectNodeContents(editBtn);
+    var textRect = range.getBoundingClientRect();
+    var dstLeft = textRect.left;
+
+    var floater = document.createElement("div");
+    floater.className = "read-logo";
+    floater.textContent = "FlatWrite";
+    floater.style.top = src.top + "px";
+    floater.style.left = src.left + "px";
+    document.body.appendChild(floater);
+
+    appShell.classList.add("logo-in-flight");
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        floater.classList.add("sliding");
+        floater.classList.add("visible");
+        floater.style.left = dstLeft + "px";
+        appShell.classList.add("focus-mode");
+
+        setTimeout(function () {
+          floater.classList.remove("sliding");
+          floater.classList.add("settled");
+        }, 700);
+      });
+    });
+  }
+
+  function animateLogoBack(appShell) {
+    var floater = document.querySelector(".read-logo");
+    var sidebarLogo = document.querySelector(".app-title");
+    if (!floater || !sidebarLogo) return;
+
+    var dst = sidebarLogo.getBoundingClientRect();
+
+    floater.classList.remove("settled");
+    floater.classList.add("sliding");
+    floater.style.left = dst.left + "px";
+    floater.style.top = dst.top + "px";
+
+    appShell.classList.remove("focus-mode");
+
+    setTimeout(function () {
+      floater.classList.remove("visible");
+      appShell.classList.remove("logo-in-flight");
+
+      setTimeout(function () {
+        if (floater.parentNode) floater.remove();
+      }, 300);
+    }, 700);
   }
 
   /* ==========================================================================
@@ -1237,11 +1322,11 @@
       + '  <title>FlatWrite Export</title>\n'
       + '  <link rel="preconnect" href="https://fonts.googleapis.com" />\n'
       + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />\n'
-      + '  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />\n'
+      + '  <link href="' + FONTS_URL + '" rel="stylesheet" />\n'
       + (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '" />\n' : '')
       + '  <style>\n'
       + '    body {\n'
-      + '      font-family: "Lato", system-ui, sans-serif;\n'
+      + '      font-family: "' + comfortFont + '", system-ui, sans-serif;\n'
       + '      line-height: 1.7;\n'
       + '      max-width: 780px;\n'
       + '      margin: 2rem auto;\n'
@@ -1265,7 +1350,7 @@
     var renderedHTML = sanitizeHTML(rawHTML);
     var container = document.createElement("div");
     container.innerHTML = renderedHTML;
-    container.style.fontFamily = '"Lato", system-ui, sans-serif';
+    container.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
     container.style.lineHeight = "1.7";
     container.style.maxWidth = "780px";
     container.style.margin = "0 auto";
