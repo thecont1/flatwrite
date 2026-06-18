@@ -451,7 +451,6 @@
     + "&family=JetBrains+Mono:wght@300;400;600;700"
     + "&family=Playfair+Display:wght@400;600;700"
     + "&family=Lora:wght@400;500;600;700"
-    + "&family=Plus+Jakarta+Sans:wght@400;500;600;700"
     + "&display=swap";
 
   /* ==========================================================================
@@ -1735,6 +1734,18 @@
     openInNewTab(htmlString, "text/html;charset=utf-8");
   }
 
+  function loadScript(url) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  var html2pdfUrl = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js";
+
   function exportPDF() {
     var rawHTML = marked.parse(editor.value || "");
     var renderedHTML = sanitizeHTML(rawHTML);
@@ -1758,18 +1769,21 @@
 
     document.body.appendChild(container);
 
-    html2pdf().set({
-      margin: [12, 12, 12, 12],
-      filename: "flatwrite-" + timestamp() + ".pdf",
-      image: { type: "jpeg", quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["avoid-all", "css", "legacy"] }
-    }).from(container).outputPdf("blob").then(function (pdfBlob) {
-      document.body.removeChild(container);
-      window.open(URL.createObjectURL(pdfBlob), "_blank");
-    }).catch(function () {
-      document.body.removeChild(container);
+    var ready = typeof html2pdf !== "undefined" ? Promise.resolve() : loadScript(html2pdfUrl);
+    ready.then(function () {
+      html2pdf().set({
+        margin: [12, 12, 12, 12],
+        filename: "flatwrite-" + timestamp() + ".pdf",
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+      }).from(container).outputPdf("blob").then(function (pdfBlob) {
+        document.body.removeChild(container);
+        window.open(URL.createObjectURL(pdfBlob), "_blank");
+      }).catch(function () {
+        document.body.removeChild(container);
+      });
     });
   }
 

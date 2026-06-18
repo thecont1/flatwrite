@@ -4,17 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FlatWrite — Minimalist Markdown Editor</title>
+  <meta name="description" content="A minimalist markdown editor with live preview, multiple CSS frameworks, and one-click export to HTML, PDF, or shareable URL." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✏️</text></svg>" />
 
-  <!-- Google Fonts -->
+  <!-- Google Fonts — essential for app shell (Unbounded, Lato, JetBrains Mono, Inter) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700&family=Lato:wght@300;400;700&family=Inter:wght@300;400;600;700&family=Merriweather:wght@300;400;700&family=JetBrains+Mono:wght@300;400;600;700&family=Playfair+Display:wght@400;600;700&family=Lora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700&family=Lato:wght@300;400;700&family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@300;400;600;700&display=swap"
     rel="stylesheet"
   />
 
-  <!-- PoshUI CSS — loaded in app shell for toast feedback (FlatWrite CSS overrides it) -->
-  <link rel="stylesheet" href="https://poshui-components.netlify.app/css/main.css" />
+  <!-- PoshUI CSS — loaded async for toast feedback (FlatWrite CSS overrides it) -->
+  <link rel="preload" href="https://poshui-components.netlify.app/css/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://poshui-components.netlify.app/css/main.css" /></noscript>
 
   <!-- Base app styles (always loaded, overrides PoshUI for the shell) -->
   <link rel="stylesheet" href="styles.css" />
@@ -22,16 +25,9 @@
   <!-- Framework CSS is NOT loaded globally — it only applies inside the
        preview iframe and HTML exports, keeping the app shell independent. -->
 
-  <!-- marked.js for Markdown → HTML -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-  <!-- DOMPurify for HTML sanitization -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
-
-  <!-- html2pdf.js for PDF export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
-
-  <!-- App logic -->
+  <!-- App logic + deferred libs (non-render-blocking) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -53,7 +49,7 @@
             <button class="comp-btn load-btn" id="btn-load-url" type="button">From URL</button>
             <button class="comp-btn load-btn" id="btn-load-local" type="button">From Disk</button>
           </div>
-          <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" />
+          <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" aria-label="Load markdown file from disk" />
         </div>
 
         <hr class="sidebar-divider" />
@@ -168,6 +164,7 @@
 
           <!-- Editor textarea -->
           <div class="editor-wrap" id="editor-wrap">
+            <label for="editor" class="sr-only">Markdown editor</label>
             <textarea
               id="editor"
               class="editor"
