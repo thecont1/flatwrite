@@ -520,13 +520,26 @@
   var initialEditorContent = "";
   var contentWidth = 780;
   var LS_CONTENTWIDTH = "flatwrite_contentwidth";
+  var githubBaseUrl = "";
 
   function rewriteGitHubUrl(url) {
     var m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
     if (m) {
+      githubBaseUrl = "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/";
       return "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/" + m[4];
     }
+    githubBaseUrl = "";
     return url;
+  }
+
+  function rewriteRelativeUrls(md) {
+    if (!githubBaseUrl) return md;
+    md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (match, alt, src) {
+      if (/^https?:\/\//.test(src) || /^data:/.test(src)) return match;
+      var resolved = githubBaseUrl + src.replace(/^\//, "") + "?raw=true";
+      return "![" + alt + "](" + resolved + ")";
+    });
+    return md;
   }
 
   function isEditorDirty() {
@@ -873,34 +886,32 @@
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
         editor.focus();
-        if (e.data.blockText) {
-          var md = editor.value;
-          var bt = e.data.blockText;
-          var pos = -1;
-          var normBt = bt.replace(/\s+/g, " ").toLowerCase();
-          for (var i = 0; i < md.length - 20; i++) {
-            var chunk = md.substring(i, i + 200).replace(/\s+/g, " ").toLowerCase();
-            if (chunk.indexOf(normBt.substring(0, 60)) !== -1) {
-              pos = i;
-              break;
-            }
+        var md = editor.value;
+        var word = e.data.word || "";
+        var ctx = e.data.ctx || "";
+        var pos = -1;
+        var mdLow = md.toLowerCase();
+        var wordLow = word.toLowerCase();
+
+        if (ctx && word) {
+          var ctxLow = ctx.toLowerCase();
+          var searchPhrase = ctxLow + " " + wordLow;
+          var phraseIdx = mdLow.indexOf(searchPhrase);
+          if (phraseIdx !== -1) {
+            pos = phraseIdx + ctxLow.length + 1;
           }
-          if (pos === -1) {
-            var words = normBt.split(" ").filter(function (w) { return w.length > 3; }).slice(0, 4);
-            if (words.length > 0) {
-              for (var j = 0; j < md.length - 20; j++) {
-                var c2 = md.substring(j, j + 500).toLowerCase();
-                var allFound = words.every(function (w) { return c2.indexOf(w) !== -1; });
-                if (allFound) { pos = j; break; }
-              }
-            }
-          }
-          if (pos !== -1) {
-            editor.setSelectionRange(pos, pos);
-            var lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
-            var linesBefore = md.substring(0, pos).split("\n").length;
-            editor.scrollTop = Math.max(0, (linesBefore - 5) * lineHeight);
-          }
+        }
+
+        if (pos === -1 && wordLow.length >= 2) {
+          var first = mdLow.indexOf(wordLow);
+          if (first !== -1) pos = first;
+        }
+
+        if (pos !== -1) {
+          editor.setSelectionRange(pos, pos + word.length);
+          var lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+          var linesBefore = md.substring(0, pos).split("\n").length;
+          editor.scrollTop = Math.max(0, (linesBefore - 5) * lineHeight);
         }
       }
     });
@@ -951,7 +962,9 @@
     if (!frame || !hLeft || !hRight) return;
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
-    var edge = Math.max(0, (wrapW - contentWidth) / 2);
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var effectiveWidth = contentWidth * scale;
+    var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
     hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
     hRight.style.right = edge + "px";
@@ -1016,18 +1029,22 @@
       + '<link href="' + FONTS_URL + '" rel="stylesheet">'
       + (fw.css ? '<link rel="stylesheet" href="' + fw.css + '">' : '')
       + '<style>'
-      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; }'
+      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: 15px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
       + ' max-width: ' + contentWidth + 'px; margin: 1.5rem auto; padding: 0 1.5rem;'
+      + ' overflow-x: hidden;'
       + ' zoom: ' + scale + '; }'
-      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; }'
+      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h2 { margin-top: 1.8em !important; }'
       + 'h3 { margin-top: 1.4em !important; }'
-      + 'img { max-width: 100%; }'
+      + 'img { max-width: 100%; height: auto; display: block; }'
       + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
-      + 'pre { overflow-x: auto; }'
+      + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
+      + 'table { table-layout: fixed; width: 100%; overflow: hidden; }'
+      + 'td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+      + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
       + '.fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }'
       + '.fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }'
       + '.fw-card-header { padding: 1rem 1.2rem 0.4rem; }'
@@ -1083,16 +1100,23 @@
       + 'document.addEventListener("submit", function(e) {'
       + '  e.preventDefault();'
       + '});'
-      /* Double-click → tell parent to switch to Edit mode at clicked position */
+      /* Double-click → tell parent to switch to Edit mode at clicked word */
       + 'document.addEventListener("dblclick", function(e) {'
+      + '  var sel = window.getSelection();'
+      + '  var word = sel ? sel.toString().trim() : "";'
       + '  var node = e.target;'
       + '  while (node && node !== document.body) {'
       + '    var d = window.getComputedStyle(node).display;'
       + '    if (d === "block" || d === "list-item" || d === "table-cell") break;'
       + '    node = node.parentNode;'
       + '  }'
-      + '  var blockText = (node && node.textContent) ? node.textContent.trim().substring(0, 120) : "";'
-      + '  parent.postMessage({type:"dblclick", blockText: blockText}, "*");'
+      + '  var textBefore = "";'
+      + '  if (node && word) {'
+      + '    var full = node.textContent;'
+      + '    var idx = full.indexOf(word);'
+      + '    if (idx > -1) textBefore = full.substring(Math.max(0, idx - 60), idx).trim();'
+      + '  }'
+      + '  if (word) parent.postMessage({type:"dblclick", word:word, ctx:textBefore}, "*");'
       + '});'
       + '<' + '/script>'
       + '</body></html>';
@@ -1100,7 +1124,7 @@
     previewFrame.srcdoc = html;
     /* Reposition width handles after iframe content loads */
     previewFrame.onload = positionWidthHandles;
-    setTimeout(positionWidthHandles, 150);
+    setTimeout(positionWidthHandles, 250);
   }
 
   /* ==========================================================================
@@ -1452,12 +1476,14 @@
       var res = await fetch(rewritten);
       if (!res.ok) throw new Error("HTTP " + res.status);
       var text = await res.text();
+      if (githubBaseUrl) text = rewriteRelativeUrls(text);
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded markdown?");
         if (!ok) return;
       }
       setEditorContent(text);
       closeComponentModal();
+      setMode("preview");
       showToast("Loaded markdown from URL");
     } catch (e) {
       try {
@@ -1465,12 +1491,14 @@
         var res2 = await fetch(proxy);
         if (!res2.ok) throw new Error("HTTP " + res2.status);
         var text2 = await res2.text();
+        if (githubBaseUrl) text2 = rewriteRelativeUrls(text2);
         if (isEditorDirty()) {
           var ok2 = confirm("Replace current content with loaded markdown?");
           if (!ok2) return;
         }
         setEditorContent(text2);
         closeComponentModal();
+        setMode("preview");
         showToast("Loaded markdown from URL");
       } catch (e2) {
         if (errorEl) { errorEl.textContent = "Could not fetch URL. Check the link and try again."; errorEl.classList.remove("hidden"); }
