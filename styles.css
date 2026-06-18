@@ -502,6 +502,13 @@ body {
   background: var(--accent);
 }
 
+.width-drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  cursor: col-resize;
+}
+
 /* ---------- Toolbar ---------- */
 .toolbar {
   display: flex;
@@ -896,13 +903,8 @@ body {
   width: 100%;
   flex: 1;
   min-height: 120px;
-  border: 1px solid rgba(180, 160, 200, 0.3);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  border-bottom-left-radius: var(--glass-radius);
-  border-bottom-right-radius: var(--glass-radius);
-  border-bottom: none;
-  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  background: #fff;
 }
 
 /* ---------- Hidden utility ---------- */

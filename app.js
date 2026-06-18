@@ -511,6 +511,7 @@
   /* Width handle DOM refs */
   var widthHandleLeft   = document.getElementById("width-handle-left");
   var widthHandleRight  = document.getElementById("width-handle-right");
+  var widthDragOverlay  = document.getElementById("width-drag-overlay");
 
   /* ==========================================================================
      Markdown Loader
@@ -731,18 +732,25 @@
       var dragging = false, startX, startWidth;
       handle.addEventListener("mousedown", function (e) {
         e.preventDefault();
+        e.stopPropagation();
         dragging = true;
         startX = e.clientX;
         startWidth = contentWidth;
         handle.classList.add("dragging");
+        widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
       });
       window.addEventListener("mousemove", function (e) {
         if (!dragging) return;
+        e.preventDefault();
         var delta = e.clientX - startX;
-        if (side === "left") delta = -delta;
-        var newWidth = Math.max(400, Math.min(1200, startWidth + delta * 2));
+        var newWidth;
+        if (side === "right") {
+          newWidth = Math.max(400, Math.min(1200, startWidth + delta * 2));
+        } else {
+          newWidth = Math.max(400, Math.min(1200, startWidth - delta * 2));
+        }
         contentWidth = newWidth;
         applyContentWidth();
       });
@@ -750,6 +758,7 @@
         if (!dragging) return;
         dragging = false;
         handle.classList.remove("dragging");
+        widthDragOverlay.classList.add("hidden");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         localStorage.setItem(LS_CONTENTWIDTH, contentWidth);
@@ -928,10 +937,10 @@
   }
 
   function applyContentWidth() {
-    var frame = document.getElementById("preview-frame");
-    if (!frame) return;
-    frame.style.maxWidth = contentWidth + "px";
-    frame.style.margin = "0 auto";
+    /* Update content width inside the iframe dynamically */
+    if (previewFrame.contentWindow) {
+      previewFrame.contentWindow.postMessage({type: "setContentWidth", width: contentWidth}, "*");
+    }
     positionWidthHandles();
   }
 
@@ -941,13 +950,11 @@
     var hRight = document.getElementById("width-handle-right");
     if (!frame || !hLeft || !hRight) return;
     var wrap = frame.parentElement;
-    var wrapRect = wrap.getBoundingClientRect();
-    var frameRect = frame.getBoundingClientRect();
-    var leftOff = frameRect.left - wrapRect.left;
-    var rightOff = wrapRect.right - frameRect.right;
-    hLeft.style.left = (leftOff - 4) + "px";
+    var wrapW = wrap.clientWidth;
+    var edge = Math.max(0, (wrapW - contentWidth) / 2);
+    hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
-    hRight.style.right = (rightOff - 4) + "px";
+    hRight.style.right = edge + "px";
     hRight.style.left = "auto";
   }
 
@@ -1059,6 +1066,9 @@
       + '  if (e.data && e.data.type === "setScroll") {'
       + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
+      + '  }'
+      + '  if (e.data && e.data.type === "setContentWidth") {'
+      + '    document.body.style.maxWidth = e.data.width + "px";'
       + '  }'
       + '});'
       + '})();'
