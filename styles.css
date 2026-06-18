@@ -378,6 +378,9 @@ body {
   min-height: 0; /* allow flex shrink */
   display: flex;
   flex-direction: column;
+  margin: 10px;
+  max-width: calc(100vw - var(--sidebar-width) * 2 - 60px);
+  overflow: visible;
 }
 
 .main-inner {
@@ -393,14 +396,35 @@ body {
   gap: 12px;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
 }
 
-/* ---------- Export actions in sidebar ---------- */
+/* ---------- Main panel wrapper (positions glass card + export buttons) ---------- */
+.main-panel-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Editor wrap ---------- */
+.editor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- Export actions (sibling of glass card, top-right) ---------- */
 .export-actions {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 4px;
+  position: absolute;
+  top: 60px;
+  right: -48px;
+  z-index: 5;
 }
 
 .mode-read .export-actions {
@@ -411,23 +435,22 @@ body {
   background: none;
   border: none;
   color: var(--text-muted);
+  opacity: 0.4;
   cursor: pointer;
   padding: 6px;
-  transition: color 0.2s ease;
+  transition: opacity 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
 }
 
 .export-icon svg {
-  width: 100%;
-  height: auto;
-  max-width: 40px;
+  width: 33px;
+  height: 33px;
 }
 
 .export-icon:hover {
-  color: var(--accent);
+  opacity: 1;
 }
 
 /* ---------- Toolbar ---------- */
@@ -772,14 +795,6 @@ body {
 }
 
 /* ---------- Editor ---------- */
-.editor-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-height: 0;
-}
-
 .editor-label {
   font-family: var(--font-display);
   font-size: 0.72rem;
@@ -1183,6 +1198,15 @@ body {
   .toolbar-left,
   .toolbar-right {
     justify-content: center;
+  }
+
+  .main-panel-wrapper {
+    padding-right: 56px;
+  }
+
+  .export-actions {
+    top: 60px;
+    right: -48px;
   }
 }
 
