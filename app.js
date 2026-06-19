@@ -1379,14 +1379,12 @@
 
   function animateLogoToCenter(appShell) {
     var sidebarLogo = document.querySelector(".app-title");
-    var editBtn = document.getElementById("btn-edit");
-    if (!sidebarLogo || !editBtn) return;
+    var toolbar = document.querySelector(".toolbar");
+    if (!sidebarLogo || !toolbar) return;
 
     var src = sidebarLogo.getBoundingClientRect();
-    var range = document.createRange();
-    range.selectNodeContents(editBtn);
-    var textRect = range.getBoundingClientRect();
-    var dstLeft = textRect.left;
+    var toolbarRect = toolbar.getBoundingClientRect();
+    var dstLeft = toolbarRect.left;
 
     var floater = document.createElement("div");
     floater.className = "read-logo";
