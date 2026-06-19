@@ -1068,6 +1068,22 @@ body {
   position: relative;
 }
 
+/* Fade-in from top when entering Read/View mode */
+@keyframes preview-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.preview-wrap.preview-enter {
+  animation: preview-enter 0.35s ease-out both;
+}
+
 .preview-frame {
   width: 100%;
   flex: 1;

@@ -1338,6 +1338,18 @@
 
       previewWrap.classList.remove("hidden");
 
+      /* Smooth fade-in from top when entering from edit */
+      if (prevMode === "edit") {
+        previewWrap.classList.remove("preview-enter");
+        /* Force reflow so the animation restarts even on rapid toggles */
+        void previewWrap.offsetWidth;
+        previewWrap.classList.add("preview-enter");
+        previewWrap.addEventListener("animationend", function handler() {
+          previewWrap.classList.remove("preview-enter");
+          previewWrap.removeEventListener("animationend", handler);
+        });
+      }
+
       if (mode === "read") {
         btnRead.classList.add("active");
         /* Relabel Read → Close, make it exit back to edit */
