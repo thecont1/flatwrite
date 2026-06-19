@@ -625,6 +625,28 @@ body {
   transition: background 0.2s, width 0.2s;
 }
 
+/* Drag knob — small rounded rectangle centered on the bar */
+.width-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 28px;
+  border-radius: 4px;
+  background: rgba(180, 160, 200, 0.5);
+  transition: background 0.2s, width 0.2s, height 0.2s;
+}
+
+.width-handle:hover::after,
+.width-handle.dragging::after {
+  background: var(--accent);
+  width: 10px;
+  height: 32px;
+  border-radius: 5px;
+}
+
 .width-handle:hover,
 .width-handle.dragging {
   width: 4px;
