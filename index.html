@@ -26,9 +26,17 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell" id="app-shell">
 
-    <!-- ===== SIDEBAR ===== -->
+    <!-- Mobile drawer toggle (visible < 760px) -->
+    <button class="drawer-toggle" id="drawer-toggle" type="button" title="Open menu" aria-label="Toggle navigation drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+
+    <!-- Drawer backdrop (visible < 760px when sidebar open) -->
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+    <!-- ===== SIDEBAR (Left Utility Rail) ===== -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-inner">
         <!-- App title -->
@@ -200,6 +208,9 @@
 
       </div>
     </main>
+
+    <!-- ===== RIGHT RESERVE ZONE (compositional breathing room) ===== -->
+    <div class="reserve-zone" aria-hidden="true"></div>
 
   </div>
 

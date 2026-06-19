@@ -1,6 +1,6 @@
 /* ==========================================================================
    FlatWrite — styles.css
-   Disney-inspired minimalist markdown editor.
+   Three-zone desktop shell: left utility rail | central canvas | right reserve.
    This is the base stylesheet; UI libraries (PoshUI / Oat / Spectre.css)
    are loaded dynamically and handle form controls + typography overrides.
    ========================================================================== */
@@ -20,7 +20,37 @@
   --font-display: "Unbounded", system-ui, sans-serif;
   --font-body: "Lato", system-ui, sans-serif;
 
-  /* Glass panel */
+  /* Shell layout tokens */
+  --shell-max: 1600px;
+  --shell-pad-x: clamp(12px, 1.8vw, 24px);
+  --shell-gap: clamp(12px, 1.4vw, 24px);
+
+  /* Zone widths */
+  --rail-w: clamp(232px, 18vw, 272px);
+  --canvas-max: 880px;
+  --canvas-min: 680px;
+  --reserve-min: 56px;
+
+  /* Document text measure */
+  --prose-read: 72ch;
+  --prose-edit: 76ch;
+
+  /* Radius */
+  --radius-outer: 24px;
+  --radius-inner: 18px;
+
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Glass panel (legacy tokens — used by component styles) */
   --glass-bg: rgba(255, 255, 255, 0.35);
   --glass-border: rgba(255, 255, 255, 0.5);
   --glass-shadow: 0 2px 8px oklch(0.2 0.01 80 / 0.06);
@@ -38,9 +68,10 @@
   --btn-active-bg: rgba(176, 106, 179, 0.18);
   --btn-active-border: var(--accent);
 
-  /* Layout */
-  --sidebar-width: 260px;
-  --toolbar-height: 52px;
+  /* Surface hierarchy */
+  --surface-rail: rgba(255, 255, 255, 0.22);
+  --surface-canvas: rgba(255, 255, 255, 0.38);
+  --surface-doc: rgba(255, 255, 255, 0.92);
 }
 
 /* ---------- Body & Background ---------- */
@@ -65,8 +96,6 @@ body {
   );
   background-attachment: fixed;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
 }
 
 /* ---------- PoshUI Override — protect app shell from framework globals ---------- */
@@ -90,27 +119,60 @@ body {
   color: var(--accent);
 }
 
-/* ---------- App Shell ---------- */
+/* ==========================================================================
+   APP SHELL — Centered three-zone layout
+   Zone 1: left utility rail (sidebar)
+   Zone 2: central document canvas (main-panel)
+   Zone 3: right reserve (compositional breathing room)
+   ========================================================================== */
+
 .app-shell {
   position: fixed;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--shell-max);
   display: flex;
   flex-direction: row;
   align-items: stretch;
   overflow: hidden;
-  padding: 10px;
-  gap: 0;
+  padding: var(--shell-pad-x);
+  gap: var(--shell-gap);
 }
 
-/* ---------- Sidebar ---------- */
+/* ==========================================================================
+   LEFT RAIL (Sidebar)
+   Persistent on desktop, sticky, lower-contrast than canvas.
+   Fixed width within clamp range.
+   ========================================================================== */
+
 .sidebar {
   flex-shrink: 0;
-  width: var(--sidebar-width);
-  margin: 10px;
-  overflow-y: auto;
+  width: var(--rail-w);
   z-index: 10;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.4s ease;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 160, 200, 0.25) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(180, 160, 200, 0.25);
+  border-radius: 2px;
 }
 
 .sidebar.panel-hidden {
@@ -118,36 +180,70 @@ body {
 }
 
 .sidebar-inner {
-  background: var(--glass-bg);
+  background: var(--surface-rail);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-outer);
   box-shadow: var(--glass-shadow);
-  padding: 18px 22px 28px;
+  padding: var(--space-5) var(--space-5) var(--space-6);
   min-height: 100%;
   overflow: hidden;
 }
 
-/* ---------- Main Panel ---------- */
+/* ==========================================================================
+   CENTRAL CANVAS (Main Panel)
+   Dominant region, capped width, strongest visual contrast.
+   ========================================================================== */
+
 .main-panel {
-  flex: 1;
+  flex: 2 1 0;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  margin: 10px;
-  max-width: calc(100vw - var(--sidebar-width) * 2 - 60px);
+  max-width: var(--canvas-max);
 }
 
-.main-inner {
-  width: 100%;
+.main-panel-wrapper {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 0;
 }
+
+.main-inner {
+  background: var(--surface-canvas);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-outer);
+  box-shadow: 0 4px 16px oklch(0.2 0.01 80 / 0.08);
+  padding: var(--space-5) var(--space-6) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+
+/* ==========================================================================
+   RIGHT RESERVE ZONE
+   Visually present on wide screens, functionally empty.
+   Absorbs surplus width; never styled as a panel.
+   ========================================================================== */
+
+.reserve-zone {
+  flex: 1 1 var(--reserve-min);
+  min-width: var(--reserve-min);
+  /* Intentionally empty — no borders, no background, no content */
+}
+
+/* ==========================================================================
+   SIDEBAR INTERNALS
+   Lower-contrast treatment than the main canvas.
+   ========================================================================== */
 
 .app-title {
   font-family: var(--font-display);
@@ -163,14 +259,14 @@ body {
 .tagline {
   font-size: 0.82rem;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-style: italic;
 }
 
 .sidebar-divider {
   border: none;
-  border-top: 1px solid rgba(180, 160, 200, 0.3);
-  margin: 18px 0;
+  border-top: 1px solid rgba(180, 160, 200, 0.25);
+  margin: var(--space-4) 0;
 }
 
 /* Reusable sidebar section label */
@@ -184,16 +280,16 @@ body {
   margin-bottom: 2px;
 }
 
-/* Framework selector */
+/* ---------- Framework selector ---------- */
 .framework-selector {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .framework-dropdown {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--btn-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.6);
@@ -216,11 +312,11 @@ body {
   color: var(--text-muted);
 }
 
-/* Typography controls (in toolbar — comfort only, not in export) */
+/* ---------- Typography controls (in toolbar) ---------- */
 .typo-controls {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   flex-shrink: 0;
   white-space: nowrap;
@@ -268,7 +364,7 @@ body {
   width: 1px;
   height: 22px;
   background: rgba(180, 160, 200, 0.3);
-  margin: 0 4px;
+  margin: 0 var(--space-1);
   flex-shrink: 0;
 }
 
@@ -380,7 +476,7 @@ body {
 .components-hint {
   font-size: 0.68rem;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-style: italic;
 }
 
@@ -394,7 +490,7 @@ body {
   font-family: var(--font-body);
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 8px 8px;
+  padding: var(--space-2);
   border: 1px solid rgba(180, 160, 200, 0.3);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.4);
@@ -420,7 +516,7 @@ body {
   background: rgba(176, 106, 179, 0.2);
 }
 
-/* Disabled component buttons (unsupported by current framework) */
+/* Disabled component buttons */
 .comp-btn-disabled,
 .comp-btn:disabled {
   opacity: 0.35;
@@ -441,42 +537,6 @@ body {
   color: var(--text-muted);
 }
 
-/* ---------- Main Panel ---------- */
-.main-panel {
-  flex: 1;
-  min-width: 0; /* prevent overflow */
-  min-height: 0; /* allow flex shrink */
-  display: flex;
-  flex-direction: column;
-  margin: 10px;
-  max-width: calc(100vw - var(--sidebar-width) * 2 - 60px);
-  overflow: visible;
-}
-
-.main-inner {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius);
-  box-shadow: var(--glass-shadow);
-  padding: 18px 26px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-}
-
-/* ---------- Main panel wrapper (positions glass card + export buttons) ---------- */
-.main-panel-wrapper {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 /* ---------- Editor wrap ---------- */
 .editor-wrap {
   display: flex;
@@ -486,11 +546,11 @@ body {
   min-height: 0;
 }
 
-/* ---------- Export actions (sibling of glass card, top-right) ---------- */
+/* ---------- Export actions ---------- */
 .export-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   position: absolute;
   top: 60px;
   right: -48px;
@@ -539,7 +599,7 @@ body {
 .load-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .load-buttons {
@@ -550,7 +610,7 @@ body {
 
 .load-btn {
   font-size: 0.8rem;
-  padding: 8px 8px;
+  padding: var(--space-2);
 }
 
 /* ---------- Width Handles (View mode) ---------- */
@@ -579,20 +639,23 @@ body {
   cursor: col-resize;
 }
 
-/* ---------- Toolbar ---------- */
+/* ==========================================================================
+   TOOLBAR
+   ========================================================================== */
+
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 10px;
+  gap: var(--space-3);
   flex-shrink: 0;
 }
 
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: nowrap;
   align-items: center;
   position: relative;
@@ -652,7 +715,10 @@ body {
   display: none;
 }
 
-/* Buttons (base) */
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
 .btn {
   font-family: "Unbounded", system-ui, sans-serif;
   font-size: 0.84rem;
@@ -679,7 +745,10 @@ body {
   transform: translateY(0);
 }
 
-/* ---------- Mode Toggle Switch (segmented control) ---------- */
+/* ==========================================================================
+   MODE TOGGLE SWITCH (segmented control)
+   ========================================================================== */
+
 .mode-switch {
   position: relative;
   display: inline-grid;
@@ -771,12 +840,15 @@ body {
   background: rgba(176, 106, 179, 0.08);
 }
 
-/* ---------- Markdown Formatting Toolbar ---------- */
+/* ==========================================================================
+   MARKDOWN FORMATTING TOOLBAR
+   ========================================================================== */
+
 .md-toolbar {
   display: inline-flex;
   flex-wrap: nowrap;
   gap: 3px;
-  padding: 5px 8px;
+  padding: 5px var(--space-2);
   align-items: center;
   flex-shrink: 0;
 }
@@ -819,15 +891,18 @@ body {
   flex-shrink: 0;
 }
 
-/* ---------- Sidebar Zoom Selector ---------- */
+/* ==========================================================================
+   SIDEBAR ZOOM SELECTOR
+   ========================================================================== */
+
 .zoom-selector {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .zoom-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   margin-top: 6px;
 }
 
@@ -879,7 +954,10 @@ body {
   text-align: right;
 }
 
-/* ---------- PoshUI Tooltips ---------- */
+/* ==========================================================================
+   TOOLTIPS
+   ========================================================================== */
+
 [data-tooltip] {
   position: relative;
 }
@@ -920,7 +998,10 @@ body {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* ---------- Editor ---------- */
+/* ==========================================================================
+   EDITOR
+   ========================================================================== */
+
 .editor-label {
   font-family: var(--font-display);
   font-size: 0.72rem;
@@ -934,17 +1015,17 @@ body {
   width: 100%;
   flex: 1;
   min-height: 120px;
-  padding: 18px 46px;
+  padding: var(--space-5) 46px;
   font-family: "JetBrains Mono", monospace;
   font-size: 0.9rem;
   line-height: 1.7;
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface-doc);
   border: 1px solid rgba(180, 160, 200, 0.3);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
-  border-bottom-left-radius: var(--glass-radius);
-  border-bottom-right-radius: var(--glass-radius);
+  border-bottom-left-radius: var(--radius-inner);
+  border-bottom-right-radius: var(--radius-inner);
   border-bottom: none;
   resize: none;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -960,7 +1041,10 @@ body {
   color: var(--text-muted);
 }
 
-/* ---------- Preview (iframe-based, sandboxes framework CSS) ---------- */
+/* ==========================================================================
+   PREVIEW (iframe-based, sandboxes framework CSS)
+   ========================================================================== */
+
 .preview-wrap {
   flex: 1;
   min-height: 0;
@@ -977,17 +1061,23 @@ body {
   background: #fff;
 }
 
-/* ---------- Hidden utility ---------- */
+/* ==========================================================================
+   HIDDEN UTILITY
+   ========================================================================== */
+
 .hidden {
   display: none !important;
 }
 
-/* ---------- Toast (compact, below sidebar) ---------- */
+/* ==========================================================================
+   TOAST (compact, below sidebar)
+   ========================================================================== */
+
 .fw-toast {
   position: fixed;
   bottom: 20px;
   left: 20px;
-  width: var(--sidebar-width);
+  width: var(--rail-w);
   padding: 10px 14px;
   font-family: var(--font-body);
   font-size: 0.8rem;
@@ -1012,7 +1102,10 @@ body {
   transform: translateY(0);
 }
 
-/* ---------- Sidebar Copyright ---------- */
+/* ==========================================================================
+   SIDEBAR COPYRIGHT
+   ========================================================================== */
+
 .sidebar-copy {
   font-size: 0.85rem;
   color: rgba(45, 42, 62, 0.4);
@@ -1036,16 +1129,15 @@ body {
 }
 
 /* ==========================================================================
-   Component Insert Modal
+   COMPONENT INSERT MODAL
    ========================================================================== */
 
-/* Overlay is non-blocking — just a positioning wrapper, no backdrop */
 .comp-modal-overlay {
   position: fixed;
   top: 80px;
   right: 24px;
   z-index: 1000;
-  pointer-events: none; /* let clicks pass through to editor */
+  pointer-events: none;
 }
 
 .comp-modal-overlay.hidden {
@@ -1053,7 +1145,7 @@ body {
 }
 
 .comp-modal {
-  pointer-events: auto; /* modal itself captures clicks */
+  pointer-events: auto;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -1138,7 +1230,7 @@ body {
 .comp-modal-body textarea,
 .comp-modal-body select {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-family: var(--font-body);
   font-size: 0.85rem;
   color: var(--text-primary);
@@ -1170,7 +1262,7 @@ body {
 
 .comp-modal-body .modal-row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   align-items: flex-end;
 }
 
@@ -1181,76 +1273,210 @@ body {
 .comp-modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 22px 18px;
+  gap: var(--space-3);
+  padding: var(--space-3) 22px var(--space-5);
   border-top: 1px solid rgba(180, 160, 200, 0.2);
 }
 
 /* ==========================================================================
-   Responsive — Mobile (< 768px)
+   MOBILE DRAWER TOGGLE (hamburger button)
+   Hidden by default, shown only on narrow screens.
    ========================================================================== */
-@media (max-width: 768px) {
-  html, body {
-    overflow: auto; /* allow scroll on mobile */
+
+.drawer-toggle {
+  display: none;
+  position: fixed;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 90;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.drawer-toggle:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   MOBILE DRAWER BACKDROP
+   Hidden by default, shown when drawer is open.
+   ========================================================================== */
+
+.drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(45, 42, 62, 0.3);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* ==========================================================================
+   RESPONSIVE — Behavioral Stages
+   As space tightens: remove reserve first, compress rail second,
+   collapse rail to drawer last. Canvas is protected throughout.
+   ========================================================================== */
+
+/* Stage A: Wide desktop, 1440px+ */
+/* Default styles above handle this — all three zones visible */
+
+/* Stage B: Standard desktop, 1180px – 1439px */
+@media (max-width: 1439px) {
+  :root {
+    --reserve-min: 40px;
+  }
+}
+
+/* Stage C: Tight desktop, 980px – 1179px */
+@media (max-width: 1179px) {
+  :root {
+    --reserve-min: 0px;
   }
 
-  .app-shell {
-    flex-direction: column;
-    padding: 12px 12px 0;
-    gap: 14px;
-    min-height: auto;
-    flex: none;
+  .reserve-zone {
+    flex: 0 0 0px;
+    min-width: 0;
+    overflow: hidden;
   }
 
-  .sidebar {
-    flex: none;
-    max-width: 100%;
+  :root {
+    --rail-w: clamp(210px, 18vw, 252px);
+  }
+}
+
+/* Stage D: Small laptop / tablet landscape, 760px – 979px */
+@media (max-width: 979px) {
+  .reserve-zone {
+    display: none;
+  }
+
+  :root {
+    --rail-w: clamp(196px, 20vw, 240px);
   }
 
   .sidebar-inner {
-    padding: 18px 16px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px;
-    max-height: none;
-    overflow-y: visible;
+    padding: var(--space-4) var(--space-4) var(--space-5);
   }
 
   .app-title {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
   }
 
   .tagline {
     display: none;
   }
 
+  /* Denser rail internals */
   .sidebar-divider {
-    display: none;
-  }
-
-  .framework-selector {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .framework-current {
-    display: none;
-  }
-
-  .components-panel {
-    width: 100%;
+    margin: var(--space-3) 0;
   }
 
   .components-grid {
-    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
   }
 
-  .components-hint {
-    display: none;
+  .comp-btn {
+    font-size: 0.74rem;
+    padding: 6px 6px;
+  }
+}
+
+/* Stage E: Mobile / narrow tablet, below 760px */
+@media (max-width: 759px) {
+  html, body {
+    overflow: auto;
+  }
+
+  /* Shell becomes full-viewport flow */
+  .app-shell {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    flex-direction: column;
+    padding: var(--space-3);
+    gap: var(--space-3);
+    min-height: auto;
+    height: auto;
+  }
+
+  /* Show drawer toggle */
+  .drawer-toggle {
+    display: flex;
+  }
+
+  /* Sidebar becomes off-canvas drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 100;
+    max-height: none;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: var(--space-3);
+  }
+
+  .app-shell.drawer-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-inner {
+    border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
+    padding: var(--space-5) var(--space-5) var(--space-6);
+  }
+
+  /* Drawer backdrop */
+  .drawer-backdrop {
+    display: block;
+  }
+
+  .app-shell.drawer-open .drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Main panel becomes full-width single column */
+  .main-panel {
+    max-width: 100%;
+    flex: none;
+  }
+
+  .main-inner {
+    padding: var(--space-4) var(--space-4) var(--space-5);
+    border-radius: var(--radius-inner);
+  }
+
+  /* Toolbar stacks vertically */
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .toolbar-left,
+  .toolbar-right {
+    justify-content: center;
   }
 
   .toolbar-center {
@@ -1276,33 +1502,7 @@ body {
     font-size: 0.7rem;
   }
 
-  .app-shell {
-    position: relative;
-    flex-direction: column;
-  }
-
-  .main-panel {
-    height: auto;
-  }
-
-  .main-inner {
-    padding: 14px 14px 18px;
-  }
-
-  .sidebar {
-    position: relative;
-    top: auto;
-    left: auto;
-    width: 100%;
-  }
-
-  .sidebar-inner {
-    max-height: none;
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-  }
-
+  /* Editor */
   .editor {
     min-height: 40vh;
   }
@@ -1311,23 +1511,25 @@ body {
     min-height: 40vh;
   }
 
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .toolbar-left,
-  .toolbar-right {
-    justify-content: center;
-  }
-
+  /* Export actions inline */
   .main-panel-wrapper {
-    padding-right: 56px;
+    padding-right: 0;
   }
 
   .export-actions {
-    top: 60px;
-    right: -48px;
+    position: relative;
+    top: auto;
+    right: auto;
+    flex-direction: row;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    z-index: 1;
+  }
+
+  .export-icon svg {
+    width: 24px;
+    height: 24px;
   }
 }
 
@@ -1341,12 +1543,17 @@ body {
   .editor {
     min-height: 35vh;
     font-size: 0.88rem;
-    padding: 12px 14px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .mode-switch-label {
+    padding: 6px 16px;
+    font-size: 0.76rem;
   }
 }
 
 /* ==========================================================================
-   Read mode — pure reading focus
+   READ MODE — pure reading focus
    Single logo element slides from sidebar to center. Everything else vanishes.
    ========================================================================== */
 
@@ -1431,6 +1638,12 @@ body {
 .app-shell.focus-mode .editor-label {
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Hide reserve zone in read mode */
+.app-shell.focus-mode .reserve-zone {
+  opacity: 0;
   transition: opacity 0.3s;
 }
 

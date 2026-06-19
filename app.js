@@ -715,6 +715,51 @@
      ========================================================================== */
 
   function bindEvents() {
+    /* --- Mobile drawer toggle --- */
+    var drawerToggle = document.getElementById("drawer-toggle");
+    var drawerBackdrop = document.getElementById("drawer-backdrop");
+    var appShell = document.getElementById("app-shell");
+
+    function openDrawer() {
+      appShell.classList.add("drawer-open");
+    }
+    function closeDrawer() {
+      appShell.classList.remove("drawer-open");
+    }
+
+    if (drawerToggle) {
+      drawerToggle.addEventListener("click", function () {
+        if (appShell.classList.contains("drawer-open")) {
+          closeDrawer();
+        } else {
+          openDrawer();
+        }
+      });
+    }
+    if (drawerBackdrop) {
+      drawerBackdrop.addEventListener("click", closeDrawer);
+    }
+
+    /* Close drawer on Escape key */
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && appShell.classList.contains("drawer-open")) {
+        closeDrawer();
+      }
+    });
+
+    /* Close drawer when a sidebar action is taken (on narrow screens) */
+    var sidebarEl = document.getElementById("sidebar");
+    if (sidebarEl) {
+      sidebarEl.addEventListener("click", function (e) {
+        if (window.innerWidth < 760 && appShell.classList.contains("drawer-open")) {
+          /* Only close if a real action happened (button, select, link) */
+          if (e.target.closest("button, select, a, .load-btn")) {
+            setTimeout(closeDrawer, 150);
+          }
+        }
+      });
+    }
+
     frameworkDropdown.addEventListener("change", function () {
       currentFramework = frameworkDropdown.value;
       localStorage.setItem(LS_FRAMEWORK, currentFramework);
