@@ -467,6 +467,7 @@
   var debounceTimer = null;
   var activeModalComponent = null;
   var lastScrollRatio = 0;
+  var lastEditorScrollTop = 0;
 
   /* ==========================================================================
      DOM references
@@ -1316,6 +1317,11 @@
       editorWrap.classList.remove("hidden");
       btnEdit.classList.add("active");
 
+      /* Restore editor scroll position */
+      requestAnimationFrame(function () {
+        editor.scrollTop = lastEditorScrollTop;
+      });
+
       if (prevMode === "read") {
         if (window.innerWidth < 760) {
           appShell.classList.remove("focus-mode");
@@ -1327,6 +1333,7 @@
       }
     } else {
       if (prevMode === "edit") {
+        lastEditorScrollTop = editor.scrollTop;
         if (editor.scrollHeight > editor.clientHeight) {
           lastScrollRatio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
         } else {
