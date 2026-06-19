@@ -662,7 +662,7 @@
     applyZoom();
 
     var savedWidth = parseInt(localStorage.getItem(LS_CONTENTWIDTH), 10);
-    if (Number.isFinite(savedWidth) && savedWidth >= 400 && savedWidth <= 1200) contentWidth = savedWidth;
+    if (Number.isFinite(savedWidth) && savedWidth >= 400 && savedWidth <= 1400) contentWidth = savedWidth;
     applyContentWidth();
   }
 
@@ -680,7 +680,7 @@
     zoomValue.textContent = zoomStep + "%";
     applyZoom();
     if (state.contentWidth !== undefined) {
-      contentWidth = clampInt(state.contentWidth, 400, 1200, contentWidth);
+      contentWidth = clampInt(state.contentWidth, 400, 1400, contentWidth);
       applyContentWidth();
     }
   }
@@ -769,7 +769,10 @@
 
     document.getElementById("mode-switch").addEventListener("click", function (e) {
       var label = e.target.closest(".mode-switch-label");
-      if (label) setMode(label.dataset.mode);
+      if (label) {
+        setMode(label.dataset.mode);
+        requestAnimationFrame(checkToolbarOverflow);
+      }
     });
 
     document.getElementById("read-close-btn").addEventListener("click", function () {
@@ -811,9 +814,9 @@
         var delta = e.clientX - startX;
         var newWidth;
         if (side === "right") {
-          newWidth = Math.max(400, Math.min(1200, startWidth + delta * 2));
+          newWidth = Math.max(400, Math.min(1400, startWidth + delta * 2));
         } else {
-          newWidth = Math.max(400, Math.min(1200, startWidth - delta * 2));
+          newWidth = Math.max(400, Math.min(1400, startWidth - delta * 2));
         }
         contentWidth = newWidth;
         applyContentWidth();
@@ -834,7 +837,22 @@
 
     window.addEventListener("resize", function () {
       if (mode === "preview" || mode === "read") positionWidthHandles();
+      checkToolbarOverflow();
     });
+
+    /* --- Toolbar scroll fade --- */
+    var toolbarCenter = document.querySelector(".toolbar-center");
+    function checkToolbarOverflow() {
+      if (!toolbarCenter) return;
+      if (toolbarCenter.scrollWidth > toolbarCenter.clientWidth + 2) {
+        toolbarCenter.classList.remove("no-overflow");
+      } else {
+        toolbarCenter.classList.add("no-overflow");
+      }
+    }
+    if (toolbarCenter) {
+      requestAnimationFrame(checkToolbarOverflow);
+    }
 
     btnExportMd.addEventListener("click", exportMarkdown);
     btnExportHtml.addEventListener("click", exportHTML);

@@ -27,7 +27,7 @@
 
   /* Zone widths */
   --rail-w: clamp(232px, 18vw, 272px);
-  --canvas-max: 880px;
+  --canvas-max: 1100px;
   --canvas-min: 680px;
   --reserve-min: 56px;
 
@@ -665,15 +665,31 @@ body {
 .toolbar-center {
   display: flex;
   align-items: center;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   flex: 1;
   min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Edge fade: transparent → opaque → opaque → transparent (16px gradient) */
+  -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+}
+
+.toolbar-center::-webkit-scrollbar {
+  display: none;
+}
+
+/* When toolbar has no overflow, remove the fade effect */
+.toolbar-center.no-overflow {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 /* ---------- Toolbar slides container ---------- */
 .toolbar-slides {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   min-height: 42px;
   display: flex;
   align-items: center;
