@@ -816,6 +816,35 @@ body {
   left: calc(66.666%);
 }
 
+/* Close button — replaces Read in Read mode */
+.close-btn {
+  display: none;
+  font-family: "Unbounded", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 24px;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* Hide mode-switch, show Close button in Read mode */
+.app-shell.mode-read .mode-switch {
+  display: none;
+}
+.app-shell.mode-read .close-btn {
+  display: inline-block;
+}
+
 /* Export icon buttons */
 .export-label {
   font-family: "Unbounded", system-ui, sans-serif;
@@ -1763,24 +1792,12 @@ body {
   transition: opacity 0.3s;
 }
 
-/* Dim toolbar — keep mode-switch visible */
+/* Dim toolbar — keep mode-switch/close-btn visible */
 .app-shell.focus-mode .toolbar-left,
 .app-shell.focus-mode .toolbar-center {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
-}
-
-/* In Read mode, only show the Close button — hide Edit and View */
-.app-shell.focus-mode.mode-read .mode-switch {
-  grid-template-columns: 1fr;
-}
-.app-shell.focus-mode.mode-read .mode-switch-label:not(.active) {
-  display: none;
-}
-.app-shell.focus-mode.mode-read .mode-switch-slider {
-  left: 3px;
-  width: calc(100% - 6px);
 }
 
 /* Mobile Read mode: everything vanishes except logo + close button */
@@ -1803,8 +1820,8 @@ body {
     transition: opacity 0.3s;
   }
 
-  /* Bring back only the mode-switch (Close button) in read mode */
-  .app-shell.focus-mode.mode-read .mode-switch {
+  /* Bring back the Close button in read mode */
+  .app-shell.focus-mode.mode-read .close-btn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -1824,4 +1841,4 @@ body {
   transition: opacity 0.3s;
 }
 
-/* ---------- Read mode close handled by repurposed Read button ---------- */
+/* ---------- Read mode close handled by dedicated Close button ---------- */

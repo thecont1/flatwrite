@@ -775,6 +775,11 @@
       }
     });
 
+    document.getElementById("btn-close").addEventListener("click", function () {
+      setMode("edit");
+      requestAnimationFrame(checkToolbarOverflow);
+    });
+
     /* Sidebar Load events */
     btnLoadUrl.addEventListener("click", function () {
       openComponentModal("load-url", null);
@@ -1307,10 +1312,6 @@
     btnRead.classList.remove("active");
     modeSwitch.classList.remove("preview", "read");
 
-    /* Reset Read button label */
-    btnRead.textContent = "Read";
-    btnRead.dataset.mode = "read";
-
     if (mode === "edit") {
       if (prevMode !== "edit") savePreviewScroll();
       editorWrap.classList.remove("hidden");
@@ -1352,9 +1353,6 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
-        /* Relabel Read → Close, make it exit back to edit */
-        btnRead.textContent = "Close";
-        btnRead.dataset.mode = "edit";
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
