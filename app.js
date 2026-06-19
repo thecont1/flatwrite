@@ -1359,9 +1359,9 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
-        /* Relabel Read → Close, make it exit back to edit */
+        /* Relabel Read → Close, exit back to whatever mode we came from */
         btnRead.textContent = "Close";
-        btnRead.dataset.mode = "edit";
+        btnRead.dataset.mode = prevMode;
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
