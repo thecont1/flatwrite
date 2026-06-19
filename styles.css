@@ -1778,7 +1778,7 @@ body {
     transition: opacity 0.3s;
   }
 
-  .app-shell.focus-mode .mode-read .mode-switch {
+  .app-shell.focus-mode.mode-read .mode-switch {
     opacity: 1;
     pointer-events: auto;
   }
