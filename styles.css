@@ -1328,12 +1328,12 @@ body {
 .mobile-logo {
   display: none;
   position: fixed;
-  top: 18px;
+  top: 24px;
   left: 62px;
   z-index: 102;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.45rem;
+  font-size: 1.35rem;
   letter-spacing: -0.02em;
   background: linear-gradient(135deg, #b06ab3, #4568dc);
   -webkit-background-clip: text;
