@@ -716,7 +716,7 @@
 
   function bindEvents() {
     /* --- Mobile drawer toggle --- */
-    var drawerToggle = document.getElementById("drawer-toggle");
+    var drawerToggle = document.getElementById("mobile-hamburger");
     var drawerBackdrop = document.getElementById("drawer-backdrop");
     var appShell = document.getElementById("app-shell");
 

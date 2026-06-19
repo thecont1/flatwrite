@@ -1294,34 +1294,42 @@ body {
 }
 
 /* ==========================================================================
-   MOBILE DRAWER TOGGLE (hamburger button)
+   MOBILE HAMBURGER + LOGO (inside toolbar-left)
    Hidden by default, shown only on narrow screens.
    ========================================================================== */
 
-.drawer-toggle {
+.mobile-hamburger {
   display: none;
-  position: fixed;
-  top: var(--space-4);
-  left: var(--space-4);
-  z-index: 90;
-  width: 40px;
-  height: 40px;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--btn-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.55);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
 }
 
-.drawer-toggle:hover {
-  background: rgba(255, 255, 255, 0.95);
+.mobile-hamburger:hover {
+  background: rgba(255, 255, 255, 0.85);
   color: var(--accent);
+}
+
+.mobile-logo {
+  display: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #b06ab3, #4568dc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ==========================================================================
@@ -1432,9 +1440,14 @@ body {
     gap: var(--space-3);
   }
 
-  /* Show drawer toggle */
-  .drawer-toggle {
+  /* Show hamburger + logo in toolbar */
+  .mobile-hamburger {
     display: flex;
+  }
+
+  .mobile-logo {
+    display: inline;
+    margin-right: var(--space-3);
   }
 
   /* Sidebar becomes off-canvas drawer */
@@ -1448,11 +1461,16 @@ body {
     max-height: none;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    padding: var(--space-3);
+    padding: 0;
   }
 
   .app-shell.drawer-open .sidebar {
     transform: translateX(0);
+  }
+
+  /* Hide sidebar title — logo is now in the toolbar header */
+  .sidebar .app-title {
+    display: none;
   }
 
   .sidebar-inner {
@@ -1478,25 +1496,29 @@ body {
   }
 
   .main-inner {
-    padding: var(--space-4) var(--space-4) var(--space-5);
+    padding: var(--space-3) var(--space-3) var(--space-4);
     border-radius: var(--radius-inner);
   }
 
-  /* Toolbar stacks vertically */
+  /* Toolbar becomes header bar — sits above the sliding sidebar */
   .toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
+    position: relative;
+    z-index: 101;
+    flex-shrink: 0;
   }
 
-  .toolbar-left,
-  .toolbar-right {
-    justify-content: center;
+  .toolbar-left {
+    width: 100%;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-shrink: 0;
   }
 
   .toolbar-center {
     width: 100%;
-    order: 3;
   }
 
   .toolbar-slides {
