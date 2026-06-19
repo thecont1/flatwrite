@@ -1498,6 +1498,10 @@ body {
   .main-inner {
     padding: var(--space-3) var(--space-3) var(--space-4);
     border-radius: var(--radius-inner);
+    /* Remove backdrop-filter so toolbar z-index is not trapped in a stacking context */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.92);
   }
 
   /* Toolbar becomes header bar — sits above the sliding sidebar */
