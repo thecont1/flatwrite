@@ -830,6 +830,7 @@ body {
   color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
+  margin-left: auto;
   min-height: 44px;
 }
 
