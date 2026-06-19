@@ -1316,7 +1316,11 @@
       btnEdit.classList.add("active");
 
       if (prevMode === "read") {
-        animateLogoBack(appShell);
+        if (window.innerWidth < 760) {
+          appShell.classList.remove("focus-mode");
+        } else {
+          animateLogoBack(appShell);
+        }
       } else {
         appShell.classList.remove("focus-mode");
       }
@@ -1336,12 +1340,21 @@
       if (mode === "read") {
         document.getElementById("btn-read").classList.add("active");
         modeSwitch.classList.add("read");
-        animateLogoToCenter(appShell);
+        if (window.innerWidth < 760) {
+          /* Mobile: skip logo animation, just enter focus mode */
+          appShell.classList.add("focus-mode");
+        } else {
+          animateLogoToCenter(appShell);
+        }
       } else {
         btnPreview.classList.add("active");
         modeSwitch.classList.add("preview");
         if (prevMode === "read") {
-          animateLogoBack(appShell);
+          if (window.innerWidth < 760) {
+            appShell.classList.remove("focus-mode");
+          } else {
+            animateLogoBack(appShell);
+          }
         } else {
           appShell.classList.remove("focus-mode");
         }
