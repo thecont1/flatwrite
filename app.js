@@ -1082,7 +1082,7 @@
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var effectiveWidth = contentWidth * scale;
+    var effectiveWidth = contentWidth;
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
     hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
@@ -1168,12 +1168,11 @@
       + (fw.css ? '<link rel="stylesheet" href="' + fw.css + '">' : '')
       + '<style>'
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
-      + 'body { font-size: 15px !important;'
+      + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
       + ' max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem;'
-      + ' overflow-x: hidden;'
-      + ' zoom: ' + scale + '; }'
+      + ' overflow-x: hidden; }'
       + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h2 { margin-top: 1.8em !important; }'
       + 'h3 { margin-top: 1.4em !important; }'
