@@ -1605,8 +1605,8 @@ body {
   .mode-switch {
     padding: 2px;
     position: fixed;
-    top: 24px;
-    right: 14px;
+    top: 21px;
+    right: 20px;
     z-index: 105;
   }
 
@@ -1841,9 +1841,7 @@ body {
   .app-shell.focus-mode .toolbar-left,
   .app-shell.focus-mode .toolbar-center,
   .app-shell.focus-mode .toolbar-right {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
+    display: none;
   }
 
   /* Bring back the mode-switch (Close button) in read mode */
