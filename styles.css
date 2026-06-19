@@ -1838,6 +1838,14 @@ body {
 
   /* Hide toolbar children individually — NOT the whole toolbar,
      because opacity on the parent would kill the Close button too */
+  .app-shell.focus-mode .main-inner {
+    gap: 0;
+  }
+  .app-shell.focus-mode .toolbar {
+    height: 0;
+    overflow: hidden;
+    gap: 0;
+  }
   .app-shell.focus-mode .toolbar-left,
   .app-shell.focus-mode .toolbar-center,
   .app-shell.focus-mode .toolbar-right {
