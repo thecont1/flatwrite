@@ -1569,9 +1569,19 @@ body {
     margin-left: auto;
   }
 
-  /* Shrink mode switch to align with hamburger+logo */
+  /* Shrink mode switch and pin it to the same line as the logo */
   .mode-switch {
     padding: 2px;
+    position: fixed;
+    top: 24px;
+    right: 14px;
+    z-index: 105;
+  }
+
+  /* Toolbar-center (formatting buttons) takes full width on its own line */
+  .toolbar-center {
+    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .mode-switch-label {
