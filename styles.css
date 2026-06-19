@@ -1328,7 +1328,7 @@ body {
 .mobile-logo {
   display: none;
   position: fixed;
-  top: 24px;
+  top: 21px;
   left: 62px;
   z-index: 102;
   font-family: var(--font-display);
@@ -1764,20 +1764,17 @@ body {
 
   /* Logo stays visible — no change needed (it's always visible) */
 
-  /* Hide entire toolbar in read mode */
-  .app-shell.focus-mode .toolbar {
+  /* Hide toolbar children individually — NOT the whole toolbar,
+     because opacity on the parent would kill the Close button too */
+  .app-shell.focus-mode .toolbar-left,
+  .app-shell.focus-mode .toolbar-center,
+  .app-shell.focus-mode .toolbar-right {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s;
   }
 
-  /* But keep the Read/Close button visible — it's the exit control */
-  .app-shell.focus-mode .mode-switch {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-  }
-
+  /* Bring back only the mode-switch (Close button) in read mode */
   .app-shell.focus-mode.mode-read .mode-switch {
     opacity: 1;
     pointer-events: auto;
