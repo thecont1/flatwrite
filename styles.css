@@ -1532,12 +1532,11 @@ body {
     z-index: 102;
     flex-shrink: 0;
     transition: opacity 0.25s ease, z-index 0s;
-    /* Left padding clears the fixed hamburger+logo area */
-    padding-left: 170px;
   }
 
   .toolbar-left {
     flex-shrink: 0;
+    margin-left: auto;
   }
 
   /* Shrink mode switch to align with hamburger+logo */
@@ -1755,13 +1754,35 @@ body {
   transition: opacity 0.3s;
 }
 
-/* Hide hamburger + logo in Read mode on mobile */
+/* Mobile Read mode: everything vanishes except logo + close button */
 @media (max-width: 759px) {
-  .app-shell.focus-mode .mobile-hamburger,
-  .app-shell.focus-mode .mobile-logo {
+  .app-shell.focus-mode .mobile-hamburger {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s;
+  }
+
+  /* Logo stays visible — no change needed (it's always visible) */
+
+  /* Hide entire toolbar in read mode */
+  .app-shell.focus-mode .toolbar {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  /* Close button: fixed top-right, light, always accessible */
+  .app-shell.focus-mode .read-close-btn {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 104;
+    display: flex;
+    opacity: 0.45;
+  }
+
+  .app-shell.focus-mode .read-close-btn:hover {
+    opacity: 0.8;
   }
 }
 
