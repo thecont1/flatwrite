@@ -1841,6 +1841,7 @@ body {
      because opacity on the parent would kill the Close button too */
   .app-shell.focus-mode .main-inner {
     gap: 0;
+    padding-top: 56px;
   }
   .app-shell.focus-mode .toolbar {
     height: 0;
