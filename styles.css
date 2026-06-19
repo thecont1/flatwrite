@@ -234,7 +234,7 @@ body {
    ========================================================================== */
 
 .reserve-zone {
-  flex: 1 1 var(--reserve-min);
+  flex: 0 0 var(--reserve-min);
   min-width: var(--reserve-min);
   /* Intentionally empty — no borders, no background, no content */
 }
