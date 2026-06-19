@@ -819,23 +819,29 @@ body {
 /* Close button — replaces Read in Read mode */
 .close-btn {
   display: none;
+  position: relative;
+  z-index: 1;
   font-family: "Unbounded", system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 8px 24px;
-  background: rgba(255, 255, 255, 0.35);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
+  text-align: center;
   color: var(--accent);
   cursor: pointer;
+  transition: color 0.25s ease;
+  user-select: none;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  border-radius: 0;
   flex-shrink: 0;
   margin-left: auto;
   min-height: 44px;
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.55);
+  color: var(--text);
 }
 
 /* Hide mode-switch, show Close button in Read mode */
