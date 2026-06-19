@@ -1546,9 +1546,61 @@ body {
   }
 
   .mode-switch-label {
-    padding: 6px 14px;
+    padding: 8px 16px;
     font-size: 0.78rem;
     line-height: 1.2;
+  }
+
+  /* ==========================================================================
+     WCAG 44px minimum touch targets — all clickable items
+     These scale further with UI Zoom (zoom: X% on .app-shell)
+     ========================================================================== */
+
+  /* Sidebar buttons */
+  .comp-btn,
+  .load-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 8px;
+    font-size: 0.8rem;
+  }
+
+  .components-grid {
+    gap: 6px;
+  }
+
+  /* Framework dropdown */
+  .framework-dropdown {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.88rem;
+  }
+
+  /* Markdown toolbar buttons */
+  .md-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 10px;
+    font-size: 0.8rem;
+  }
+
+  /* Typography +/- buttons */
+  .typo-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.1rem;
+  }
+
+  /* Font dropdown */
+  .font-dropdown-btn {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
+
+  /* Toolbar typography controls spacing */
+  .typo-controls {
+    gap: 6px;
   }
 
   .toolbar-center {
@@ -1567,11 +1619,6 @@ body {
   .md-toolbar {
     gap: 3px;
     padding: 5px 6px;
-  }
-
-  .md-btn {
-    padding: 3px 7px;
-    font-size: 0.7rem;
   }
 
   /* Editor fills remaining height */
