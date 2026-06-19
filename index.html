@@ -28,6 +28,12 @@
 <body>
   <div class="app-shell" id="app-shell">
 
+    <!-- Mobile hamburger + logo (fixed position, visible < 760px) -->
+    <button class="mobile-hamburger" id="mobile-hamburger" type="button" title="Open menu" aria-label="Toggle navigation drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="mobile-logo">FlatWrite</span>
+
     <!-- Drawer backdrop (visible < 760px when sidebar open) -->
     <div class="drawer-backdrop" id="drawer-backdrop"></div>
 
@@ -101,10 +107,6 @@
           <!-- Toolbar: mode toggle + typography + export buttons -->
           <div class="toolbar">
             <div class="toolbar-left">
-              <button class="mobile-hamburger" id="mobile-hamburger" type="button" title="Open menu" aria-label="Toggle navigation drawer">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-              </button>
-              <span class="mobile-logo">FlatWrite</span>
               <div class="mode-switch" id="mode-switch">
                 <span class="mode-switch-label active" id="btn-edit" data-mode="edit">Edit</span>
                 <span class="mode-switch-label" id="btn-preview" data-mode="preview">View</span>

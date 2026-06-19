@@ -1294,32 +1294,39 @@ body {
 }
 
 /* ==========================================================================
-   MOBILE HAMBURGER + LOGO (inside toolbar-left)
+   MOBILE HAMBURGER + LOGO (fixed position, sidebar slides from behind)
    Hidden by default, shown only on narrow screens.
    ========================================================================== */
 
 .mobile-hamburger {
   display: none;
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 102;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
   border: 1px solid var(--btn-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.85);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
-  flex-shrink: 0;
 }
 
 .mobile-hamburger:hover {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.95);
   color: var(--accent);
 }
 
 .mobile-logo {
   display: none;
+  position: fixed;
+  top: 20px;
+  left: 64px;
+  z-index: 102;
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.1rem;
@@ -1329,7 +1336,7 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   white-space: nowrap;
-  flex-shrink: 0;
+  pointer-events: none;
 }
 
 /* ==========================================================================
@@ -1440,14 +1447,10 @@ body {
     gap: var(--space-3);
   }
 
-  /* Show hamburger + logo in toolbar */
-  .mobile-hamburger {
-    display: flex;
-  }
-
+  /* Show hamburger + logo (positioned via base styles with position:fixed) */
+  .mobile-hamburger,
   .mobile-logo {
-    display: inline;
-    margin-right: var(--space-3);
+    display: flex;
   }
 
   /* Sidebar becomes off-canvas drawer */
@@ -1468,14 +1471,16 @@ body {
     transform: translateX(0);
   }
 
-  /* Hide sidebar title — logo is now in the toolbar header */
-  .sidebar .app-title {
+  /* Hide sidebar title + tagline — logo is now the fixed header */
+  .sidebar .app-title,
+  .sidebar .tagline {
     display: none;
   }
 
   .sidebar-inner {
     border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
-    padding: var(--space-5) var(--space-5) var(--space-6);
+    /* Top padding matches fixed hamburger+logo position (20px + 36px height + 12px gap) */
+    padding: 68px var(--space-5) var(--space-6);
   }
 
   /* Drawer backdrop */
@@ -1504,25 +1509,26 @@ body {
     background: rgba(255, 255, 255, 0.92);
   }
 
-  /* Toolbar becomes header bar — sits above the sliding sidebar */
+  /* Toolbar — mode switch row above the document area */
   .toolbar {
     flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
     gap: var(--space-2);
     position: relative;
-    z-index: 101;
+    z-index: 102;
     flex-shrink: 0;
+    /* Left padding clears the fixed hamburger+logo area */
+    padding-left: 170px;
   }
 
   .toolbar-left {
-    width: 100%;
-    justify-content: space-between;
-    gap: var(--space-2);
     flex-shrink: 0;
   }
 
   .toolbar-center {
     width: 100%;
+    flex-basis: 100%;
   }
 
   .toolbar-slides {
