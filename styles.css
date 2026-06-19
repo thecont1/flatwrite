@@ -819,6 +819,7 @@ body {
 /* Hide Edit/View, show only Close (relabeled Read) in Read mode */
 .app-shell.mode-read .mode-switch {
   grid-template-columns: 1fr;
+  margin-left: auto;
 }
 .app-shell.mode-read .mode-switch-label:not(.active) {
   display: none;
