@@ -615,8 +615,8 @@ body {
 /* ---------- Width Handles (View mode) ---------- */
 .width-handle {
   position: absolute;
-  top: 10px;
-  bottom: 10px;
+  top: 5%;
+  bottom: 5%;
   width: 2px;
   cursor: col-resize;
   z-index: 10;
@@ -1058,6 +1058,11 @@ body {
   border-bottom: none;
   resize: none;
   transition: border-color 0.2s, box-shadow 0.2s;
+  scrollbar-width: none;
+}
+
+.editor::-webkit-scrollbar {
+  display: none;
 }
 
 .editor:focus {
