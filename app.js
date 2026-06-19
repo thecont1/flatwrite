@@ -775,10 +775,6 @@
       }
     });
 
-    document.getElementById("read-close-btn").addEventListener("click", function () {
-      setMode("preview");
-    });
-
     /* Sidebar Load events */
     btnLoadUrl.addEventListener("click", function () {
       openComponentModal("load-url", null);
@@ -1299,6 +1295,7 @@
     mode = newMode;
     var modeSwitch = document.getElementById("mode-switch");
     var appShell = document.querySelector(".app-shell");
+    var btnRead = document.getElementById("btn-read");
 
     appShell.classList.remove("mode-edit", "mode-preview", "mode-read");
     appShell.classList.add("mode-" + mode);
@@ -1307,8 +1304,12 @@
     previewWrap.classList.add("hidden");
     btnEdit.classList.remove("active");
     btnPreview.classList.remove("active");
-    document.getElementById("btn-read").classList.remove("active");
+    btnRead.classList.remove("active");
     modeSwitch.classList.remove("preview", "read");
+
+    /* Reset Read button label */
+    btnRead.textContent = "Read";
+    btnRead.dataset.mode = "read";
 
     if (mode === "edit") {
       if (prevMode !== "edit") savePreviewScroll();
@@ -1338,10 +1339,12 @@
       previewWrap.classList.remove("hidden");
 
       if (mode === "read") {
-        document.getElementById("btn-read").classList.add("active");
+        btnRead.classList.add("active");
+        /* Relabel Read → Close, make it exit back to edit */
+        btnRead.textContent = "Close";
+        btnRead.dataset.mode = "edit";
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
-          /* Mobile: skip logo animation, just enter focus mode */
           appShell.classList.add("focus-mode");
         } else {
           animateLogoToCenter(appShell);
