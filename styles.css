@@ -1303,7 +1303,7 @@ body {
   position: fixed;
   top: 16px;
   left: 14px;
-  z-index: 102;
+  z-index: 104;
   align-items: center;
   justify-content: center;
   width: 44px;
@@ -1499,6 +1499,13 @@ body {
     pointer-events: auto;
   }
 
+  /* When drawer is open, push toolbar behind the frosted backdrop */
+  .app-shell.drawer-open .toolbar {
+    z-index: 0;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
   /* Main panel fills remaining height */
   .main-panel {
     flex: 1 1 0;
@@ -1524,6 +1531,7 @@ body {
     position: relative;
     z-index: 102;
     flex-shrink: 0;
+    transition: opacity 0.25s ease, z-index 0s;
     /* Left padding clears the fixed hamburger+logo area */
     padding-left: 170px;
   }
