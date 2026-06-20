@@ -570,10 +570,6 @@ body {
   padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
 }
 
-.mode-read .export-actions {
-  display: none;
-}
-
 .export-icon {
   background: none;
   border: none;
@@ -685,6 +681,9 @@ body {
   flex-wrap: nowrap;
   gap: var(--space-3);
   flex-shrink: 0;
+  /* Fixed min-height so Read mode (only mode-switch) matches Edit/View
+     and the export-actions tab stays in exactly the same place. */
+  min-height: 42px;
 }
 
 .toolbar-left,

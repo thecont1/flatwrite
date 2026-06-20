@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 const SRC = readFileSync(resolve(import.meta.dir, "..", "app.js"), "utf-8");
+const CSS = readFileSync(resolve(import.meta.dir, "..", "styles.css"), "utf-8");
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 
@@ -103,6 +104,10 @@ describe("syncExportActionsTop", () => {
     expect(body).toContain("innerWidth < 760");
     expect(body).toContain('style.top = ""');
   });
+});
+
+test("export-actions tab is visible in Read mode", () => {
+  expect(CSS).not.toMatch(/\.mode-read\s+\.export-actions\s*\{\s*display\s*:\s*none\s*;?\s*\}/);
 });
 
 describe("exportHTML CSS parity with renderPreview", () => {
