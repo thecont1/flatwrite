@@ -1,5 +1,6 @@
-/* Vercel Node.js entrypoint — serves as fallback only.
-   Static files (public/) and API routes (api/) are handled by Vercel automatically. */
+/* Vercel Node.js root handler — raw http.ServerResponse (no Express) */
 module.exports = function handler(req, res) {
-  res.status(404).send("Not found");
+  res.statusCode = 404;
+  res.setHeader("Content-Type", "text/plain");
+  res.end("Not found");
 };
