@@ -81,6 +81,40 @@
     return md.substring(match[0].length);
   }
 
+  /* ── Build YAML front-matter from current preferences (for sharing) ──── */
+  function buildShareYaml() {
+    var lines = [
+      "---",
+      "framework: " + currentFramework,
+      "font: " + comfortFont,
+      "size: " + sizeStep,
+      "weight: " + weightStep,
+      "line: " + lineStep,
+      "width: " + contentWidth,
+      "zoom: " + zoomStep,
+      "---"
+    ];
+    return lines.join("\n") + "\n";
+  }
+
+  /* ── Parse YAML front-matter from shared document ──────────────────── */
+  function parseShareYaml(md) {
+    if (!md) return { frontmatter: null, body: md };
+    var match = md.match(/^\s*---\n([\s\S]*?)\n---\n?/);
+    if (!match) return { frontmatter: null, body: md };
+
+    var fm = {};
+    match[1].split("\n").forEach(function (line) {
+      var idx = line.indexOf(":");
+      if (idx === -1) return;
+      var key = line.substring(0, idx).trim();
+      var val = line.substring(idx + 1).trim();
+      fm[key] = val;
+    });
+
+    return { frontmatter: fm, body: md.substring(match[0].length) };
+  }
+
   /* ==========================================================================
      Framework registry
      Each framework: label, css/js URLs, category, style function.
@@ -676,7 +710,31 @@
           showError("This shared document is not valid text or markdown.");
           return;
         }
-        editor.value = data.content;
+        var parsed = parseShareYaml(data.content);
+        editor.value = parsed.body;
+
+        /* Apply preferences from YAML front-matter if present */
+        if (parsed.frontmatter) {
+          var fm = parsed.frontmatter;
+          if (fm.framework && FRAMEWORKS[fm.framework]) {
+            currentFramework = fm.framework;
+            frameworkDropdown.value = currentFramework;
+          }
+          if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
+            comfortFont = fm.font;
+            fontPickerLabel.textContent = comfortFont;
+          }
+          if (fm.size !== undefined)   sizeStep   = clampInt(fm.size,   SIZE_MIN,   SIZE_MAX,   sizeStep);
+          if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
+          if (fm.line !== undefined)   lineStep   = clampInt(fm.line,   LINE_MIN,   LINE_MAX,   lineStep);
+          if (fm.width !== undefined)  contentWidth = clampInt(fm.width, 400, 1400, contentWidth);
+          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 100, 120, zoomStep);
+          zoomSlider.value = zoomStep;
+          zoomValue.textContent = zoomStep + "%";
+          applyZoom();
+          applyContentWidth();
+        }
+
         editor.setSelectionRange(0, 0);
         initialEditorContent = data.content;
         lastScrollRatio = 0;
@@ -804,7 +862,7 @@
      ========================================================================== */
 
   async function shareDocument() {
-    var content = editor.value;
+    var content = buildShareYaml() + editor.value;
     if (content.length > SHARE_CHAR_LIMIT) {
       showToast("Document too large to share. Try downloading instead.");
       return;
