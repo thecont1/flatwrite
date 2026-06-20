@@ -1849,33 +1849,93 @@
     var renderedHTML = sanitizeHTML(rawHTML);
     var fw = FRAMEWORKS[currentFramework];
 
-    var htmlString = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
-      + '  <meta charset="UTF-8" />\n'
-      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n'
+    /* ── Compute the same scaling values the preview uses ─────────────── */
+    var scale    = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight   = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack  = '"' + comfortFont + '", system-ui, sans-serif';
+    var headWeight = Math.min(weight + 200, 900);
+
+    /* ── Serialize the framework style function for the browser ───────── */
+    var styleFnStr = (fw && typeof fw.style === "function")
+      ? fw.style.toString()
+      : "function(doc){}";
+
+    /* ── Build the standalone HTML document ───────────────────────────── */
+    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+      + '  <meta charset="UTF-8">\n'
+      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
       + '  <title>FlatWrite Export</title>\n'
-      + '  <link rel="preconnect" href="https://fonts.googleapis.com" />\n'
-      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />\n'
-      + '  <link href="' + FONTS_URL + '" rel="stylesheet" />\n'
-      + (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '" />\n' : '')
+      + '  <base target="_blank" rel="noopener noreferrer">\n'
+      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
+      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '">\n' : '')
       + '  <style>\n'
+      /* ── Global reset + body ─────────────────────────────────────────── */
+      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
       + '    body {\n'
-      + '      font-family: "' + comfortFont + '", system-ui, sans-serif;\n'
-      + '      line-height: 1.7;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 2rem auto;\n'
-      + '      padding: 0 1.5rem;\n'
+      + '      font-size: ' + (15 * scale) + 'px !important;\n'
+      + '      font-weight: ' + weight + ' !important;\n'
+      + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
+      + '      max-width: ' + contentWidth + 'px;\n'
+      + '      margin: 3rem auto;\n'
+      + '      padding: 0 1.5rem;\n'
+      + '      overflow-x: hidden;\n'
       + '    }\n'
+      /* ── Headings ────────────────────────────────────────────────────── */
       + '    h1, h2, h3, h4, h5, h6 {\n'
-      + '      font-family: "Unbounded", system-ui, sans-serif;\n'
+      + '      font-weight: ' + headWeight + ' !important;\n'
+      + '      overflow-wrap: break-word;\n'
+      + '      word-break: break-word;\n'
       + '    }\n'
+      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
+      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
+      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
+      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
+      /* ── Media ───────────────────────────────────────────────────────── */
+      + '    img { max-width: 100%; height: auto; display: block; }\n'
+      /* ── Code ────────────────────────────────────────────────────────── */
+      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
+      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
+      /* ── Tables ──────────────────────────────────────────────────────── */
+      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
+      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
+      /* ── Prose ───────────────────────────────────────────────────────── */
+      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
+      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
+      + '    li { margin: 0.15em 0; display: list-item; }\n'
+      + '    li > ul, li > ol { margin: 0.15em 0; }\n'
+      + '    li::marker { display: inline; }\n'
+      + '    p { margin: 0.4em 0; }\n'
+      + '    br { margin: 0.3em 0; }\n'
+      /* ── FlatWrite component classes ─────────────────────────────────── */
+      + '    .fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }\n'
+      + '    .fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }\n'
+      + '    .fw-card-header { padding: 1rem 1.2rem 0.4rem; }\n'
+      + '    .fw-card-title { font-weight: 700; font-size: 1.1em; }\n'
+      + '    .fw-card-body { padding: 0.4rem 1.2rem 1rem; }\n'
+      + '    .fw-form label { display: block; margin: 0.8rem 0 0.3rem; font-weight: 600; }\n'
+      + '    .fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display: block; width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; }\n'
+      + '    .fw-form button { margin-top: 1rem; }\n'
+      + '    .fw-list { margin-left: 1.5rem; }\n'
+      + '    .fw-list li { margin-bottom: 0.3rem; }\n'
       + '  </style>\n'
       + (fw.js ? '  <script src="' + fw.js + '" defer><' + '/script>\n' : '')
       + '</head>\n<body>\n  <main>\n'
       + renderedHTML
-      + '\n  </main>\n</body>\n</html>';
+      + '\n  </main>\n'
+      /* ── Framework class wiring (same as the preview iframe) ──────────── */
+      + '  <script>\n'
+      + '    (function(){\n'
+      + '      var styleFn = (' + styleFnStr + ');\n'
+      + '      if (typeof styleFn === "function") styleFn(document);\n'
+      + '    })();\n'
+      + '  <' + '/script>\n'
+      + '</body>\n</html>';
 
-    openInNewTab(htmlString, "text/html;charset=utf-8");
+    openInNewTab(html, "text/html;charset=utf-8");
   }
 
   function loadScript(url) {
