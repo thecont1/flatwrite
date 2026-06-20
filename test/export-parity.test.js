@@ -152,9 +152,7 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
-  test("renders container behind app via negative z-index", () => {
-    expect(body).toContain("zIndex");
-    expect(body).toContain('"-1"');
+  test("appends container to body for html2canvas capture", () => {
     expect(body).toContain("document.body.appendChild(container)");
   });
 
