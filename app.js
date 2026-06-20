@@ -2030,7 +2030,14 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
-    container.style.visibility = "hidden";
+    /* Render fully visible but behind the app shell so the user never
+       sees it.  html2canvas targets this element directly and ignores
+       z-index when rasterising, so it captures the real content. */
+    container.style.position = "fixed";
+    container.style.left = "0";
+    container.style.top = "0";
+    container.style.width = contentWidth + "px";
+    container.style.zIndex = "-1";
     document.body.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */

@@ -152,9 +152,9 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
-  test("hides the export container while rendering", () => {
-    expect(body).toContain("visibility");
-    expect(body).toContain("hidden");
+  test("renders container behind app via negative z-index", () => {
+    expect(body).toContain("zIndex");
+    expect(body).toContain('"-1"');
     expect(body).toContain("document.body.appendChild(container)");
   });
 
