@@ -1,18 +1,18 @@
-/* POST /api/share — create a new Hastebin paste and return its key */
-
-const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
-const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
+/* POST /api/share — create a new Pastebin paste and return its key */
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if (!HASTEBIN_URL || !HASTEBIN_KEY) {
+  const BASE = process.env.PASTEBIN_BASE_URL;
+  const KEY  = process.env.PASTEBIN_API_KEY;
+
+  if (!BASE || !KEY) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
-  /* Read the raw text body */
+  /* Read the raw text body (markdown from the client) */
   var body = "";
   try {
     body = await new Promise(function (resolve, reject) {
@@ -30,25 +30,37 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const upstream = await fetch(HASTEBIN_URL + "/documents", {
+    /* Build form-encoded body for Pastebin API */
+    var params = new URLSearchParams();
+    params.append("api_dev_key", KEY);
+    params.append("api_option", "paste");
+    params.append("api_paste_code", body);
+    params.append("api_paste_private", "2");   /* unlisted — not public */
+    params.append("api_paste_expire_date", "N"); /* never expires */
+    params.append("api_paste_name", "flatwrite");
+
+    var upstream = await fetch(BASE + "/api/api_paste.php", {
       method: "POST",
       headers: {
-        "Content-Type": "text/plain",
-        Authorization: "Bearer " + HASTEBIN_KEY,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: body,
+      body: params.toString(),
     });
 
-    if (upstream.status === 413) {
-      return res.status(413).json({ error: "too_large" });
-    }
+    var text = await upstream.text();
 
-    if (!upstream.ok) {
+    /* Pastebin returns the paste URL on success, or an error message */
+    if (text.indexOf("pastebin.com/") === -1 || !upstream.ok) {
       return res.status(502).json({ error: "upstream_error" });
     }
 
-    const data = await upstream.json();
-    return res.status(200).json({ key: data.key });
+    /* Extract the paste key from the URL (last path segment) */
+    var key = text.trim().split("/").pop();
+    if (!key) {
+      return res.status(502).json({ error: "upstream_error" });
+    }
+
+    return res.status(200).json({ key: key });
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }

@@ -1,7 +1,4 @@
-/* GET /api/s?key=<key> — fetch raw text from a Hastebin paste */
-
-const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
-const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
+/* GET /api/s?key=<key> — fetch raw text from a Pastebin paste */
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -13,34 +10,47 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: "missing_key" });
   }
 
-  if (!HASTEBIN_URL || !HASTEBIN_KEY) {
+  const BASE = process.env.PASTEBIN_BASE_URL;
+  const KEY  = process.env.PASTEBIN_API_KEY;
+
+  if (!BASE || !KEY) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
   try {
-    const upstream = await fetch(HASTEBIN_URL + "/raw/" + encodeURIComponent(key), {
+    var params = new URLSearchParams();
+    params.append("api_dev_key", KEY);
+    params.append("api_option", "show_paste");
+    params.append("api_paste_key", key);
+
+    var upstream = await fetch(BASE + "/api/api_raw.php", {
+      method: "POST",
       headers: {
-        Authorization: "Bearer " + HASTEBIN_KEY,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
+      body: params.toString(),
     });
 
-    if (upstream.status === 404) {
+    if (!upstream.ok) {
       return res.status(404).json({ error: "not_found" });
     }
 
-    if (!upstream.ok) {
-      return res.status(502).json({ error: "upstream_error" });
+    var content = await upstream.text();
+
+    /* Pastebin returns an error message for invalid/missing pastes */
+    if (content.indexOf("Bad API request") !== -1 ||
+        content.indexOf("invalid or expired") !== -1 ||
+        content.indexOf("not found") !== -1) {
+      return res.status(404).json({ error: "not_found" });
     }
 
-    const content = await upstream.text();
-
     /* Basic plain-text validation: reject binary content */
-    const sample = content.substring(0, 1000);
-    if (sample.includes("\0")) {
+    var sample = content.substring(0, 1000);
+    if (sample.indexOf("\0") !== -1) {
       return res.status(422).json({ error: "invalid_content" });
     }
 
-    return res.status(200).json({ content });
+    return res.status(200).json({ content: content });
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
