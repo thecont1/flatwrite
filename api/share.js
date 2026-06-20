@@ -1,6 +1,6 @@
 /* POST /api/share — create a new Dustebin paste and return its key */
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -11,7 +11,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
-  /* Read the raw text body (markdown from the client) */
   let body = "";
   try {
     body = await new Promise((resolve, reject) => {
@@ -31,9 +30,7 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(BASE + "/api/pastes", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: body,
         language: "markdown",
@@ -46,7 +43,6 @@ export default async function handler(req, res) {
     }
 
     const data = await upstream.json();
-
     if (!data || !data.id) {
       return res.status(502).json({ error: "upstream_error" });
     }
@@ -55,4 +51,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
-}
+};
