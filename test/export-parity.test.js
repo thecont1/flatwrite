@@ -31,15 +31,21 @@ function bodyContainsCSSProp(body, prop) {
 describe("syncExportActionsTop", () => {
   const body = fnBody("syncExportActionsTop");
 
-  test("anchors to .main-inner content box, not editor or previewFrame", () => {
+  test("computes position from the toolbar, not the animated content wrap", () => {
+    expect(body).toContain("toolbar");
     expect(body).toContain("mainInner");
-    expect(body).not.toMatch(/editor\s*\.getBoundingClientRect/);
-    expect(body).not.toMatch(/previewFrame\s*\.getBoundingClientRect/);
+    expect(body).not.toContain("editorWrap");
+    expect(body).not.toContain("previewWrap");
   });
 
-  test("adds computed paddingTop from .main-inner", () => {
-    expect(body).toContain("paddingTop");
+  test("reads the flex rowGap from .main-inner", () => {
     expect(body).toContain("getComputedStyle");
+    expect(body).toContain("rowGap");
+    expect(body).toContain(".gap");
+  });
+
+  test("does not use paddingTop from .main-inner", () => {
+    expect(body).not.toContain("paddingTop");
   });
 
   test("clears top on mobile viewports", () => {

@@ -540,14 +540,18 @@
       exportActions.style.top = "";
       return;
     }
-    /* Anchor to .main-inner's content box top — identical in Edit and View
-       because the pane container doesn't change between modes. */
+    /* The visible content area (editor in Edit, preview in View/Read) sits
+       directly below the toolbar inside .main-inner. The toolbar isn't
+       animated, so measuring it avoids the preview-enter transform while
+       still aligning the tab with the textarea box. */
+    var toolbar   = document.querySelector(".toolbar");
     var mainInner = document.querySelector(".main-inner");
-    if (!mainInner) return;
-    var innerRect   = mainInner.getBoundingClientRect();
-    var wrapperRect = mainPanelWrapper.getBoundingClientRect();
-    var paddingTop  = parseFloat(getComputedStyle(mainInner).paddingTop) || 0;
-    exportActions.style.top = (innerRect.top - wrapperRect.top + paddingTop) + "px";
+    if (!toolbar || !mainInner) return;
+    var toolbarRect   = toolbar.getBoundingClientRect();
+    var wrapperRect   = mainPanelWrapper.getBoundingClientRect();
+    var mainInnerStyle = getComputedStyle(mainInner);
+    var gap = parseFloat(mainInnerStyle.rowGap) || parseFloat(mainInnerStyle.gap) || 0;
+    exportActions.style.top = (toolbarRect.bottom - wrapperRect.top + gap) + "px";
   }
 
   /* ==========================================================================
