@@ -1897,3 +1897,37 @@ body {
 }
 
 /* ---------- Read mode close handled by relabeled mode-switch button ---------- */
+
+/* ==========================================================================
+   Character count warning (near share limit)
+   ========================================================================== */
+
+.char-count {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.char-count.warning {
+  color: #b5452a;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Shared document error state (Mode B)
+   ========================================================================== */
+
+.shared-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 2rem;
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.6;
+}
