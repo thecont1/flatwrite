@@ -739,6 +739,8 @@
         initialEditorContent = data.content;
         lastScrollRatio = 0;
         setMode("read");
+        /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
+        history.replaceState(null, "", window.location.pathname);
       })
       .catch(function () {
         showError("Could not load shared document. Please try again.");
