@@ -2,81 +2,82 @@
   "use strict";
 
   /* ==========================================================================
-     State compression for URL sharing
-     Uses browser-native gzip when available, base64url fallback.
+     IndexedDB persistence
+     Database: flatwrite | Stores: activeDocument, preferences
      ========================================================================== */
 
-  /** Efficient Uint8Array → base64url (chunked to avoid quadratic strings). */
-  function uint8ToB64url(bytes) {
-    var CHUNK = 8192;
-    var parts = [];
-    for (var i = 0; i < bytes.length; i += CHUNK) {
-      var slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
-      parts.push(String.fromCharCode.apply(null, slice));
-    }
-    return btoa(parts.join("")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  var DB_NAME    = "flatwrite";
+  var DB_VERSION = 1;
+
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains("activeDocument")) db.createObjectStore("activeDocument");
+        if (!db.objectStoreNames.contains("preferences"))   db.createObjectStore("preferences");
+      };
+      req.onsuccess = function (e) { resolve(e.target.result); };
+      req.onerror   = function (e) { reject(e.target.error); };
+    });
   }
 
-  async function compressState(state) {
-    var json = JSON.stringify(state);
-    var bytes = new TextEncoder().encode(json);
-
-    /* Use gzip when CompressionStream is available (all modern browsers). */
-    if (typeof CompressionStream !== "undefined") {
-      try {
-        var cs = new CompressionStream("gzip");
-        var writer = cs.writable.getWriter();
-        writer.write(bytes);
-        writer.close();
-        var chunks = [];
-        var reader = cs.readable.getReader();
-        while (true) {
-          var r = await reader.read();
-          if (r.done) break;
-          chunks.push(r.value);
-        }
-        var total = chunks.reduce(function (a, c) { return a + c.length; }, 0);
-        var merged = new Uint8Array(total);
-        var off = 0;
-        chunks.forEach(function (c) { merged.set(c, off); off += c.length; });
-        return uint8ToB64url(merged);
-      } catch (e) { /* fall through to plain */ }
-    }
-
-    return uint8ToB64url(bytes);
+  function idbGet(store, key) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx  = db.transaction(store, "readonly");
+        var req = tx.objectStore(store).get(key);
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror   = function () { reject(req.error); };
+      });
+    });
   }
 
-  async function decompressState(hash) {
-    var padded = hash.replace(/-/g, "+").replace(/_/g, "/");
-    while (padded.length % 4) padded += "=";
-    var binary = atob(padded);
-    var bytes = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  function idbPut(store, key, val) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, "readwrite");
+        tx.objectStore(store).put(val, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror    = function () { reject(tx.error); };
+      });
+    });
+  }
 
-    /* Try gzip first — matches compressState() output. */
-    if (typeof DecompressionStream !== "undefined") {
-      try {
-        var ds = new DecompressionStream("gzip");
-        var writer = ds.writable.getWriter();
-        writer.write(bytes);
-        writer.close();
-        var chunks = [];
-        var reader = ds.readable.getReader();
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-          chunks.push(result.value);
-        }
-        var total = chunks.reduce(function (a, c) { return a + c.length; }, 0);
-        var merged = new Uint8Array(total);
-        var offset = 0;
-        chunks.forEach(function (c) { merged.set(c, offset); offset += c.length; });
-        return JSON.parse(new TextDecoder().decode(merged));
-      } catch (e) { /* not gzip — fall through */ }
-    }
+  var autosaveTimer    = null;
+  var suppressAutosave = false;
 
-    /* Plain base64url (no gzip). */
-    return JSON.parse(new TextDecoder().decode(bytes));
+  function scheduleAutosave() {
+    if (suppressAutosave) return;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(saveToIDB, 1500);
+  }
+
+  function saveToIDB() {
+    var record = {
+      markdown:   editor.value,
+      framework:  currentFramework,
+      typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
+      layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
+      updated:    new Date().toISOString()
+    };
+    idbPut("activeDocument", "current", record).catch(function (err) {
+      console.error("IDB autosave failed:", err);
+    });
+  }
+
+  /* ==========================================================================
+     YAML front-matter stripping (render-only)
+     Detection: doc starts with "---" on its own line (after trimming whitespace).
+     Block ends at the next "---" line. Content after is passed to the renderer.
+     The full source (with front-matter) is preserved in IDB and on .md export.
+     ========================================================================== */
+
+  function stripYamlFrontMatter(md) {
+    if (!md) return md;
+    var match = md.match(/^\s*---\n[\s\S]*?\n---\n?/);
+    if (!match) return md;
+    return md.substring(match[0].length);
   }
 
   /* ==========================================================================
@@ -407,19 +408,6 @@
   var MODAL_COMPONENTS = ["table", "card", "list", "image"];
 
   /* ==========================================================================
-     localStorage keys
-     ========================================================================== */
-
-  var LS_CONTENT   = "flatwrite_content";
-  var LS_FRAMEWORK = "flatwrite_framework";
-  var LS_SIZESTEP  = "flatwrite_sizestep";
-  var LS_WEIGHTSTEP = "flatwrite_weightstep";
-  var LS_LINESTEP  = "flatwrite_linestep";
-  var LS_FONT      = "flatwrite_comfortfont";
-  var LS_ZOOMSTEP  = "flatwrite_zoomstep";
-  var LS_CONTENTWIDTH = "flatwrite_contentwidth";
-
-  /* ==========================================================================
      Typography presets
      ========================================================================== */
 
@@ -474,7 +462,6 @@
   var lineStep = 0;
   var comfortFont = "Inter";
   var zoomStep = 100;
-  var debounceTimer = null;
   var activeModalComponent = null;
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
@@ -560,7 +547,6 @@
 
   var initialEditorContent = "";
   var contentWidth = 780;
-  var LS_CONTENTWIDTH = "flatwrite_contentwidth";
   var githubBaseUrl = "";
 
   function rewriteGitHubUrl(url) {
@@ -590,7 +576,7 @@
   function setEditorContent(text) {
     editor.value = text;
     editor.dispatchEvent(new Event("input"));
-    localStorage.setItem(LS_CONTENT, text);
+    /* autosave is handled by the input event listener */
   }
 
   function handleFileUpload(file) {
@@ -613,32 +599,79 @@
   function init() {
     marked.use({ html: true, gfm: true, breaks: true, async: false });
     document.querySelector(".app-shell").classList.add("mode-" + mode);
-    var hash = window.location.hash.slice(1);
-    if (hash) {
-      decompressState(hash).then(function (state) {
-        restoreFromState(state);
-        initialEditorContent = editor.value;
-        buildFontDropdown();
-        renderComponentGrid();
-        bindEvents();
-        requestAnimationFrame(syncExportActionsTop);
-      }).catch(function () {
-        restoreFromStorage();
-        initialEditorContent = editor.value;
-        buildFontDropdown();
-        renderComponentGrid();
-        bindEvents();
-        requestAnimationFrame(syncExportActionsTop);
-      });
-    } else {
-      restoreFromStorage();
+
+    /* Mode B: shared link load (?s=<key>) */
+    var params = new URLSearchParams(window.location.search);
+    var shareKey = params.get("s");
+
+    function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
       renderComponentGrid();
       bindEvents();
+      requestAnimationFrame(syncExportActionsTop);
+      updateCharCount();
     }
+
+    if (shareKey) {
+      /* Mode B — fetch shared document, suppress autosave until user edits */
+      suppressAutosave = true;
+      finishInit();
+      loadSharedDocument(shareKey);
+    } else {
+      /* Mode A — restore from IndexedDB */
+      restoreFromIDB().then(finishInit).catch(finishInit);
+    }
+
     /* Align tab bubble after first layout */
     requestAnimationFrame(syncExportActionsTop);
+  }
+
+  /* ==========================================================================
+     Mode B — Load shared document from API
+     ========================================================================== */
+
+  function loadSharedDocument(key) {
+    fetch("/api/s?key=" + encodeURIComponent(key))
+      .then(function (res) {
+        if (res.status === 404) {
+          showError("This shared document no longer exists or has expired.");
+          return null;
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        if (data.error === "not_found") {
+          showError("This shared document no longer exists or has expired.");
+          return;
+        }
+        if (data.error === "invalid_content") {
+          showError("This shared document is not valid text or markdown.");
+          return;
+        }
+        if (!data.content || typeof data.content !== "string") {
+          showError("This shared document is not valid text or markdown.");
+          return;
+        }
+        editor.value = data.content;
+        initialEditorContent = data.content;
+        setMode("read");
+      })
+      .catch(function () {
+        showError("Could not load shared document. Please try again.");
+      });
+  }
+
+  function showError(message) {
+    editor.value = "";
+    editorWrap.classList.add("hidden");
+    previewWrap.classList.add("hidden");
+    var errorEl = document.createElement("div");
+    errorEl.className = "shared-error";
+    errorEl.textContent = message;
+    var mainInner = document.querySelector(".main-inner");
+    if (mainInner) mainInner.appendChild(errorEl);
   }
 
   /* ==========================================================================
@@ -671,7 +704,7 @@
   }
 
   /* ==========================================================================
-     localStorage persistence
+     IDB persistence — restore from IndexedDB (Mode A default)
      ========================================================================== */
 
   function clampInt(value, min, max, fallback) {
@@ -680,76 +713,101 @@
     return Math.max(min, Math.min(max, n));
   }
 
-  function restoreFromStorage() {
-    var savedContent = localStorage.getItem(LS_CONTENT);
-    if (savedContent !== null) editor.value = savedContent;
+  function restoreFromIDB() {
+    return idbGet("activeDocument", "current").then(function (record) {
+      if (!record) return;
 
-    var savedFw = localStorage.getItem(LS_FRAMEWORK);
-    if (savedFw && FRAMEWORKS[savedFw]) currentFramework = savedFw;
-    frameworkDropdown.value = currentFramework;
+      if (record.markdown !== undefined) editor.value = record.markdown;
 
-    sizeStep = clampInt(localStorage.getItem(LS_SIZESTEP), SIZE_MIN, SIZE_MAX, sizeStep);
+      if (record.framework && FRAMEWORKS[record.framework]) {
+        currentFramework = record.framework;
+      }
+      frameworkDropdown.value = currentFramework;
 
-    weightStep = clampInt(localStorage.getItem(LS_WEIGHTSTEP), WEIGHT_MIN, WEIGHT_MAX, weightStep);
+      var t = record.typography || {};
+      if (t.family && COMFORT_FONTS.some(function (f) { return f.value === t.family; })) {
+        comfortFont = t.family;
+      }
+      fontPickerLabel.textContent = comfortFont;
+      if (t.sizeStep !== undefined)   sizeStep   = clampInt(t.sizeStep,   SIZE_MIN,   SIZE_MAX,   sizeStep);
+      if (t.weightStep !== undefined) weightStep = clampInt(t.weightStep, WEIGHT_MIN, WEIGHT_MAX, weightStep);
+      if (t.lineStep !== undefined)   lineStep   = clampInt(t.lineStep,   LINE_MIN,   LINE_MAX,   lineStep);
 
-    lineStep = clampInt(localStorage.getItem(LS_LINESTEP), LINE_MIN, LINE_MAX, lineStep);
+      var l = record.layout || {};
+      if (l.zoomStep !== undefined)     zoomStep     = clampInt(l.zoomStep, 100, 120, zoomStep);
+      if (l.contentWidth !== undefined) contentWidth = clampInt(l.contentWidth, 400, 1400, contentWidth);
 
-    var savedFont = localStorage.getItem(LS_FONT);
-    if (savedFont && COMFORT_FONTS.some(function (f) { return f.value === savedFont; })) comfortFont = savedFont;
-    fontPickerLabel.textContent = comfortFont;
-
-    zoomStep = clampInt(localStorage.getItem(LS_ZOOMSTEP), 100, 120, zoomStep);
-    zoomSlider.value = zoomStep;
-    zoomValue.textContent = zoomStep + "%";
-    applyZoom();
-
-    var savedWidth = parseInt(localStorage.getItem(LS_CONTENTWIDTH), 10);
-    if (Number.isFinite(savedWidth) && savedWidth >= 400 && savedWidth <= 1400) contentWidth = savedWidth;
-    applyContentWidth();
-  }
-
-  function restoreFromState(state) {
-    if (state.content !== undefined) editor.value = state.content;
-    if (state.framework && FRAMEWORKS[state.framework]) currentFramework = state.framework;
-    frameworkDropdown.value = currentFramework;
-    if (state.sizeStep !== undefined) sizeStep = clampInt(state.sizeStep, SIZE_MIN, SIZE_MAX, sizeStep);
-    if (state.weightStep !== undefined) weightStep = clampInt(state.weightStep, WEIGHT_MIN, WEIGHT_MAX, weightStep);
-    if (state.lineStep !== undefined) lineStep = clampInt(state.lineStep, LINE_MIN, LINE_MAX, lineStep);
-    if (state.font && COMFORT_FONTS.some(function (f) { return f.value === state.font; })) comfortFont = state.font;
-    fontPickerLabel.textContent = comfortFont;
-    if (state.zoomStep !== undefined) zoomStep = clampInt(state.zoomStep, 100, 120, zoomStep);
-    zoomSlider.value = zoomStep;
-    zoomValue.textContent = zoomStep + "%";
-    applyZoom();
-    if (state.contentWidth !== undefined) {
-      contentWidth = clampInt(state.contentWidth, 400, 1400, contentWidth);
+      zoomSlider.value = zoomStep;
+      zoomValue.textContent = zoomStep + "%";
+      applyZoom();
       applyContentWidth();
+    }).catch(function (err) {
+      console.error("IDB restore failed:", err);
+    });
+  }
+
+  /* ==========================================================================
+     Character count warning
+     ========================================================================== */
+
+  var SHARE_CHAR_LIMIT   = 400000;
+  var SHARE_WARN_LIMIT   = 390000;
+  var charCountEl        = document.getElementById("char-count");
+
+  function updateCharCount() {
+    if (!charCountEl) return;
+    var len = editor.value.length;
+    if (len >= SHARE_WARN_LIMIT) {
+      charCountEl.textContent = len.toLocaleString() + " / " + SHARE_CHAR_LIMIT.toLocaleString() + " chars";
+      charCountEl.classList.add("warning");
+    } else {
+      charCountEl.textContent = "";
+      charCountEl.classList.remove("warning");
+    }
+    /* Disable share button at hard limit */
+    if (btnShare) {
+      btnShare.disabled = len >= SHARE_CHAR_LIMIT;
+      btnShare.title = len >= SHARE_CHAR_LIMIT ? "Document too large to share" : "Share as URL";
     }
   }
 
-  async function shareState() {
-    var state = {
-      content: editor.value,
-      framework: currentFramework,
-      sizeStep: sizeStep,
-      weightStep: weightStep,
-      lineStep: lineStep,
-      font: comfortFont,
-      zoomStep: zoomStep,
-      contentWidth: contentWidth
-    };
-    var encoded = await compressState(state);
-    var url = window.location.origin + window.location.pathname + "#" + encoded;
+  /* ==========================================================================
+     Share via serverless API (Hastebin proxy)
+     ========================================================================== */
 
-    if (url.length > 8000) {
-      showToast("URL is " + url.length + " chars — may be too long for some browsers");
+  async function shareDocument() {
+    var content = editor.value;
+    if (content.length > SHARE_CHAR_LIMIT) {
+      showToast("Document too large to share. Try downloading instead.");
+      return;
     }
 
-    navigator.clipboard.writeText(url).then(function () {
-      showToast("Copied share URL to clipboard");
-    }).catch(function () {
-      prompt("Copy this URL:", url);
-    });
+    btnShare.disabled = true;
+    try {
+      var res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: content
+      });
+      if (!res.ok) {
+        var errData = await res.json().catch(function () { return {}; });
+        if (errData.error === "too_large" || res.status === 413) {
+          showToast("Document too large to share. Try downloading instead.");
+          return;
+        }
+        throw new Error("HTTP " + res.status);
+      }
+      var data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      var shareUrl = window.location.origin + window.location.pathname + "?s=" + data.key;
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("Link copied \u2014 available for up to 30 days");
+    } catch (e) {
+      showToast("Could not create a share link. Please try again.");
+    } finally {
+      updateCharCount(); /* re-evaluate disabled state */
+    }
   }
 
   /* ==========================================================================
@@ -804,7 +862,7 @@
 
     frameworkDropdown.addEventListener("change", function () {
       currentFramework = frameworkDropdown.value;
-      localStorage.setItem(LS_FRAMEWORK, currentFramework);
+      scheduleAutosave();
       renderComponentGrid();
       if (mode === "preview") renderPreview();
     });
@@ -866,7 +924,7 @@
         widthDragOverlay.classList.add("hidden");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        localStorage.setItem(LS_CONTENTWIDTH, contentWidth);
+        scheduleAutosave();
       });
     }
 
@@ -896,7 +954,7 @@
     btnExportMd.addEventListener("click", exportMarkdown);
     btnExportHtml.addEventListener("click", exportHTML);
     btnExportPdf.addEventListener("click", exportPDF);
-    btnShare.addEventListener("click", shareState);
+    btnShare.addEventListener("click", shareDocument);
 
     componentsGrid.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-component]");
@@ -905,10 +963,9 @@
     });
 
     editor.addEventListener("input", function () {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(function () {
-        localStorage.setItem(LS_CONTENT, editor.value);
-      }, 400);
+      suppressAutosave = false;
+      scheduleAutosave();
+      updateCharCount();
     });
 
     editor.addEventListener("keydown", function (e) {
@@ -964,33 +1021,33 @@
         el.classList.toggle("selected", el.dataset.font === comfortFont);
       });
       fontPickerList.classList.add("hidden");
-      localStorage.setItem(LS_FONT, comfortFont);
+      scheduleAutosave();
       if (mode === "preview") renderPreview();
     });
 
     sizeUpBtn.addEventListener("click", function () {
-      if (sizeStep < SIZE_MAX) { sizeStep++; localStorage.setItem(LS_SIZESTEP, sizeStep); if (mode === "preview") renderPreview(); }
+      if (sizeStep < SIZE_MAX) { sizeStep++; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
     sizeDownBtn.addEventListener("click", function () {
-      if (sizeStep > SIZE_MIN) { sizeStep--; localStorage.setItem(LS_SIZESTEP, sizeStep); if (mode === "preview") renderPreview(); }
+      if (sizeStep > SIZE_MIN) { sizeStep--; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
     weightUpBtn.addEventListener("click", function () {
-      if (weightStep < WEIGHT_MAX) { weightStep++; localStorage.setItem(LS_WEIGHTSTEP, weightStep); if (mode === "preview") renderPreview(); }
+      if (weightStep < WEIGHT_MAX) { weightStep++; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
     weightDownBtn.addEventListener("click", function () {
-      if (weightStep > WEIGHT_MIN) { weightStep--; localStorage.setItem(LS_WEIGHTSTEP, weightStep); if (mode === "preview") renderPreview(); }
+      if (weightStep > WEIGHT_MIN) { weightStep--; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
     lineUpBtn.addEventListener("click", function () {
-      if (lineStep < LINE_MAX) { lineStep++; localStorage.setItem(LS_LINESTEP, lineStep); if (mode === "preview") renderPreview(); }
+      if (lineStep < LINE_MAX) { lineStep++; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
     lineDownBtn.addEventListener("click", function () {
-      if (lineStep > LINE_MIN) { lineStep--; localStorage.setItem(LS_LINESTEP, lineStep); if (mode === "preview") renderPreview(); }
+      if (lineStep > LINE_MIN) { lineStep--; scheduleAutosave(); if (mode === "preview") renderPreview(); }
     });
 
     zoomSlider.addEventListener("input", function () {
       zoomStep = parseInt(this.value, 10);
       zoomValue.textContent = zoomStep + "%";
-      localStorage.setItem(LS_ZOOMSTEP, zoomStep);
+      scheduleAutosave();
       applyZoom();
     });
 
@@ -1187,7 +1244,8 @@
 
   function renderPreview() {
     var fw = FRAMEWORKS[currentFramework];
-    var rawHTML = marked.parse(editor.value || "");
+    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
@@ -1854,7 +1912,8 @@
   }
 
   function exportHTML() {
-    var rawHTML = marked.parse(editor.value || "");
+    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var fw = FRAMEWORKS[currentFramework];
 
@@ -1960,7 +2019,8 @@
   var html2pdfUrl = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js";
 
   function exportPDF() {
-    var rawHTML = marked.parse(editor.value || "");
+    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var fw = FRAMEWORKS[currentFramework];
 
