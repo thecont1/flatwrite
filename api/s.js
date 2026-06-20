@@ -1,6 +1,9 @@
 /* GET /api/s?key=<key> — fetch raw text from a Hastebin paste */
 
-export default async function handler(req, res) {
+const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
+const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
+
+module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -9,9 +12,6 @@ export default async function handler(req, res) {
   if (!key || typeof key !== "string") {
     return res.status(400).json({ error: "missing_key" });
   }
-
-  const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
-  const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
 
   if (!HASTEBIN_URL || !HASTEBIN_KEY) {
     return res.status(500).json({ error: "Server configuration error" });
@@ -44,4 +44,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
-}
+};

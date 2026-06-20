@@ -1,22 +1,22 @@
 /* POST /api/share — create a new Hastebin paste and return its key */
 
-export default async function handler(req, res) {
+const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
+const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
+
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
-  const HASTEBIN_URL = process.env.HASTEBIN_SERVER_URL;
-  const HASTEBIN_KEY = process.env.HASTEBIN_API_KEY;
 
   if (!HASTEBIN_URL || !HASTEBIN_KEY) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
-  /* Read the raw text body — standard stream pattern for Vercel runtime */
-  let body = "";
+  /* Read the raw text body */
+  var body = "";
   try {
     body = await new Promise(function (resolve, reject) {
-      let data = "";
+      var data = "";
       req.on("data", function (chunk) { data += chunk; });
       req.on("end", function () { resolve(data); });
       req.on("error", function (err) { reject(err); });
@@ -52,4 +52,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
-}
+};

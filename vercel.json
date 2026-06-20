@@ -24,10 +24,5 @@
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     }
-  ],
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "@vercel/node"
-    }
-  }
+  ]
 }
