@@ -711,7 +711,7 @@
           return;
         }
         var parsed = parseShareYaml(data.content);
-        editor.value = parsed.body;
+        editor.value = data.content; /* keep full source including YAML for IDB + .md export */
 
         /* Apply preferences from YAML front-matter if present */
         if (parsed.frontmatter) {
@@ -869,6 +869,7 @@
     }
 
     btnShare.disabled = true;
+    showToast("Creating share link\u2026");
     try {
       var res = await fetch("/api/share", {
         method: "POST",
