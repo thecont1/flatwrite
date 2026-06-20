@@ -540,18 +540,14 @@
       exportActions.style.top = "";
       return;
     }
-    /* The visible content area (editor in Edit, preview in View/Read) sits
-       directly below the toolbar inside .main-inner. The toolbar isn't
-       animated, so measuring it avoids the preview-enter transform that was
-       causing the tab to start slightly above and then jump. */
-    var toolbar   = document.querySelector(".toolbar");
+    /* Anchor to .main-inner's content box top — identical in Edit and View
+       because the pane container doesn't change between modes. */
     var mainInner = document.querySelector(".main-inner");
-    if (!toolbar || !mainInner) return;
-    var toolbarRect   = toolbar.getBoundingClientRect();
-    var wrapperRect   = mainPanelWrapper.getBoundingClientRect();
-    var mainInnerStyle = getComputedStyle(mainInner);
-    var gap = parseFloat(mainInnerStyle.rowGap) || parseFloat(mainInnerStyle.gap) || 0;
-    exportActions.style.top = (toolbarRect.bottom - wrapperRect.top + gap) + "px";
+    if (!mainInner) return;
+    var innerRect   = mainInner.getBoundingClientRect();
+    var wrapperRect = mainPanelWrapper.getBoundingClientRect();
+    var paddingTop  = parseFloat(getComputedStyle(mainInner).paddingTop) || 0;
+    exportActions.style.top = (innerRect.top - wrapperRect.top + paddingTop) + "px";
   }
 
   /* ==========================================================================
@@ -1962,26 +1958,73 @@
   function exportPDF() {
     var rawHTML = marked.parse(editor.value || "");
     var renderedHTML = sanitizeHTML(rawHTML);
+    var fw = FRAMEWORKS[currentFramework];
+
+    /* ── Apply framework style function (needs document.createElement for Oat) ── */
+    if (fw && typeof fw.style === "function") {
+      var tmp = document.createElement("div");
+      tmp.innerHTML = renderedHTML;
+      document.body.appendChild(tmp);
+      fw.style(document);
+      renderedHTML = tmp.innerHTML;
+      document.body.removeChild(tmp);
+    }
+
+    /* ── Same scaling values as renderPreview() ──────────────────────────── */
+    var scale      = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight     = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack  = '"' + comfortFont + '", system-ui, sans-serif';
+    var headWeight = Math.min(weight + 200, 900);
+
+    /* ── Inject scoped <style> so rules don't bleed into the host page ──── */
+    var styleEl = document.createElement("style");
+    styleEl.setAttribute("data-fw-pdf", "1");
+    var S = ".fw-pdf-export";                       /* scope prefix */
+    styleEl.textContent =
+        S + ' { font-size:' + (15 * scale) + 'px; font-weight:' + weight
+        + '; line-height:' + lineHeight + '; color:#2d2a3e; max-width:'
+        + contentWidth + 'px; margin:0 auto; padding:0 1.5rem; }'
+      + S + ',' + S + ' *,' + S + ' *::before,' + S + ' *::after'
+        + ' { font-family:' + fontStack + ' !important; box-sizing:border-box; }'
+      + S + ' h1,' + S + ' h2,' + S + ' h3,' + S + ' h4,' + S + ' h5,' + S + ' h6'
+        + ' { font-weight:' + headWeight + ' !important; overflow-wrap:break-word; word-break:break-word; }'
+      + S + ' h1 { font-size:' + (15 * scale * 2) + 'px !important; }'
+      + S + ' h2 { font-size:' + (15 * scale * 1.5) + 'px !important; margin-top:1.8em !important; }'
+      + S + ' h3 { font-size:' + (15 * scale * 1.25) + 'px !important; margin-top:1.4em !important; }'
+      + S + ' h4 { font-size:' + (15 * scale * 1.1) + 'px !important; }'
+      + S + ' img { max-width:100%; height:auto; display:block; }'
+      + S + ' pre,' + S + ' code { font-family:"JetBrains Mono",monospace !important; }'
+      + S + ' pre { overflow-x:auto; word-wrap:break-word; white-space:pre-wrap; }'
+      + S + ' table { table-layout:fixed; width:100%; overflow:hidden; }'
+      + S + ' td,' + S + ' th { word-wrap:break-word; overflow-wrap:break-word; max-width:100%; }'
+      + S + ' blockquote { margin:0; padding:0 1em; border-left:3px solid #ccc; }'
+      + S + ' ul,' + S + ' ol { padding-left:1.8em; margin:0.2em 0; list-style-position:outside; }'
+      + S + ' li { margin:0.15em 0; display:list-item; }'
+      + S + ' li > ul,' + S + ' li > ol { margin:0.15em 0; }'
+      + S + ' li::marker { display:inline; }'
+      + S + ' p { margin:0.4em 0; }'
+      + S + ' .fw-alert { padding:0.8rem 1rem; border-radius:4px; margin:0.6rem 0; }'
+      + S + ' .fw-card { border:1px solid #ddd; border-radius:4px; margin:1rem 0; }'
+      + S + ' .fw-card-header { padding:1rem 1.2rem 0.4rem; }'
+      + S + ' .fw-card-title { font-weight:700; font-size:1.1em; }'
+      + S + ' .fw-card-body { padding:0.4rem 1.2rem 1rem; }'
+      + S + ' .fw-form label { display:block; margin:0.8rem 0 0.3rem; font-weight:600; }'
+      + S + ' .fw-form input[type=text],' + S + ' .fw-form input[type=email],'
+        + S + ' .fw-form textarea,' + S + ' .fw-form select'
+        + ' { display:block; width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.95em; }'
+      + S + ' .fw-form button { margin-top:1rem; }'
+      + S + ' .fw-list { margin-left:1.5rem; }'
+      + S + ' .fw-list li { margin-bottom:0.3rem; }';
+    document.head.appendChild(styleEl);
+
+    /* ── Build the container ─────────────────────────────────────────────── */
     var container = document.createElement("div");
+    container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
-    container.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
-    container.style.lineHeight = "1.7";
-    container.style.maxWidth = contentWidth + "px";
-    container.style.margin = "0 auto";
-    container.style.padding = "0 1.5rem";
-    container.style.color = "#2d2a3e";
-
-    var headings = container.querySelectorAll("h1,h2,h3,h4,h5,h6");
-    for (var i = 0; i < headings.length; i++) {
-      headings[i].style.fontFamily = '"Unbounded", system-ui, sans-serif';
-    }
-    var imgs = container.querySelectorAll("img");
-    for (var j = 0; j < imgs.length; j++) {
-      imgs[j].style.maxWidth = "100%";
-    }
-
     document.body.appendChild(container);
 
+    /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
     var ready = typeof html2pdf !== "undefined" ? Promise.resolve() : loadScript(html2pdfUrl);
     ready.then(function () {
       html2pdf().set({
@@ -1993,9 +2036,11 @@
         pagebreak: { mode: ["avoid-all", "css", "legacy"] }
       }).from(container).outputPdf("blob").then(function (pdfBlob) {
         document.body.removeChild(container);
+        document.head.removeChild(styleEl);
         window.open(URL.createObjectURL(pdfBlob), "_blank");
       }).catch(function () {
-        document.body.removeChild(container);
+        if (container.parentNode) document.body.removeChild(container);
+        if (styleEl.parentNode) document.head.removeChild(styleEl);
       });
     });
   }

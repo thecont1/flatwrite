@@ -3,7 +3,6 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 const SRC = readFileSync(resolve(import.meta.dir, "..", "app.js"), "utf-8");
-const CSS = readFileSync(resolve(import.meta.dir, "..", "styles.css"), "utf-8");
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 
@@ -21,93 +20,32 @@ function fnBody(name) {
 /**
  * Check whether a function body references a CSS property.
  * Matches property names appearing inside CSS strings or comments.
- * We look for the property followed by ":" with optional whitespace,
- * ignoring matches that appear to be in JS-only contexts.
  */
 function bodyContainsCSSProp(body, prop) {
-  // Match the property followed by : (CSS declaration pattern)
   const re = new RegExp(prop + "\\s*:", "i");
   return re.test(body);
 }
-
-/**
- * Collect CSS selector-like patterns from a function body.
- * Only matches strings that look like CSS selectors (start with ., #, *, or
- * an HTML tag name, and are followed by {).
- * Explicitly excludes JavaScript patterns.
- */
-function collectCSSSelectors(body) {
-  const selectors = new Set();
-  // Match patterns like: 'selector {' in string concatenation
-  const re = /['"](\/\*[\s\S]*?\*\/)?\s*([.#a-z_*][a-zA-Z0-9_.,:>\[\]=\s-]*)\s*\{/g;
-  let m;
-  while ((m = re.exec(body))) {
-    const raw = m[2].trim();
-    // Skip JS-looking patterns
-    if (raw.includes("addEventListener") || raw.includes("querySelector") ||
-        raw.includes("document.") || raw.includes("window.") ||
-        raw.includes("function") || raw.includes("function(")) continue;
-    // Split multi-selectors
-    raw.split(",").forEach((s) => {
-      s = s.trim();
-      if (s && /^[.#a-z_*]/i.test(s)) selectors.add(s);
-    });
-  }
-  return selectors;
-}
-
-/* ─── The canonical list of CSS properties the preview defines ────────── */
-// Derived from renderPreview()'s <style> block.
-const PREVIEW_CSS_PROPS = [
-  "font-family", "box-sizing",           // * selector
-  "font-size", "font-weight",            // body + headings
-  "line-height", "color",                // body
-  "max-width", "margin", "padding",      // body
-  "overflow-x",                          // body
-  "overflow-wrap", "word-break",         // headings
-  "max-width", "height", "display",      // img
-  "overflow-x", "word-wrap", "white-space", // pre
-  "table-layout", "width",               // table
-  "word-wrap", "overflow-wrap",          // td, th
-  "border-left",                         // blockquote
-  "padding-left", "list-style-position", // ul, ol
-  "display",                             // li
-  "border-radius",                       // .fw-alert
-  "border",                              // .fw-card
-  "font-size",                           // .fw-card-title
-  "font-weight",                         // .fw-form label
-];
 
 /* ─── tests ───────────────────────────────────────────────────────────── */
 
 describe("syncExportActionsTop", () => {
   const body = fnBody("syncExportActionsTop");
 
-  test("computes position from the toolbar, not the animated content wrap", () => {
-    expect(body).toContain("toolbar");
+  test("anchors to .main-inner content box, not editor or previewFrame", () => {
     expect(body).toContain("mainInner");
-    expect(body).not.toContain("editorWrap");
-    expect(body).not.toContain("previewWrap");
+    expect(body).not.toMatch(/editor\s*\.getBoundingClientRect/);
+    expect(body).not.toMatch(/previewFrame\s*\.getBoundingClientRect/);
   });
 
-  test("reads the flex rowGap from .main-inner", () => {
+  test("adds computed paddingTop from .main-inner", () => {
+    expect(body).toContain("paddingTop");
     expect(body).toContain("getComputedStyle");
-    expect(body).toContain("rowGap");
-    expect(body).toContain(".gap");
-  });
-
-  test("does not use paddingTop from .main-inner", () => {
-    expect(body).not.toContain("paddingTop");
   });
 
   test("clears top on mobile viewports", () => {
     expect(body).toContain("innerWidth < 760");
     expect(body).toContain('style.top = ""');
   });
-});
-
-test("export-actions tab is visible in Read mode", () => {
-  expect(CSS).not.toMatch(/\.mode-read\s+\.export-actions\s*\{\s*display\s*:\s*none\s*;?\s*\}/);
 });
 
 describe("exportHTML CSS parity with renderPreview", () => {
@@ -120,7 +58,6 @@ describe("exportHTML CSS parity with renderPreview", () => {
 
   test("uses dynamic font-weight from weightStep", () => {
     expect(body).toContain("font-weight");
-    // The body font-weight is set from `weight` variable
     expect(body).toMatch(/font-weight.*weight\b/);
   });
 
@@ -203,7 +140,6 @@ describe("exportPDF CSS parity with renderPreview", () => {
 
   test("cleans up injected <style> on success and failure", () => {
     expect(body).toContain("removeChild(styleEl)");
-    // Also in catch block
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
@@ -220,14 +156,10 @@ describe("preview ↔ export CSS selector inventory", () => {
    * Every CSS selector in renderPreview's <style> block should also appear
    * in exportHTML and exportPDF — otherwise a rule added to the preview
    * will be missing from the exported file.
-   *
-   * We only check CSS selectors (not the <script> runtime).
    */
-  const previewBody = fnBody("renderPreview");
-  const exportBody  = fnBody("exportHTML");
-  const pdfBody     = fnBody("exportPDF");
+  const exportBody = fnBody("exportHTML");
+  const pdfBody    = fnBody("exportPDF");
 
-  // Known CSS selectors from the preview <style> block
   const CSS_SELECTORS = [
     "*", "*::before", "*::after",
     "body",

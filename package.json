@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "bunx serve .",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14"
   }
 }
