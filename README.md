@@ -87,19 +87,19 @@ The test suite lives in `test/` and includes parity checks that make sure the ex
 
 ## The demo file
 
-The repo includes `demo-solar.md`, the README.md from another repo (a solar explorer project) that demonstrates how markdown can be used to create a professional-looking document for humans and an easily digestible one for agents.
+The repo includes `demo-solar.md` (a README file from another repo, a solar explorer project). Load it in FlatWrite and play around with it. See how markdown can be used to create a professional-looking document for humans and an easily digestible one for agents.
 
 ## Tech stack
 
 - [marked.js](https://marked.js.org/) for Markdown → HTML.
 - [DOMPurify](https://github.com/cure53/DOMPurify) to keep the rendered output safe.
 - [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/) for PDF export.
-- Dustebin (or any compatible paste backend with `/api/pastes`) for storing shared documents.
+- Dustebin (or any compatible paste backend with `/api/pastes`) for temporarily storing shared documents.
 - Browser-native `CompressionStream` for compact local URL fallbacks.
 
 ## Why another markdown editor?
 
-Because most editors either look like a code playground or a publishing pipeline. FlatWrite sits somewhere nicer: close enough to the raw text that you still control it, but polished enough that you actually want to read and share what you wrote.
+Because most editors either look like a code playground or a publishing pipeline. FlatWrite sits somewhere sweeter: close enough to the raw text that you still control it, but polished enough that you actually enjoy reading and sharing what you create.
 
 ---
 
