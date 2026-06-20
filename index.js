@@ -45,7 +45,7 @@ async function handleShare(req, res) {
     const up = await fetch(BASE + "/api/pastes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: body, language: "markdown", expiration: "30d" }),
+      body: JSON.stringify({ content: body, language: "markdown", expiration: "7d" }),
     });
     if (!up.ok) return json(res, 502, { error: "upstream_error" });
     const data = await up.json();

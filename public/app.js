@@ -802,7 +802,7 @@
 
       var shareUrl = window.location.origin + window.location.pathname + "?s=" + data.key;
       await navigator.clipboard.writeText(shareUrl);
-      showToast("Link copied \u2014 available for up to 30 days");
+      showToast("Link copied \u2014 available for up to 7 days");
     } catch (e) {
       showToast("Could not create a share link. Please try again.");
     } finally {
