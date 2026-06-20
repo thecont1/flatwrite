@@ -1,4 +1,5 @@
 {
+  "buildCommand": "",
   "outputDirectory": "public",
   "headers": [
     {
