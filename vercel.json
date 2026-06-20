@@ -1,5 +1,8 @@
 {
   "outputDirectory": "public",
+  "functions": {
+    "api/**/*.js": {}
+  },
   "headers": [
     {
       "source": "/((?!api/).*)\\.js$",
