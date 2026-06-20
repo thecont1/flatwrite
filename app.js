@@ -1960,14 +1960,18 @@
     var renderedHTML = sanitizeHTML(rawHTML);
     var fw = FRAMEWORKS[currentFramework];
 
-    /* ── Apply framework style function (needs document.createElement for Oat) ── */
+    /* ── Apply framework style function on a detached document ───────────── */
+    /* Passing the live `document` would let frameworks rewrite host-page
+       elements (e.g. Spectre turns every <button> into .btn.btn-primary).
+       A detached document created via DOMParser keeps the blast radius
+       contained to the export markup. */
     if (fw && typeof fw.style === "function") {
-      var tmp = document.createElement("div");
-      tmp.innerHTML = renderedHTML;
-      document.body.appendChild(tmp);
-      fw.style(document);
-      renderedHTML = tmp.innerHTML;
-      document.body.removeChild(tmp);
+      var parser = new DOMParser();
+      var tmpDoc = parser.parseFromString(
+        "<html><body>" + renderedHTML + "</body></html>", "text/html"
+      );
+      fw.style(tmpDoc);
+      renderedHTML = tmpDoc.body.innerHTML;
     }
 
     /* ── Same scaling values as renderPreview() ──────────────────────────── */

@@ -134,8 +134,11 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toContain("JetBrains Mono");
   });
 
-  test("applies framework style function via document", () => {
-    expect(body).toContain("fw.style(document)");
+  test("applies framework style function on a detached document", () => {
+    expect(body).toContain("fw.style(tmpDoc)");
+    expect(body).toContain("DOMParser");
+    // Must NOT pass the live document — that rewrites host-page elements
+    expect(body).not.toMatch(/fw\.style\(document\)/);
   });
 
   test("cleans up injected <style> on success and failure", () => {
