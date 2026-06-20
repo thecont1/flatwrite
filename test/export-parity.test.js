@@ -152,10 +152,8 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
-  test("container is opacity:0 on real DOM, visible in onclone clone", () => {
-    expect(body).toContain("opacity");
-    expect(body).toContain("onclone");
-    expect(body).toContain('style.opacity = "1"');
+  test("container is NOT appended to body (html2pdf clones it internally)", () => {
+    expect(body).not.toContain("document.body.appendChild(container)");
   });
 
   for (const prop of ["table-layout", "border-left", "list-style-position",
