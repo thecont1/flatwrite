@@ -2,9 +2,7 @@
   "name": "flatwrite",
   "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": ">=18"
-  },
+  "main": "index.js",
   "scripts": {
     "dev": "bunx serve .",
     "start": "node public/server.js",
