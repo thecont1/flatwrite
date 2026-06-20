@@ -1402,6 +1402,8 @@
         previewWrap.addEventListener("animationend", function handler() {
           previewWrap.classList.remove("preview-enter");
           previewWrap.removeEventListener("animationend", handler);
+          /* Re-align after the animated preview settles to its final position. */
+          syncExportActionsTop();
         });
       }
 

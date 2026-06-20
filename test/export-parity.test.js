@@ -104,6 +104,15 @@ describe("syncExportActionsTop", () => {
   });
 });
 
+describe("setMode tab alignment", () => {
+  const body = fnBody("setMode");
+
+  test("re-syncs export tab after preview-enter animation ends", () => {
+    expect(body).toContain("animationend");
+    expect(body).toContain("syncExportActionsTop");
+  });
+});
+
 describe("exportHTML CSS parity with renderPreview", () => {
   const body = fnBody("exportHTML");
 
