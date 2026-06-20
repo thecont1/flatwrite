@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-const SRC = readFileSync(resolve(import.meta.dir, "..", "app.js"), "utf-8");
+const SRC = readFileSync(resolve(import.meta.dir, "..", "public", "app.js"), "utf-8");
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 

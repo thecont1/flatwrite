@@ -1,6 +1,5 @@
 {
-  "buildCommand": "",
-  "outputDirectory": ".",
+  "outputDirectory": "public",
   "headers": [
     {
       "source": "/((?!api/).*)\\.js$",
