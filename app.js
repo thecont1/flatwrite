@@ -2026,6 +2026,11 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
+    /* Keep the container out of the viewport while html2pdf renders it so
+       the export doesn't flash behind the app. */
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    container.style.top = "-9999px";
     document.body.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */

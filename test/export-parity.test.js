@@ -146,6 +146,11 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
+  test("keeps the export container off-screen while rendering", () => {
+    expect(body).toContain("container.style.position");
+    expect(body).toContain('"-9999px"');
+  });
+
   for (const prop of ["table-layout", "border-left", "list-style-position",
                        "overflow-wrap", "white-space", "overflow-x"]) {
     test(`includes ${prop} (missing in old bare-bones export)`, () => {
