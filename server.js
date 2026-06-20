@@ -14,6 +14,18 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
   ".md": "text/markdown",
+  ".woff2": "font/woff2",
+};
+
+const CACHE_HEADERS = {
+  ".css": "public, max-age=31536000, immutable",
+  ".js": "public, max-age=31536000, immutable",
+  ".woff2": "public, max-age=31536000, immutable",
+  ".png": "public, max-age=31536000, immutable",
+  ".jpg": "public, max-age=31536000, immutable",
+  ".svg": "public, max-age=31536000, immutable",
+  ".ico": "public, max-age=31536000, immutable",
+  ".html": "no-cache",
 };
 
 const server = http.createServer((req, res) => {
@@ -33,7 +45,10 @@ const server = http.createServer((req, res) => {
       res.end("Not found");
       return;
     }
-    res.writeHead(200, { "Content-Type": contentType });
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": CACHE_HEADERS[ext] || "no-cache",
+    });
     res.end(data);
   });
 });
