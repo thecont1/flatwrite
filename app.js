@@ -534,18 +534,24 @@
      ========================================================================== */
 
   function syncExportActionsTop() {
-    if (!exportActions || !mainPanelWrapper || !editorWrap || !previewWrap) return;
+    if (!exportActions || !mainPanelWrapper) return;
     /* On mobile (<760px) the export actions are inline — clear any desktop alignment */
     if (window.innerWidth < 760) {
       exportActions.style.top = "";
       return;
     }
-    /* Anchor to the visible content area (editor in Edit, preview in View/Read)
-       so the tab stays aligned with the textarea box in both modes. */
-    var contentWrap = editorWrap.classList.contains("hidden") ? previewWrap : editorWrap;
-    var contentRect = contentWrap.getBoundingClientRect();
-    var wrapperRect = mainPanelWrapper.getBoundingClientRect();
-    exportActions.style.top = (contentRect.top - wrapperRect.top) + "px";
+    /* The visible content area (editor in Edit, preview in View/Read) sits
+       directly below the toolbar inside .main-inner. The toolbar isn't
+       animated, so measuring it avoids the preview-enter transform that was
+       causing the tab to start slightly above and then jump. */
+    var toolbar   = document.querySelector(".toolbar");
+    var mainInner = document.querySelector(".main-inner");
+    if (!toolbar || !mainInner) return;
+    var toolbarRect   = toolbar.getBoundingClientRect();
+    var wrapperRect   = mainPanelWrapper.getBoundingClientRect();
+    var mainInnerStyle = getComputedStyle(mainInner);
+    var gap = parseFloat(mainInnerStyle.rowGap) || parseFloat(mainInnerStyle.gap) || 0;
+    exportActions.style.top = (toolbarRect.bottom - wrapperRect.top + gap) + "px";
   }
 
   /* ==========================================================================
@@ -1402,8 +1408,6 @@
         previewWrap.addEventListener("animationend", function handler() {
           previewWrap.classList.remove("preview-enter");
           previewWrap.removeEventListener("animationend", handler);
-          /* Re-align after the animated preview settles to its final position. */
-          syncExportActionsTop();
         });
       }
 

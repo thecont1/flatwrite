@@ -82,34 +82,26 @@ const PREVIEW_CSS_PROPS = [
 describe("syncExportActionsTop", () => {
   const body = fnBody("syncExportActionsTop");
 
-  test("anchors to the visible content area, not .main-inner", () => {
-    expect(body).toContain("editorWrap");
-    expect(body).toContain("previewWrap");
-    expect(body).not.toContain("mainInner");
+  test("computes position from the toolbar, not the animated content wrap", () => {
+    expect(body).toContain("toolbar");
+    expect(body).toContain("mainInner");
+    expect(body).not.toContain("editorWrap");
+    expect(body).not.toContain("previewWrap");
+  });
+
+  test("reads the flex rowGap from .main-inner", () => {
+    expect(body).toContain("getComputedStyle");
+    expect(body).toContain("rowGap");
+    expect(body).toContain(".gap");
+  });
+
+  test("does not use paddingTop from .main-inner", () => {
     expect(body).not.toContain("paddingTop");
-    expect(body).not.toContain("getComputedStyle");
-  });
-
-  test("chooses the visible content wrap based on the hidden class", () => {
-    expect(body).toContain('classList.contains("hidden")');
-  });
-
-  test("reads getBoundingClientRect from the chosen content wrap", () => {
-    expect(body).toMatch(/getBoundingClientRect\s*\(\s*\)/);
   });
 
   test("clears top on mobile viewports", () => {
     expect(body).toContain("innerWidth < 760");
     expect(body).toContain('style.top = ""');
-  });
-});
-
-describe("setMode tab alignment", () => {
-  const body = fnBody("setMode");
-
-  test("re-syncs export tab after preview-enter animation ends", () => {
-    expect(body).toContain("animationend");
-    expect(body).toContain("syncExportActionsTop");
   });
 });
 
