@@ -1,48 +1,37 @@
-/* GET /api/s?key=<key> — fetch raw text from a Pastebin paste */
+/* GET /api/s?key=<key> — fetch raw text from a Dustebin paste */
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { key } = req.query;
+  var key = req.query.key;
   if (!key || typeof key !== "string") {
     return res.status(400).json({ error: "missing_key" });
   }
 
-  const BASE = process.env.PASTEBIN_BASE_URL;
-  const KEY  = process.env.PASTEBIN_API_KEY;
+  var BASE = process.env.DUSTEBIN_BASE_URL;
 
-  if (!BASE || !KEY) {
+  if (!BASE) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
   try {
-    var params = new URLSearchParams();
-    params.append("api_dev_key", KEY);
-    params.append("api_option", "show_paste");
-    params.append("api_paste_key", key);
+    var upstream = await fetch(BASE + "/api/pastes/" + encodeURIComponent(key) + "/raw");
 
-    var upstream = await fetch(BASE + "/api/api_raw.php", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: params.toString(),
-    });
+    if (upstream.status === 404) {
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    if (upstream.status === 410) {
+      return res.status(404).json({ error: "not_found" });
+    }
 
     if (!upstream.ok) {
-      return res.status(404).json({ error: "not_found" });
+      return res.status(502).json({ error: "upstream_error" });
     }
 
     var content = await upstream.text();
-
-    /* Pastebin returns an error message for invalid/missing pastes */
-    if (content.indexOf("Bad API request") !== -1 ||
-        content.indexOf("invalid or expired") !== -1 ||
-        content.indexOf("not found") !== -1) {
-      return res.status(404).json({ error: "not_found" });
-    }
 
     /* Basic plain-text validation: reject binary content */
     var sample = content.substring(0, 1000);

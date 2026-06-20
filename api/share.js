@@ -1,14 +1,13 @@
-/* POST /api/share — create a new Pastebin paste and return its key */
+/* POST /api/share — create a new Dustebin paste and return its key */
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const BASE = process.env.PASTEBIN_BASE_URL;
-  const KEY  = process.env.PASTEBIN_API_KEY;
+  var BASE = process.env.DUSTEBIN_BASE_URL;
 
-  if (!BASE || !KEY) {
+  if (!BASE) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
@@ -30,37 +29,30 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    /* Build form-encoded body for Pastebin API */
-    var params = new URLSearchParams();
-    params.append("api_dev_key", KEY);
-    params.append("api_option", "paste");
-    params.append("api_paste_code", body);
-    params.append("api_paste_private", "2");   /* unlisted — not public */
-    params.append("api_paste_expire_date", "N"); /* never expires */
-    params.append("api_paste_name", "flatwrite");
-
-    var upstream = await fetch(BASE + "/api/api_paste.php", {
+    var upstream = await fetch(BASE + "/api/pastes", {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
       },
-      body: params.toString(),
+      body: JSON.stringify({
+        content: body,
+        language: "markdown",
+        expiration: "30d",
+      }),
     });
 
-    var text = await upstream.text();
-
-    /* Pastebin returns the paste URL on success, or an error message */
-    if (text.indexOf("pastebin.com/") === -1 || !upstream.ok) {
+    if (!upstream.ok) {
+      var errText = await upstream.text().catch(function () { return ""; });
       return res.status(502).json({ error: "upstream_error" });
     }
 
-    /* Extract the paste key from the URL (last path segment) */
-    var key = text.trim().split("/").pop();
-    if (!key) {
+    var data = await upstream.json();
+
+    if (!data || !data.id) {
       return res.status(502).json({ error: "upstream_error" });
     }
 
-    return res.status(200).json({ key: key });
+    return res.status(200).json({ key: data.id });
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
