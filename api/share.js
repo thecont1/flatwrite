@@ -12,10 +12,18 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
-  /* Read the raw text body */
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const body = Buffer.concat(chunks).toString("utf-8");
+  /* Read the raw text body — standard stream pattern for Vercel runtime */
+  let body = "";
+  try {
+    body = await new Promise(function (resolve, reject) {
+      let data = "";
+      req.on("data", function (chunk) { data += chunk; });
+      req.on("end", function () { resolve(data); });
+      req.on("error", function (err) { reject(err); });
+    });
+  } catch (e) {
+    return res.status(400).json({ error: "Failed to read request body" });
+  }
 
   if (!body) {
     return res.status(400).json({ error: "Empty content" });
@@ -28,7 +36,7 @@ export default async function handler(req, res) {
         "Content-Type": "text/plain",
         Authorization: "Bearer " + HASTEBIN_KEY,
       },
-      body,
+      body: body,
     });
 
     if (upstream.status === 413) {
