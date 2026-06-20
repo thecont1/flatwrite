@@ -545,15 +545,29 @@ body {
   min-height: 0;
 }
 
-/* ---------- Export actions ---------- */
+/* ---------- Export actions (tab bubble) ---------- */
 .export-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-5);
   position: absolute;
-  top: 60px;
-  right: -48px;
+  /* top: set dynamically by JS to align with textarea */
+  left: 100%;
+  /* Pull 1px left to cover the center pane's right border for a seamless join */
+  margin-left: -1px;
   z-index: 5;
+  /* Tab bubble — same glass surface as the center pane so it merges visually.
+     The fixed body gradient is sampled at the same viewport position, so the
+     blur produces a continuous look with the main panel. */
+  background: var(--surface-canvas);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-left: none;
+  border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
+  /* No separate shadow — the tab should read as part of the center pane. */
+  box-shadow: none;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
 }
 
 .mode-read .export-actions {
@@ -1712,12 +1726,20 @@ body {
   .export-actions {
     position: relative;
     top: auto;
+    left: auto;
     right: auto;
     flex-direction: row;
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-2) 0;
     z-index: 1;
+    /* Reset tab bubble styles on mobile */
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .export-icon svg {

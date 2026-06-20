@@ -514,6 +514,8 @@
   var modalCancelBtn    = document.getElementById("comp-modal-cancel");
   var modalCloseBtn     = document.getElementById("comp-modal-close");
   var btnShare          = document.getElementById("btn-share");
+  var exportActions     = document.getElementById("export-actions");
+  var mainPanelWrapper  = document.querySelector(".main-panel-wrapper");
 
   /* Load sidebar DOM refs */
   var btnLoadUrl        = document.getElementById("btn-load-url");
@@ -526,6 +528,22 @@
   var widthHandleLeft   = document.getElementById("width-handle-left");
   var widthHandleRight  = document.getElementById("width-handle-right");
   var widthDragOverlay  = document.getElementById("width-drag-overlay");
+
+  /* ==========================================================================
+     Tab bubble alignment — sync export-actions top with textarea
+     ========================================================================== */
+
+  function syncExportActionsTop() {
+    if (!exportActions || !editor || !mainPanelWrapper) return;
+    /* On mobile (<760px) the export actions are inline — clear any desktop alignment */
+    if (window.innerWidth < 760) {
+      exportActions.style.top = "";
+      return;
+    }
+    var editorRect = editor.getBoundingClientRect();
+    var wrapperRect = mainPanelWrapper.getBoundingClientRect();
+    exportActions.style.top = (editorRect.top - wrapperRect.top) + "px";
+  }
 
   /* ==========================================================================
      Markdown Loader
@@ -594,12 +612,14 @@
         buildFontDropdown();
         renderComponentGrid();
         bindEvents();
+        requestAnimationFrame(syncExportActionsTop);
       }).catch(function () {
         restoreFromStorage();
         initialEditorContent = editor.value;
         buildFontDropdown();
         renderComponentGrid();
         bindEvents();
+        requestAnimationFrame(syncExportActionsTop);
       });
     } else {
       restoreFromStorage();
@@ -608,6 +628,8 @@
       renderComponentGrid();
       bindEvents();
     }
+    /* Align tab bubble after first layout */
+    requestAnimationFrame(syncExportActionsTop);
   }
 
   /* ==========================================================================
@@ -845,6 +867,7 @@
     window.addEventListener("resize", function () {
       if (mode === "preview" || mode === "read") positionWidthHandles();
       checkToolbarOverflow();
+      syncExportActionsTop();
     });
 
     /* --- Toolbar scroll fade --- */
@@ -1394,6 +1417,8 @@
         }
       }
     }
+    /* Re-align tab bubble after mode switch (toolbar height may change) */
+    requestAnimationFrame(syncExportActionsTop);
   }
 
   function animateLogoToCenter(appShell) {
