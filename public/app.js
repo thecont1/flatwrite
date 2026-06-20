@@ -562,11 +562,30 @@
 
   function rewriteRelativeUrls(md) {
     if (!githubBaseUrl) return md;
+
+    function resolveAsset(src) {
+      if (/^https?:\/\//.test(src) || /^data:/.test(src)) return null;
+      try {
+        var resolved = new URL(src, githubBaseUrl).href;
+        if (resolved.indexOf("?") === -1) resolved += "?raw=true";
+        return resolved;
+      } catch (e) { return null; }
+    }
+
+    /* Markdown image syntax: ![alt](src) */
     md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (match, alt, src) {
-      if (/^https?:\/\//.test(src) || /^data:/.test(src)) return match;
-      var resolved = githubBaseUrl + src.replace(/^\//, "") + "?raw=true";
-      return "![" + alt + "](" + resolved + ")";
+      var r = resolveAsset(src);
+      return r ? "![" + alt + "](" + r + ")" : match;
     });
+
+    /* HTML img/video/source: <tag src="..."> and <tag src='...'> */
+    md = md.replace(/(<(?:img|video|source)\s[^>]*?)src=(["'])([^"']+)\2/gi,
+      function (match, prefix, quote, src) {
+        var r = resolveAsset(src);
+        return r ? prefix + "src=" + quote + r + quote : match;
+      }
+    );
+
     return md;
   }
 

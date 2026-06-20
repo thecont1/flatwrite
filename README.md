@@ -2,18 +2,18 @@
 
 Markdown is one of the greatest cross-platform information formats ever invented. Ironically, while it is easy to read, it is also somehow difficult to read.
 
-**FlatWrite** makes it easy — and actually pleasant — to work with markdown files. It renders your markdown in the most pleasing, customisable viewing format. From there, it is one quick step to becoming the markdown editor you reach for by default. And once the file looks and reads the way it should, you can export it as **HTML** or **PDF**, or publish it as a **shareable URL**.
+**FlatWrite** makes it easy — and actually pleasant — to work with markdown files. It renders your markdown in the most pleasing, customisable viewing format. From there, it is one quick step to becoming the markdown editor you reach for by default. And once the file looks and reads the way you love it, export it as **HTML** or **PDF**, or send it around as a **shareable URL**.
 
 > **Write once, style many worlds.**
 
 ## What it does
 
+- **Load** markdown from a URL or straight from your disk.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a choice of lightweight CSS frameworks.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
 - **Export** to `.md`, `.html`, or `.pdf` whenever you are ready.
 - **Share** your document as a real URL — the server stores the markdown and gives you a short link anyone can open.
-- **Load** markdown from a URL or straight from your disk.
 
 ## Share & publish
 
@@ -87,7 +87,7 @@ The test suite lives in `test/` and includes parity checks that make sure the ex
 
 ## The demo file
 
-The repo includes `demo-kashmir.md`, a travel itinerary that shows off components, cards, grids, and badges. Load it from disk to see how a markdown document can look like a small web page.
+The repo includes `demo-solar.md`, the README.md from another repo (a solar explorer project) that demonstrates how markdown can be used to create a professional-looking document for humans and an easily digestible one for agents.
 
 ## Tech stack
 
