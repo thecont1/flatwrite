@@ -2030,12 +2030,16 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
-    /* Keep the container out of the viewport while html2pdf renders it so
-       the export doesn't flash behind the app. */
+    /* Keep the container behind the main panel while html2pdf renders it.
+       Off-screen positioning makes html2pdf produce a blank PDF, so we
+       hide it behind the pane's own content instead. */
     container.style.position = "absolute";
-    container.style.left = "-9999px";
-    container.style.top = "-9999px";
-    document.body.appendChild(container);
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.width = "100%";
+    container.style.zIndex = "-1";
+    container.style.pointerEvents = "none";
+    mainPanelWrapper.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
     var ready = typeof html2pdf !== "undefined" ? Promise.resolve() : loadScript(html2pdfUrl);
@@ -2048,11 +2052,11 @@
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: { mode: ["avoid-all", "css", "legacy"] }
       }).from(container).outputPdf("blob").then(function (pdfBlob) {
-        document.body.removeChild(container);
+        if (container.parentNode) container.parentNode.removeChild(container);
         document.head.removeChild(styleEl);
         window.open(URL.createObjectURL(pdfBlob), "_blank");
       }).catch(function () {
-        if (container.parentNode) document.body.removeChild(container);
+        if (container.parentNode) container.parentNode.removeChild(container);
         if (styleEl.parentNode) document.head.removeChild(styleEl);
       });
     });
