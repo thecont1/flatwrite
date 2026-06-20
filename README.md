@@ -2,9 +2,7 @@
 
 Markdown is one of the greatest cross-platform information formats ever invented. Ironically, while it is easy to read, it is also somehow difficult to read.
 
-**FlatWrite** makes it easy — and actually pleasant — to work with markdown files. It renders your markdown in the most pleasing, customisable viewing format. From there, it is one quick step to becoming the markdown editor you reach for by default. And once the file looks and reads the way it should, you can export it as **HTML** or **PDF**.
-
-One of the cooler features of FlatWrite is the ability to pick from a variety of small UI frameworks. It is a good way to try out some innovative frameworks you may never have heard of.
+**FlatWrite** makes it easy — and actually pleasant — to work with markdown files. It renders your markdown in the most pleasing, customisable viewing format. From there, it is one quick step to becoming the markdown editor you reach for by default. And once the file looks and reads the way it should, you can export it as **HTML** or **PDF**, or publish it as a **shareable URL**.
 
 > **Write once, style many worlds.**
 
@@ -14,8 +12,16 @@ One of the cooler features of FlatWrite is the ability to pick from a variety of
 - **View** your rendered markdown with a choice of lightweight CSS frameworks.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
 - **Export** to `.md`, `.html`, or `.pdf` whenever you are ready.
-- **Share** your document as a URL — the entire state is compressed into the hash.
+- **Share** your document as a real URL — the server stores the markdown and gives you a short link anyone can open.
 - **Load** markdown from a URL or straight from your disk.
+
+## Share & publish
+
+The share button is the jewel in the crown. Instead of stuffing a long document into a URL hash, FlatWrite saves the markdown to a paste bin backend and returns a short, readable link. The recipient can open the link and immediately see the document in the same preview style you chose.
+
+- Links are short enough to paste into a chat, email, or tweet.
+- The document is stored server-side, so it works with large files and survives URL-length limits.
+- Opening a shared link loads the exact content, ready to read, edit, or re-export.
 
 ## UI frameworks
 
@@ -45,19 +51,39 @@ Some frameworks expose small UI components — cards, forms, badges, alerts, ava
 
 ## How to run it
 
-FlatWrite is a plain HTML/CSS/JS app. There is no build step.
+FlatWrite is now a small Node.js/Vercel app. The frontend lives in `public/`, and the share feature uses the API routes in `api/`.
 
 ```bash
-bunx serve .
+# Start the local server (serves public/ at the root)
+bun run start
+# or
+node public/server.js
 ```
 
-Or, if you prefer Node:
+Then open the printed URL in a browser.
+
+The local server only serves the static frontend. When deployed to Vercel, `index.js` and the `api/` routes handle the share backend. To use the **Share** feature locally, run the API routes through the Vercel CLI (`vercel dev`) or set the `DUSTEBIN_BASE_URL` environment variable and wire the API endpoints into your local setup.
 
 ```bash
-node server.js
+# On Vercel, the share API is live automatically
+DUSTEBIN_BASE_URL=https://your-dustebin-instance.example.com vercel dev
 ```
 
-Open the printed URL in a browser and start writing.
+## Tests
+
+```bash
+bun test
+```
+
+The test suite lives in `test/` and includes parity checks that make sure the exported HTML and PDF styles stay in sync with the live preview.
+
+## Project structure
+
+- `public/` — static app files (`index.html`, `app.js`, `styles.css`, fonts, etc.).
+- `api/` — Vercel serverless API routes (`share.js`, `s.js`) for creating and reading shared links.
+- `index.js` — Vercel root request handler (static files + API fallbacks).
+- `public/server.js` — tiny static file server for local development.
+- `demo-kashmir.md` — sample document that shows off components, cards, grids, and badges.
 
 ## The demo file
 
@@ -68,7 +94,8 @@ The repo includes `demo-kashmir.md`, a travel itinerary that shows off component
 - [marked.js](https://marked.js.org/) for Markdown → HTML.
 - [DOMPurify](https://github.com/cure53/DOMPurify) to keep the rendered output safe.
 - [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/) for PDF export.
-- Browser-native `CompressionStream` for compact URL sharing.
+- Dustebin (or any compatible paste backend with `/api/pastes`) for storing shared documents.
+- Browser-native `CompressionStream` for compact local URL fallbacks.
 
 ## Why another markdown editor?
 
