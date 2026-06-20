@@ -1,24 +1,24 @@
 /* POST /api/share — create a new Dustebin paste and return its key */
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  var BASE = process.env.DUSTEBIN_BASE_URL;
+  const BASE = process.env.DUSTEBIN_BASE_URL;
 
   if (!BASE) {
     return res.status(500).json({ error: "Server configuration error" });
   }
 
   /* Read the raw text body (markdown from the client) */
-  var body = "";
+  let body = "";
   try {
-    body = await new Promise(function (resolve, reject) {
-      var data = "";
-      req.on("data", function (chunk) { data += chunk; });
-      req.on("end", function () { resolve(data); });
-      req.on("error", function (err) { reject(err); });
+    body = await new Promise((resolve, reject) => {
+      let data = "";
+      req.on("data", (chunk) => { data += chunk; });
+      req.on("end", () => { resolve(data); });
+      req.on("error", (err) => { reject(err); });
     });
   } catch (e) {
     return res.status(400).json({ error: "Failed to read request body" });
@@ -29,7 +29,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    var upstream = await fetch(BASE + "/api/pastes", {
+    const upstream = await fetch(BASE + "/api/pastes", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -42,11 +42,10 @@ module.exports = async function handler(req, res) {
     });
 
     if (!upstream.ok) {
-      var errText = await upstream.text().catch(function () { return ""; });
       return res.status(502).json({ error: "upstream_error" });
     }
 
-    var data = await upstream.json();
+    const data = await upstream.json();
 
     if (!data || !data.id) {
       return res.status(502).json({ error: "upstream_error" });
@@ -56,4 +55,4 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     return res.status(502).json({ error: "upstream_error" });
   }
-};
+}
