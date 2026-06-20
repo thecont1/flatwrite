@@ -453,6 +453,16 @@
     + "&family=Lora:wght@400;500;600;700"
     + "&display=swap";
 
+  /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
+  function loadComfortFonts() {
+    if (loadComfortFonts.loaded) return;
+    loadComfortFonts.loaded = true;
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = FONTS_URL;
+    document.head.appendChild(link);
+  }
+
   /* ==========================================================================
      State
      ========================================================================== */
@@ -889,6 +899,7 @@
       var isOpen = !fontPickerList.classList.contains("hidden");
       fontPickerList.classList.add("hidden");
       if (!isOpen) {
+        loadComfortFonts();
         var zoom = zoomStep / 100;
         var rect = fontPicker.getBoundingClientRect();
         fontPickerList.style.left = (rect.left / zoom) + "px";
