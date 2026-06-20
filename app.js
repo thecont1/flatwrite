@@ -534,15 +534,18 @@
      ========================================================================== */
 
   function syncExportActionsTop() {
-    if (!exportActions || !editor || !mainPanelWrapper) return;
+    if (!exportActions || !mainPanelWrapper || !editorWrap || !previewWrap) return;
     /* On mobile (<760px) the export actions are inline — clear any desktop alignment */
     if (window.innerWidth < 760) {
       exportActions.style.top = "";
       return;
     }
-    var editorRect = editor.getBoundingClientRect();
+    /* Anchor to the visible content area (editor in Edit, preview in View/Read)
+       so the tab stays aligned with the textarea box in both modes. */
+    var contentWrap = editorWrap.classList.contains("hidden") ? previewWrap : editorWrap;
+    var contentRect = contentWrap.getBoundingClientRect();
     var wrapperRect = mainPanelWrapper.getBoundingClientRect();
-    exportActions.style.top = (editorRect.top - wrapperRect.top) + "px";
+    exportActions.style.top = (contentRect.top - wrapperRect.top) + "px";
   }
 
   /* ==========================================================================
