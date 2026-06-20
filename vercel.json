@@ -1,4 +1,5 @@
 {
+  "buildCommand": "echo ok",
   "outputDirectory": "public",
   "headers": [
     {
