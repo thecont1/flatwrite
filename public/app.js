@@ -56,6 +56,7 @@
   function saveToIDB() {
     var record = {
       markdown:   editor.value,
+      mode:       mode,
       framework:  currentFramework,
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
@@ -611,6 +612,8 @@
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
+      /* Apply restored mode (may differ from initial "edit") */
+      if (mode !== "edit") setMode(mode);
     }
 
     if (shareKey) {
@@ -720,6 +723,10 @@
       if (!record) return;
 
       if (record.markdown !== undefined) editor.value = record.markdown;
+
+      if (record.mode === "edit" || record.mode === "preview" || record.mode === "read") {
+        mode = record.mode;
+      }
 
       if (record.framework && FRAMEWORKS[record.framework]) {
         currentFramework = record.framework;
@@ -859,6 +866,37 @@
             setTimeout(closeDrawer, 150);
           }
         }
+      });
+    }
+
+    /* --- Logo reset --- */
+    var appTitle = document.querySelector(".app-title");
+    if (appTitle) {
+      appTitle.style.cursor = "pointer";
+      appTitle.title = "Reset to blank document";
+      appTitle.addEventListener("click", function () {
+        if (!confirm("This will clear your current document and reset all settings. Continue?")) return;
+        editor.value = "";
+        initialEditorContent = "";
+        currentFramework = "spectre";
+        frameworkDropdown.value = "spectre";
+        sizeStep = 0;
+        weightStep = 0;
+        lineStep = 0;
+        comfortFont = "Inter";
+        fontPickerLabel.textContent = "Inter";
+        zoomStep = 100;
+        zoomSlider.value = 100;
+        zoomValue.textContent = "100%";
+        applyZoom();
+        contentWidth = 780;
+        applyContentWidth();
+        suppressAutosave = false;
+        mode = "edit";
+        setMode("edit");
+        renderComponentGrid();
+        scheduleAutosave();
+        showToast("Document cleared");
       });
     }
 
@@ -1498,6 +1536,7 @@
     }
     /* Re-align tab bubble after mode switch (toolbar height may change) */
     requestAnimationFrame(syncExportActionsTop);
+    scheduleAutosave();
   }
 
   function animateLogoToCenter(appShell) {
