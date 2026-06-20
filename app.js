@@ -2030,16 +2030,13 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
-    /* Keep the container out of the viewport while html2pdf renders it.
-       It is made viewport-sized so html2pdf still lays out and captures the
-       content; the negative left position keeps it invisible. */
-    container.style.position = "fixed";
-    container.style.left = "-9999px";
+    /* Keep the container invisible while html2pdf renders it.
+       visibility:hidden hides it from the user but preserves layout,
+       so html2canvas can still measure and capture the content. */
+    container.style.visibility = "hidden";
+    container.style.position = "absolute";
+    container.style.left = "0";
     container.style.top = "0";
-    container.style.width = "100%";
-    container.style.height = "100%";
-    container.style.zIndex = "-9999";
-    container.style.pointerEvents = "none";
     document.body.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
