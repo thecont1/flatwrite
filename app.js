@@ -1380,6 +1380,16 @@
 
       previewWrap.classList.remove("hidden");
 
+      /* Re-apply scroll after the iframe is visible; the initial render while
+         hidden can mis-measure window.innerHeight, causing a jump to the end. */
+      requestAnimationFrame(function () {
+        setTimeout(function () {
+          if (previewFrame.contentWindow) {
+            previewFrame.contentWindow.postMessage({ type: "setScroll", ratio: lastScrollRatio }, "*");
+          }
+        }, 50);
+      });
+
       /* Smooth fade-in from top when entering from edit */
       if (prevMode === "edit") {
         previewWrap.classList.remove("preview-enter");
