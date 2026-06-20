@@ -2030,6 +2030,11 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
+    /* Invisible to the user — onclone flips it to visible in the clone
+       that html2canvas actually rasterises. */
+    container.style.opacity = "0";
+    container.style.position = "fixed";
+    container.style.pointerEvents = "none";
     document.body.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
@@ -2039,7 +2044,18 @@
         margin: [12, 12, 12, 12],
         filename: "flatwrite-" + timestamp() + ".pdf",
         image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          /* The clone is a separate document the user never sees —
+             make the container visible there so html2canvas captures
+             real content. */
+          onclone: function (clonedDoc) {
+            var el = clonedDoc.querySelector(".fw-pdf-export");
+            if (el) el.style.opacity = "1";
+          }
+        },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: { mode: ["avoid-all", "css", "legacy"] }
       }).from(container).outputPdf("blob").then(function (pdfBlob) {

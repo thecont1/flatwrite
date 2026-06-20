@@ -152,8 +152,10 @@ describe("exportPDF CSS parity with renderPreview", () => {
     expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
   });
 
-  test("appends container to body for html2canvas capture", () => {
-    expect(body).toContain("document.body.appendChild(container)");
+  test("container is opacity:0 on real DOM, visible in onclone clone", () => {
+    expect(body).toContain("opacity");
+    expect(body).toContain("onclone");
+    expect(body).toContain('style.opacity = "1"');
   });
 
   for (const prop of ["table-layout", "border-left", "list-style-position",
