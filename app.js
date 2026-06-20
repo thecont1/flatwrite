@@ -2030,16 +2030,17 @@
     var container = document.createElement("div");
     container.className = "fw-pdf-export";
     container.innerHTML = renderedHTML;
-    /* Keep the container behind the main panel while html2pdf renders it.
-       Off-screen positioning makes html2pdf produce a blank PDF, so we
-       hide it behind the pane's own content instead. */
-    container.style.position = "absolute";
+    /* Keep the container out of the viewport while html2pdf renders it.
+       It is made viewport-sized so html2pdf still lays out and captures the
+       content; the negative left position keeps it invisible. */
+    container.style.position = "fixed";
+    container.style.left = "-9999px";
     container.style.top = "0";
-    container.style.left = "0";
     container.style.width = "100%";
-    container.style.zIndex = "-1";
+    container.style.height = "100%";
+    container.style.zIndex = "-9999";
     container.style.pointerEvents = "none";
-    mainPanelWrapper.appendChild(container);
+    document.body.appendChild(container);
 
     /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
     var ready = typeof html2pdf !== "undefined" ? Promise.resolve() : loadScript(html2pdfUrl);
