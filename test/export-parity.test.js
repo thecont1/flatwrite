@@ -169,6 +169,10 @@ describe("preview ↔ export CSS selector inventory", () => {
    * Every CSS selector in renderPreview's <style> block should also appear
    * in exportHTML and exportPDF — otherwise a rule added to the preview
    * will be missing from the exported file.
+   *
+   * Since v2, all .fw-* selectors live in the FALLBACK_CSS constant
+   * which is referenced from all three functions. We check the full
+   * source for .fw-* selectors and the function bodies for standard ones.
    */
   const exportBody = fnBody("exportHTML");
   const pdfBody    = fnBody("exportPDF");
@@ -185,6 +189,10 @@ describe("preview ↔ export CSS selector inventory", () => {
     "li > ul", "li > ol",
     "li::marker",
     "p", "br",
+  ];
+
+  /* .fw-* selectors live in FALLBACK_CSS; verify they exist in the source */
+  const FW_SELECTORS = [
     ".fw-alert", ".fw-card", ".fw-card-header", ".fw-card-title",
     ".fw-card-body",
     ".fw-form label",
@@ -203,6 +211,16 @@ describe("preview ↔ export CSS selector inventory", () => {
       const scoped = ".fw-pdf-export " + sel;
       const bare   = sel;
       expect(pdfBody.includes(scoped) || pdfBody.includes(bare)).toBe(true);
+    });
+  }
+
+  for (const sel of FW_SELECTORS) {
+    test(`"${sel}" present in FALLBACK_CSS (shared by all exports)`, () => {
+      expect(SRC).toContain(sel);
+      /* Confirm exportHTML references FALLBACK_CSS */
+      expect(exportBody).toContain("FALLBACK_CSS");
+      /* Confirm exportPDF references FALLBACK_CSS */
+      expect(pdfBody).toContain("FALLBACK_CSS");
     });
   }
 });

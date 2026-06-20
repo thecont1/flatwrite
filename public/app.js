@@ -127,6 +127,8 @@
       css: "https://unpkg.com/spectre.css/dist/spectre.min.css",
       js: null,
       category: "component-rich",
+      accentColor: "#6a4fa3",
+      accentLabel: "Spectre",
       style: function (doc) {
         doc.querySelectorAll("button").forEach(function (b) { b.className = "btn btn-primary"; });
         doc.querySelectorAll(".fw-form").forEach(function (f) { f.classList.add("form-group"); });
@@ -151,6 +153,8 @@
       css: "https://poshui-components.netlify.app/css/main.css",
       js: "https://poshui-components.netlify.app/js/main.js",
       category: "component-rich",
+      accentColor: "#1a73e8",
+      accentLabel: "PoshUI",
       style: function (doc) {
         doc.querySelectorAll("button").forEach(function (b) { b.className = "btn btn-primary-bg"; });
         doc.querySelectorAll(".fw-form label").forEach(function (l) { l.classList.add("form-label"); });
@@ -174,6 +178,8 @@
       css: "https://unpkg.com/@knadh/oat/oat.min.css",
       js: "https://unpkg.com/@knadh/oat/oat.min.js",
       category: "semantic-first",
+      accentColor: "#2d6a4f",
+      accentLabel: "Oat",
       style: function (doc) {
         doc.querySelectorAll(".fw-card").forEach(function (c) { c.classList.add("card"); });
         doc.querySelectorAll(".fw-card-header").forEach(function (h) {
@@ -192,6 +198,8 @@
       css: "https://unpkg.com/@picocss/pico/css/pico.min.css",
       js: null,
       category: "semantic-first",
+      accentColor: "#0160d2",
+      accentLabel: "Pico",
       style: function (doc) {
         doc.querySelectorAll(".fw-alert").forEach(function (a) { a.setAttribute("role", "alert"); });
         doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.classList.add("badge"); });
@@ -205,6 +213,8 @@
       css: "https://unpkg.com/milligram/dist/milligram.min.css",
       js: null,
       category: "class-based",
+      accentColor: "#9b4dca",
+      accentLabel: "Milligram",
       style: function (doc) {
         doc.querySelectorAll("button").forEach(function (b) { b.classList.add("button"); });
         doc.querySelectorAll(".fw-card").forEach(function (c) { c.style.padding = "1.5rem"; c.style.borderRadius = "0.4rem"; c.style.border = "1px solid #e0e0e0"; });
@@ -219,6 +229,8 @@
       css: "https://unpkg.com/chota/dist/chota.min.css",
       js: null,
       category: "class-based",
+      accentColor: "#14854f",
+      accentLabel: "Chota",
       style: function (doc) {
         doc.querySelectorAll("button").forEach(function (b) { b.classList.add("btn", "primary"); });
         doc.querySelectorAll(".fw-form input[type=text], .fw-form input[type=email], .fw-form textarea").forEach(function (el) { el.classList.add("input"); });
@@ -235,6 +247,8 @@
       css: "https://unpkg.com/simpledotcss/simple.min.css",
       js: null,
       category: "semantic-first",
+      accentColor: "#5a3e7a",
+      accentLabel: "Simple",
       style: function (doc) {
         doc.querySelectorAll(".fw-alert").forEach(function (a) { a.setAttribute("role", "alert"); a.style.borderLeft = "3px solid #666"; });
         doc.querySelectorAll(".fw-chip").forEach(function (c) { c.style.display = "inline-block"; c.style.padding = "0.2em 0.6em"; c.style.borderRadius = "1em"; c.style.background = "#eee"; c.style.margin = "0.2rem"; });
@@ -246,16 +260,78 @@
   };
 
   /* ==========================================================================
+     Universal Fallback CSS — .fw-* classes are the lingua franca.
+     Every component renders with these base styles; framework adapters
+     ADD native classes without removing fw-* classes. Framework CSS wins
+     when present; fallback wins otherwise; nothing is invisible.
+     ========================================================================== */
+
+  var FALLBACK_CSS =
+    /* Alerts */
+    '.fw-alert { padding:.8rem 1rem; border-radius:6px; border-left:4px solid #888; background:#f6f6f6; margin:.6rem 0; }'
+    + '.fw-alert-success { border-color:#2e7d32; background:#f0faf0; }'
+    + '.fw-alert-warning { border-color:#e65100; background:#fff8f0; }'
+    + '.fw-alert-error { border-color:#c62828; background:#fff0f0; }'
+    /* Badges */
+    + '.fw-badge-primary { display:inline-block; padding:.2em .6em; border-radius:4px; background:#6a4fa3; color:#fff; font-size:.85em; }'
+    + '.fw-badge-secondary { display:inline-block; padding:.2em .6em; border-radius:4px; background:#888; color:#fff; font-size:.85em; }'
+    /* Chips */
+    + '.fw-chip { display:inline-block; padding:.25em .75em; border-radius:2em; background:#e8e0f0; color:#4a3a6a; font-size:.88em; margin:.15rem; }'
+    /* Card */
+    + '.fw-card { border:1px solid #ddd; border-radius:8px; margin:1rem 0; overflow:hidden; }'
+    + '.fw-card-header { padding:1rem 1.2rem .5rem; border-bottom:1px solid #eee; }'
+    + '.fw-card-title { font-weight:700; font-size:1.05em; }'
+    + '.fw-card-body { padding:.6rem 1.2rem 1rem; }'
+    /* Hero */
+    + '.fw-hero { padding:3rem 2rem; text-align:center; background:linear-gradient(135deg,#f5f0ff,#e8f4ff); border-radius:10px; margin:1.5rem 0; }'
+    /* Avatar */
+    + '.fw-avatar img { border-radius:50%; width:60px; height:60px; object-fit:cover; }'
+    /* Panel */
+    + '.fw-panel { border:1px solid #ddd; border-radius:8px; margin:1rem 0; }'
+    + '.fw-panel-header { background:#f5f5f5; padding:.8rem 1.2rem; font-weight:700; border-bottom:1px solid #ddd; }'
+    + '.fw-panel-body { padding:.8rem 1.2rem; }'
+    /* Tabs */
+    + '.fw-tabs { border-bottom:2px solid #ddd; margin-bottom:1rem; }'
+    + '.fw-tabs button { padding:.5rem 1rem; border:none; background:none; cursor:pointer; font-weight:600; color:#888; border-bottom:2px solid transparent; margin-bottom:-2px; }'
+    + '.fw-tabs button.active { color:#6a4fa3; border-bottom-color:#6a4fa3; }'
+    /* Form */
+    + '.fw-form label { display:block; margin:.8rem 0 .3rem; font-weight:600; }'
+    + '.fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display:block; width:100%; padding:.5rem; border:1px solid #ccc; border-radius:4px; font-size:.95em; }'
+    + '.fw-form button { margin-top:1rem; }'
+    /* List */
+    + '.fw-list { margin-left:1.5rem; }'
+    + '.fw-list li { margin-bottom:0.3rem; }';
+
+  /* ==========================================================================
      Component catalogue — all 15 original components
      Each component: id, emoji, label, support map, per-framework snippets.
-     support[frameworkKey] = true if component should be clickable.
+     snippets.default is the canonical fallback HTML used when a framework
+     has no specific snippet. Every component always renders.
      ========================================================================== */
+
+  var DEFAULT_SNIPPETS = {
+    accordion: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
+    alert: '<div class="fw-alert fw-alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
+    avatar: '<div class="fw-avatar" style="display:inline-block;margin:0.5rem 0">\n  <img src="https://i.pravatar.cc/150" alt="avatar" width="60" height="60" />\n</div>',
+    badge: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
+    button: '<button>Default</button>\n<button>Confirm</button>',
+    card: '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">Card Title</div>\n  </div>\n  <div class="fw-card-body">\n    <p>Card content goes here.</p>\n  </div>\n</div>',
+    chip: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
+    grid: '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">\n  <div><p>Column 1</p></div>\n  <div><p>Column 2</p></div>\n</div>',
+    hero: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>',
+    image: '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />',
+    list: '<ul class="fw-list">\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
+    panel: '<div class="fw-panel">\n  <div class="fw-panel-header">Panel Title</div>\n  <div class="fw-panel-body">\n    <p>Panel content goes here.</p>\n  </div>\n</div>',
+    table: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
+    tabs: '<div class="fw-tabs">\n  <button class="active">Tab 1</button>\n  <button>Tab 2</button>\n  <button>Tab 3</button>\n</div>\n<p>Tab 1 content goes here.</p>'
+  };
 
   var COMPONENTS = [
     {
       id: "accordion", emoji: "\u23f1", label: "Accordion",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: false, chota: false, simple: true },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.accordion,
         poshui: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
         oat: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
         spectre: '<div class="accordion">\n  <input type="checkbox" id="acc-1" hidden />\n  <label class="accordion-header" for="acc-1">\n    <i class="icon icon-arrow-right mr-1"></i> Click to expand\n  </label>\n  <div class="accordion-body">\n    <p>Hidden content goes here.</p>\n  </div>\n</div>',
@@ -269,6 +345,7 @@
       id: "alert", emoji: "\u26a0", label: "Alert",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.alert,
         poshui: '<div class="fw-alert fw-alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
         oat: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>',
         spectre: '<div class="fw-alert fw-alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
@@ -280,21 +357,23 @@
     },
     {
       id: "avatar", emoji: "\ud83d\udc64", label: "Avatar",
-      support: { spectre: true, poshui: true, oat: false, pico: false, milligram: false, chota: false, simple: false },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.avatar,
         poshui: '<div class="fw-avatar" style="display:inline-block; margin:0.5rem 0">\n  <img src="https://i.pravatar.cc/150" alt="avatar" width="60" height="60" style="border-radius:50%" />\n</div>',
-        oat: '',
+        oat: DEFAULT_SNIPPETS.avatar,
         spectre: '<div class="fw-avatar">\n  <img src="https://i.pravatar.cc/150" alt="avatar" width="60" height="60" style="border-radius:50%" />\n</div>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        pico: DEFAULT_SNIPPETS.avatar,
+        milligram: DEFAULT_SNIPPETS.avatar,
+        chota: DEFAULT_SNIPPETS.avatar,
+        simple: DEFAULT_SNIPPETS.avatar
       }
     },
     {
       id: "badge", emoji: "\ud83c\udff7", label: "Badge",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.badge,
         poshui: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
         oat: '<span class="fw-badge-primary">Default</span> <span class="fw-badge-secondary">Secondary</span>',
         spectre: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
@@ -308,6 +387,7 @@
       id: "button", emoji: "\ud83d\udd33", label: "Button",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.button,
         poshui: '<button class="btn btn-primary-bg">Primary</button>\n<button class="btn btn-secondary-bg">Secondary</button>',
         oat: '<button>Default</button>\n<button class="primary">Primary</button>',
         spectre: '<button class="btn btn-primary">Primary</button>\n<button class="btn">Default</button>',
@@ -321,6 +401,7 @@
       id: "card", emoji: "\ud83c\udccf", label: "Card",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.card,
         poshui: '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">Card Title</div>\n  </div>\n  <div class="fw-card-body">\n    <p>Card content goes here.</p>\n  </div>\n</div>',
         oat: '<article class="card">\n  <header>\n    <h3>Card Title</h3>\n  </header>\n  <p>Card content goes here.</p>\n</article>',
         spectre: '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">Card Title</div>\n  </div>\n  <div class="fw-card-body">Card content goes here.</div>\n</div>',
@@ -332,10 +413,11 @@
     },
     {
       id: "chip", emoji: "\ud83c\udfc5", label: "Chip",
-      support: { spectre: true, poshui: false, oat: false, pico: true, milligram: true, chota: true, simple: true },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
-        poshui: '',
-        oat: '',
+        default: DEFAULT_SNIPPETS.chip,
+        poshui: DEFAULT_SNIPPETS.chip,
+        oat: DEFAULT_SNIPPETS.chip,
         spectre: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
         pico: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
         milligram: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
@@ -347,6 +429,7 @@
       id: "grid", emoji: "\ud83d\udcd0", label: "Grid",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.grid,
         poshui: '<div class="grid grid-cols-2">\n  <div><p>Column 1</p></div>\n  <div><p>Column 2</p></div>\n</div>',
         oat: '<div class="container">\n  <div class="row">\n    <div class="col-6">Column 1</div>\n    <div class="col-6">Column 2</div>\n  </div>\n</div>',
         spectre: '<div class="columns">\n  <div class="column col-6">Column 1</div>\n  <div class="column col-6">Column 2</div>\n</div>',
@@ -358,14 +441,15 @@
     },
     {
       id: "hero", emoji: "\ud83e\uddb9", label: "Hero",
-      support: { spectre: true, poshui: false, oat: false, pico: true, milligram: false, chota: false, simple: true },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
-        poshui: '',
-        oat: '',
+        default: DEFAULT_SNIPPETS.hero,
+        poshui: DEFAULT_SNIPPETS.hero,
+        oat: DEFAULT_SNIPPETS.hero,
         spectre: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>',
         pico: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>',
-        milligram: '',
-        chota: '',
+        milligram: DEFAULT_SNIPPETS.hero,
+        chota: DEFAULT_SNIPPETS.hero,
         simple: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>'
       }
     },
@@ -373,6 +457,7 @@
       id: "image", emoji: "\ud83d\uddbc", label: "Image",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.image,
         poshui: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
         oat: '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />',
         spectre: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
@@ -386,6 +471,7 @@
       id: "list", emoji: "\ud83d\udccb", label: "List",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.list,
         poshui: '<ul class="fw-list">\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
         oat: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
         spectre: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
@@ -397,21 +483,23 @@
     },
     {
       id: "panel", emoji: "\ud83d\udce6", label: "Panel",
-      support: { spectre: true, poshui: false, oat: false, pico: false, milligram: false, chota: false, simple: false },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
-        poshui: '',
-        oat: '',
+        default: DEFAULT_SNIPPETS.panel,
+        poshui: DEFAULT_SNIPPETS.panel,
+        oat: DEFAULT_SNIPPETS.panel,
         spectre: '<div class="panel">\n  <div class="panel-header">\n    <div class="panel-title">Panel Title</div>\n  </div>\n  <div class="panel-body">\n    <p>Panel content goes here.</p>\n  </div>\n</div>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        pico: DEFAULT_SNIPPETS.panel,
+        milligram: DEFAULT_SNIPPETS.panel,
+        chota: DEFAULT_SNIPPETS.panel,
+        simple: DEFAULT_SNIPPETS.panel
       }
     },
     {
       id: "table", emoji: "\ud83d\udcca", label: "Table",
       support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
+        default: DEFAULT_SNIPPETS.table,
         poshui: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
         oat: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
         spectre: '<table class="table table-striped table-hover">\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
@@ -423,15 +511,16 @@
     },
     {
       id: "tabs", emoji: "\ud83d\udd00", label: "Tabs",
-      support: { spectre: true, poshui: false, oat: true, pico: false, milligram: false, chota: false, simple: false },
+      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
       snippets: {
-        poshui: '',
+        default: DEFAULT_SNIPPETS.tabs,
+        poshui: DEFAULT_SNIPPETS.tabs,
         oat: '<ot-tabs>\n  <div role="tablist">\n    <button role="tab">Tab 1</button>\n    <button role="tab">Tab 2</button>\n  </div>\n  <div role="tabpanel"><p>Tab 1 content</p></div>\n  <div role="tabpanel"><p>Tab 2 content</p></div>\n</ot-tabs>',
         spectre: '<ul class="tab">\n  <li class="tab-item active"><a href="#">Tab 1</a></li>\n  <li class="tab-item"><a href="#">Tab 2</a></li>\n  <li class="tab-item"><a href="#">Tab 3</a></li>\n</ul>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        pico: DEFAULT_SNIPPETS.tabs,
+        milligram: DEFAULT_SNIPPETS.tabs,
+        chota: DEFAULT_SNIPPETS.tabs,
+        simple: DEFAULT_SNIPPETS.tabs
       }
     }
   ];
@@ -500,6 +589,23 @@
   var activeModalComponent = null;
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
+
+  /* CSS Inline Cache — stores fetched framework CSS text keyed by framework key.
+     Once cached, renderPreview() and exportHTML() inline it as <style> instead
+     of a <link>, eliminating CDN round-trips from the sandboxed iframe. */
+  var fwCssCache = {};
+
+  function prefetchFrameworkCss(key) {
+    var fw = FRAMEWORKS[key];
+    if (!fw || !fw.css || fwCssCache[key]) return;
+    fetch(fw.css).then(function (r) { return r.text(); }).then(function (css) {
+      fwCssCache[key] = css;
+    }).catch(function () { /* silent — CDN may be unreachable; link fallback remains */ });
+  }
+
+  function prefetchAllFrameworkCss() {
+    Object.keys(FRAMEWORKS).forEach(function (key) { prefetchFrameworkCss(key); });
+  }
 
   /* ==========================================================================
      DOM references
@@ -657,11 +763,19 @@
     /* Mode B: shared link load (?s=<key>) */
     var params = new URLSearchParams(window.location.search);
     var shareKey = params.get("s");
+    var fwOverride = params.get("f");
+
+    /* ?f= param overrides framework without needing a share link */
+    if (fwOverride && FRAMEWORKS[fwOverride]) {
+      currentFramework = fwOverride;
+      frameworkDropdown.value = currentFramework;
+    }
 
     function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
       renderComponentGrid();
+      applyAccentTheme();
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
@@ -734,6 +848,7 @@
           applyZoom();
           applyContentWidth();
         }
+        renderComponentGrid();
 
         editor.setSelectionRange(0, 0);
         initialEditorContent = data.content;
@@ -984,6 +1099,7 @@
       currentFramework = frameworkDropdown.value;
       scheduleAutosave();
       renderComponentGrid();
+      applyAccentTheme();
       if (mode === "preview") renderPreview();
     });
 
@@ -1176,11 +1292,35 @@
       if (btn) applyMarkdownFormat(btn.dataset.md);
     });
 
+    /* Sidebar md-toolbar buttons use the same data-md mechanism */
+    var sidebarMdToolbar = document.querySelector(".sidebar-md-toolbar");
+    if (sidebarMdToolbar) {
+      sidebarMdToolbar.addEventListener("click", function (e) {
+        var btn = e.target.closest("[data-md]");
+        if (btn) applyMarkdownFormat(btn.dataset.md);
+      });
+    }
+
     modalInsertBtn.addEventListener("click", handleModalInsert);
     modalCancelBtn.addEventListener("click", closeComponentModal);
     modalCloseBtn.addEventListener("click", closeComponentModal);
 
     initModalDrag();
+
+    /* Framework pill buttons — switch framework from the toolbar */
+    var fwPillWrap = document.querySelector(".toolbar-framework-pill");
+    if (fwPillWrap) {
+      fwPillWrap.addEventListener("click", function (e) {
+        var pill = e.target.closest(".fw-pill");
+        if (!pill) return;
+        currentFramework = pill.dataset.fw;
+        frameworkDropdown.value = currentFramework;
+        scheduleAutosave();
+        renderComponentGrid();
+        applyAccentTheme();
+        if (mode === "preview") renderPreview();
+      });
+    }
 
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && !modalOverlay.classList.contains("hidden")) {
@@ -1286,6 +1426,22 @@
     document.querySelector(".app-shell").style.zoom = zoomStep / 100;
   }
 
+  /* Phase 4: Accent colour theming — tint editor border + toolbar accents */
+  function applyAccentTheme() {
+    var fw = FRAMEWORKS[currentFramework];
+    var appShell = document.querySelector(".app-shell");
+    if (fw && fw.accentColor) {
+      appShell.style.setProperty("--fw-accent", fw.accentColor);
+    } else {
+      appShell.style.removeProperty("--fw-accent");
+    }
+    /* Update framework pill active state */
+    var pills = document.querySelectorAll(".fw-pill");
+    pills.forEach(function (p) {
+      p.classList.toggle("active", p.dataset.fw === currentFramework);
+    });
+  }
+
   function applyContentWidth() {
     /* Update content width inside the iframe dynamically */
     if (previewFrame.contentWindow) {
@@ -1334,19 +1490,23 @@
 
   function renderComponentGrid() {
     componentsGrid.innerHTML = "";
+    var fwLabel = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
     COMPONENTS.forEach(function (comp) {
       var btn = document.createElement("button");
       btn.className = "comp-btn";
       btn.type = "button";
       btn.dataset.component = comp.id;
       btn.title = comp.label;
-      btn.textContent = comp.label;
+      btn.disabled = false;
 
-      var supported = comp.support[currentFramework];
-      if (!supported) {
-        btn.disabled = true;
-        btn.classList.add("comp-btn-disabled");
-        btn.title = comp.label + " (not supported by " + FRAMEWORKS[currentFramework].label + ")";
+      /* Determine if this framework has a native snippet (not just default) */
+      var snippet = comp.snippets[currentFramework];
+      var isNative = snippet && snippet !== comp.snippets.default;
+
+      /* Label: "Card" or "Card *" (asterisk = fallback mode) */
+      btn.textContent = isNative ? comp.label : comp.label + " \u00b7";
+      if (!isNative) {
+        btn.title = comp.label + " (rendered via fallback in " + fwLabel + ")";
       }
 
       componentsGrid.appendChild(btn);
@@ -1386,7 +1546,9 @@
       + '<link rel="preconnect" href="https://fonts.googleapis.com">'
       + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
       + '<link href="' + FONTS_URL + '" rel="stylesheet">'
-      + (fw.css ? '<link rel="stylesheet" href="' + fw.css + '">' : '')
+      + (fw && fwCssCache[currentFramework]
+        ? '<style>' + fwCssCache[currentFramework] + '</style>'
+        : (fw.css ? '<link rel="stylesheet" href="' + fw.css + '">' : ''))
       + '<style>'
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
@@ -1411,16 +1573,7 @@
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
-      + '.fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }'
-      + '.fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }'
-      + '.fw-card-header { padding: 1rem 1.2rem 0.4rem; }'
-      + '.fw-card-title { font-weight: 700; font-size: 1.1em; }'
-      + '.fw-card-body { padding: 0.4rem 1.2rem 1rem; }'
-      + '.fw-form label { display: block; margin: 0.8rem 0 0.3rem; font-weight: 600; }'
-      + '.fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display: block; width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; }'
-      + '.fw-form button { margin-top: 1rem; }'
-      + '.fw-list { margin-left: 1.5rem; }'
-      + '.fw-list li { margin-bottom: 0.3rem; }'
+      + FALLBACK_CSS
       + '</style>'
       + (fw.js ? '<script src="' + fw.js + '" defer><' + '/script>' : '')
       + '</head><body><main>' + renderedHTML + '</main>'
@@ -1507,6 +1660,17 @@
     /* Reposition width handles after iframe content loads */
     previewFrame.onload = positionWidthHandles;
     setTimeout(positionWidthHandles, 250);
+
+    /* Prefetch current framework CSS for next render, then all others on idle */
+    prefetchFrameworkCss(currentFramework);
+    if (!prefetchAllFrameworkCss.started) {
+      prefetchAllFrameworkCss.started = true;
+      if (typeof requestIdleCallback !== "undefined") {
+        requestIdleCallback(prefetchAllFrameworkCss);
+      } else {
+        setTimeout(prefetchAllFrameworkCss, 2000);
+      }
+    }
   }
 
   /* ==========================================================================
@@ -1682,7 +1846,6 @@
   function insertComponent(componentId) {
     var comp = COMPONENTS.find(function (c) { return c.id === componentId; });
     if (!comp) return;
-    if (!comp.support[currentFramework]) return;
 
     // Route modal-enabled components through the form
     if (MODAL_COMPONENTS.indexOf(componentId) !== -1) {
@@ -1690,8 +1853,8 @@
       return;
     }
 
-    // Direct insertion from framework-specific snippet
-    var snippet = comp.snippets[currentFramework];
+    // Direct insertion: prefer framework-specific snippet, fall back to default
+    var snippet = comp.snippets[currentFramework] || comp.snippets.default || DEFAULT_SNIPPETS[componentId];
     if (!snippet) return;
     if (mode !== "edit") setMode("edit");
     editorInsertBlock(snippet);
@@ -2051,7 +2214,7 @@
       : "function(doc){}";
 
     /* ── Build the standalone HTML document ───────────────────────────── */
-    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+    var html = '<!DOCTYPE html>\n<html lang="en" data-framework="' + currentFramework + '">\n<head>\n'
       + '  <meta charset="UTF-8">\n'
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
       + '  <title>FlatWrite Export</title>\n'
@@ -2059,7 +2222,9 @@
       + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
       + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
       + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
-      + (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '">\n' : '')
+      + (fw && fwCssCache[currentFramework]
+        ? '  <style>' + fwCssCache[currentFramework] + '</style>\n'
+        : (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '">\n' : ''))
       + '  <style>\n'
       /* ── Global reset + body ─────────────────────────────────────────── */
       + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
@@ -2088,10 +2253,10 @@
       /* ── Code ────────────────────────────────────────────────────────── */
       + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
       + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      /* ── Tables ──────────────────────────────────────────────────────── */
+      /* ── Tables ──────────────────────────────────────────────────── */
       + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
       + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      /* ── Prose ───────────────────────────────────────────────────────── */
+      /* ── Prose ───────────────────────────────────────────────────── */
       + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
       + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
       + '    li { margin: 0.15em 0; display: list-item; }\n'
@@ -2099,17 +2264,8 @@
       + '    li::marker { display: inline; }\n'
       + '    p { margin: 0.4em 0; }\n'
       + '    br { margin: 0.3em 0; }\n'
-      /* ── FlatWrite component classes ─────────────────────────────────── */
-      + '    .fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }\n'
-      + '    .fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }\n'
-      + '    .fw-card-header { padding: 1rem 1.2rem 0.4rem; }\n'
-      + '    .fw-card-title { font-weight: 700; font-size: 1.1em; }\n'
-      + '    .fw-card-body { padding: 0.4rem 1.2rem 1rem; }\n'
-      + '    .fw-form label { display: block; margin: 0.8rem 0 0.3rem; font-weight: 600; }\n'
-      + '    .fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display: block; width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; }\n'
-      + '    .fw-form button { margin-top: 1rem; }\n'
-      + '    .fw-list { margin-left: 1.5rem; }\n'
-      + '    .fw-list li { margin-bottom: 0.3rem; }\n'
+      /* ── FlatWrite component fallback classes ────────────────────── */
+      + '    ' + FALLBACK_CSS.replace(/;/g, ';\n    ') + '\n'
       + '  </style>\n'
       + (fw.js ? '  <script src="' + fw.js + '" defer><' + '/script>\n' : '')
       + '</head>\n<body>\n  <main>\n'
@@ -2193,18 +2349,10 @@
       + S + ' li > ul,' + S + ' li > ol { margin:0.15em 0; }'
       + S + ' li::marker { display:inline; }'
       + S + ' p { margin:0.4em 0; }'
-      + S + ' .fw-alert { padding:0.8rem 1rem; border-radius:4px; margin:0.6rem 0; }'
-      + S + ' .fw-card { border:1px solid #ddd; border-radius:4px; margin:1rem 0; }'
-      + S + ' .fw-card-header { padding:1rem 1.2rem 0.4rem; }'
-      + S + ' .fw-card-title { font-weight:700; font-size:1.1em; }'
-      + S + ' .fw-card-body { padding:0.4rem 1.2rem 1rem; }'
-      + S + ' .fw-form label { display:block; margin:0.8rem 0 0.3rem; font-weight:600; }'
-      + S + ' .fw-form input[type=text],' + S + ' .fw-form input[type=email],'
-        + S + ' .fw-form textarea,' + S + ' .fw-form select'
-        + ' { display:block; width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.95em; }'
-      + S + ' .fw-form button { margin-top:1rem; }'
-      + S + ' .fw-list { margin-left:1.5rem; }'
-      + S + ' .fw-list li { margin-bottom:0.3rem; }';
+      /* Scoped fallback CSS for all .fw-* component classes */
+      + FALLBACK_CSS.split(/\s*}\s*/).filter(Boolean).map(function (rule) {
+          return S + ' ' + rule.replace(/^\./, '.') + '}';
+        }).join('');
     document.head.appendChild(styleEl);
 
     /* ── Build the container ─────────────────────────────────────────────── */

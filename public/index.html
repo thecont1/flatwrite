@@ -129,10 +129,45 @@
 
         <hr class="sidebar-divider" />
 
-        <!-- Framework selector -->
-        <div class="framework-selector">
-          <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
-          <select id="framework-dropdown" class="framework-dropdown">
+        <!-- Markdown formatting toolbar (Edit mode — moved from top bar) -->
+        <div class="sidebar-md-toolbar">
+          <p class="sidebar-section-label">Headings</p>
+          <div class="sidebar-md-group">
+            <button class="md-btn" data-md="h1" type="button" title="Heading 1">H1</button>
+            <button class="md-btn" data-md="h2" type="button" title="Heading 2">H2</button>
+            <button class="md-btn" data-md="h3" type="button" title="Heading 3">H3</button>
+            <button class="md-btn" data-md="h4" type="button" title="Heading 4">H4</button>
+          </div>
+          <p class="sidebar-section-label">Inline</p>
+          <div class="sidebar-md-group">
+            <button class="md-btn" data-md="bold" type="button" title="Bold">B</button>
+            <button class="md-btn md-btn-italic" data-md="italic" type="button" title="Italic">I</button>
+            <button class="md-btn" data-md="strikethrough" type="button" title="Strikethrough">S&#x336;</button>
+          </div>
+          <p class="sidebar-section-label">Blocks</p>
+          <div class="sidebar-md-group">
+            <button class="md-btn" data-md="blockquote" type="button" title="Blockquote">&#x275D;</button>
+            <button class="md-btn" data-md="inlinecode" type="button" title="Inline Code">&lt;/&gt;</button>
+            <button class="md-btn" data-md="codeblock" type="button" title="Code Block">```</button>
+            <button class="md-btn" data-md="ul" type="button" title="Bullet List">&bull;&nbsp;List</button>
+            <button class="md-btn" data-md="ol" type="button" title="Numbered List">1.&nbsp;List</button>
+            <button class="md-btn" data-md="task" type="button" title="Task List">&#x2611; Task</button>
+          </div>
+          <p class="sidebar-section-label">Insert</p>
+          <div class="sidebar-md-group">
+            <button class="md-btn" data-md="link" type="button" title="Link">&#x1F517;</button>
+            <button class="md-btn" data-md="image" type="button" title="Image">&#x1F5BC;&#xFE0F;</button>
+            <button class="md-btn" data-md="hr" type="button" title="Horizontal Rule">&mdash;</button>
+          </div>
+        </div>
+
+        <hr class="sidebar-divider" />
+
+        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
+        <div class="components-panel">
+          <label for="components-grid" class="sidebar-section-label">Components</label>
+          <!-- Hidden framework dropdown — state managed by framework pill in toolbar -->
+          <select id="framework-dropdown" class="sr-only" aria-hidden="true">
             <option value="spectre">Spectre.css</option>
             <option value="poshui">PoshUI</option>
             <option value="oat">Oat</option>
@@ -141,13 +176,6 @@
             <option value="chota">Chota</option>
             <option value="simple">Simple.css</option>
           </select>
-        </div>
-
-        <hr class="sidebar-divider" />
-
-        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
-        <div class="components-panel">
-          <label for="components-grid" class="sidebar-section-label">Components</label>
           <div class="components-grid" id="components-grid">
             <!-- Populated dynamically by app.js based on selected framework -->
           </div>
@@ -227,6 +255,16 @@
             </div>
             <div class="toolbar-right">
               <span class="char-count" id="char-count"></span>
+            </div>
+            <!-- Framework pill: visible only in View mode -->
+            <div class="toolbar-framework-pill" id="toolbar-framework-pill">
+              <button class="fw-pill" data-fw="spectre" type="button">Spectre</button>
+              <button class="fw-pill" data-fw="poshui" type="button">PoshUI</button>
+              <button class="fw-pill" data-fw="oat" type="button">Oat</button>
+              <button class="fw-pill" data-fw="pico" type="button">Pico</button>
+              <button class="fw-pill" data-fw="milligram" type="button">Milligram</button>
+              <button class="fw-pill" data-fw="chota" type="button">Chota</button>
+              <button class="fw-pill" data-fw="simple" type="button">Simple</button>
             </div>
             <div class="mode-switch" id="mode-switch">
               <span class="mode-switch-label active" id="btn-edit" data-mode="edit">Edit</span>

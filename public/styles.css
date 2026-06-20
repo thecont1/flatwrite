@@ -1193,6 +1193,129 @@ body {
 }
 
 /* ==========================================================================
+   SIDEBAR MARKDOWN TOOLBAR (Phase 3: moved from top bar)
+   Visible in Edit mode only. Grouped by category.
+   ========================================================================== */
+
+.sidebar-md-toolbar {
+  display: none;
+}
+
+.mode-edit .sidebar-md-toolbar {
+  display: block;
+}
+
+.sidebar-md-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: var(--space-2);
+}
+
+.sidebar-md-group .md-btn {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+/* ==========================================================================
+   FRAMEWORK PILL (Phase 3: toolbar framework selector, View mode only)
+   ========================================================================== */
+
+.toolbar-framework-pill {
+  display: none;
+  flex-wrap: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-framework-pill::-webkit-scrollbar {
+  display: none;
+}
+
+.mode-preview .toolbar-framework-pill {
+  display: flex;
+}
+
+.fw-pill {
+  font-family: "Unbounded", system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.fw-pill:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.fw-pill.active {
+  color: var(--fw-accent, var(--accent));
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--fw-accent, var(--accent));
+}
+
+/* ==========================================================================
+   ACCENT THEMING (Phase 4: --fw-accent tints editor + toolbar)
+   ========================================================================== */
+
+.mode-edit .editor:focus {
+  border-color: var(--fw-accent, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw-accent, var(--accent)) 14%, transparent);
+}
+
+.mode-edit .sidebar-md-group .md-btn:hover {
+  background: color-mix(in srgb, var(--fw-accent, var(--accent)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--fw-accent, var(--accent)) 25%, transparent);
+  color: var(--fw-accent, var(--accent));
+}
+
+/* ==========================================================================
+   MODE-BASED SIDEBAR VISIBILITY (Phase 3)
+   Edit mode: full sidebar with MD toolbar
+   View mode: MD toolbar hidden, components muted
+   Read mode: handled by existing focus-mode rules
+   ========================================================================== */
+
+/* In View mode, hide the sidebar MD toolbar */
+.mode-preview .sidebar-md-toolbar {
+  display: none;
+}
+
+/* In View mode, dim the components panel */
+.mode-preview .components-panel {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* In Edit mode, hide toolbar-center (MD toolbar is now in sidebar) */
+.mode-edit .toolbar-center {
+  display: none;
+}
+
+/* In Edit mode, show toolbar-right (char count) */
+.mode-edit .toolbar-right {
+  display: flex;
+}
+
+/* ==========================================================================
    SIDEBAR COPYRIGHT
    ========================================================================== */
 
