@@ -655,7 +655,9 @@
           return;
         }
         editor.value = data.content;
+        editor.setSelectionRange(0, 0);
         initialEditorContent = data.content;
+        lastScrollRatio = 0;
         setMode("read");
       })
       .catch(function () {
