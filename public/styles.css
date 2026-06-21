@@ -1193,14 +1193,8 @@ body {
 }
 
 /* ==========================================================================
-   SECTION STAR (Framework label decoration) + COMPONENT STAR
+   COMPONENT STAR (native framework support indicator)
    ========================================================================== */
-
-.section-star {
-  vertical-align: -2px;
-  margin-right: 3px;
-  opacity: 0.6;
-}
 
 .comp-star {
   vertical-align: -1px;
