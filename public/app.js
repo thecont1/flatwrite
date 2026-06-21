@@ -477,7 +477,7 @@
 
   var mode = "edit";
   var surfaceMode = "doc";  /* "doc" | "app" */
-  var currentDocEngine = "pagedjs";
+  var currentDocEngine = "none";
   var currentAppFramework = "spectre";
   var sizeStep = 0;
   var weightStep = 0;
@@ -981,7 +981,7 @@
         if (!confirm("This will clear your current document and reset all settings. Continue?")) return;
         editor.value = "";
         initialEditorContent = "";
-        currentDocEngine = "pagedjs";
+        currentDocEngine = "none";
         setDocEngine(currentDocEngine);
         sizeStep = 0;
         weightStep = 0;

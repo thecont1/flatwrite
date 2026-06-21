@@ -554,12 +554,16 @@ body {
   pointer-events: none;
 }
 
-.engine-toggle.vivliostyle .engine-slider {
+.engine-toggle.pagedjs .engine-slider {
   left: calc(33.333%);
 }
 
-.engine-toggle.none .engine-slider {
+.engine-toggle.vivliostyle .engine-slider {
   left: calc(66.666%);
+}
+
+.engine-toggle.none .engine-slider {
+  left: 3px;
 }
 /* ---------- Document layout controls (sidebar) ---------- */
 .doc-controls {
