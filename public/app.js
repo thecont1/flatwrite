@@ -1518,6 +1518,12 @@
     return Math.round(wMm * 3.78);
   }
 
+  function getPageHeightPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var hMm = orientation === "landscape" ? dims[0] : dims[1];
+    return Math.round(hMm * 3.78);
+  }
+
   function getContentWidthPx() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var wMm = orientation === "landscape" ? dims[1] : dims[0];
@@ -1587,35 +1593,44 @@
     var effectiveWidth;
     var isDotted = false;
 
-    if (surfaceMode === "doc" && engine.script) {
-      /* Paged.js & Vivliostyle: dashed margin lines, non-interactive */
+    if (surfaceMode === "doc" && currentDocEngine !== "none") {
+      /* Paged.js & Vivliostyle: non-interactive dashed lines at page edges */
       var pageW = getPageWidthPx();
-      var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
-      var hMm = orientation === "landscape" ? dims[0] : dims[1];
-      var pageH = Math.round(hMm * 3.78);
+      var pageH = getPageHeightPx();
       var iframeW = wrapW;
       var iframeH = frame.clientHeight || 600;
-      var pageScale = Math.min(1, iframeW / pageW, iframeH / pageH);
-      effectiveWidth = getContentWidthPx() * pageScale;
-      isDotted = true;
+      var s = Math.min(iframeW / pageW, iframeH / pageH);
+      var scaledW = pageW * s;
+      var edge = Math.max(0, (wrapW - scaledW) / 2);
+
+      hLeft.style.left = edge + "px";
+      hLeft.style.right = "auto";
+      hRight.style.right = edge + "px";
+      hRight.style.left = "auto";
+
+      hLeft.style.display = "";
+      hRight.style.display = "";
+      hLeft.classList.add("width-handle-dotted");
+      hRight.classList.add("width-handle-dotted");
+      hLeft.dataset.mode = "dotted";
+      hRight.dataset.mode = "dotted";
+      return;
     } else {
       effectiveWidth = contentWidth;
     }
 
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
     hLeft.style.left = edge + "px";
-    hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
     hRight.style.right = edge + "px";
     hRight.style.left = "auto";
 
-    /* Visual mode: dotted (paged.js), stepped (vivliostyle), solid (plain) */
     hLeft.style.display = "";
     hRight.style.display = "";
-    hLeft.classList.toggle("width-handle-dotted", isDotted);
-    hRight.classList.toggle("width-handle-dotted", isDotted);
-    hLeft.dataset.mode = isDotted ? "dotted" : "free";
-    hRight.dataset.mode = isDotted ? "dotted" : "free";
+    hLeft.classList.remove("width-handle-dotted");
+    hRight.classList.remove("width-handle-dotted");
+    hLeft.dataset.mode = "free";
+    hRight.dataset.mode = "free";
   }
 
   /* ==========================================================================
@@ -1773,9 +1788,11 @@
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
       + ' margin: 0; overflow-x: hidden; }'
       + 'html { height: 100%; }'
-      /* Non-paged fallback: constrain to contentWidth */
-      + 'body:not(.pagedjs) { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
-      + 'body:not(.pagedjs) main { padding: 0.5rem 1rem; }'
+      /* Plain mode: constrain body width to contentWidth */
+      + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
+      + 'body.engine-none main { padding: 0.5rem 1rem; }'
+      /* Paged modes: body fills the iframe viewport */
+      + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; }'
       + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
       + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
@@ -1794,39 +1811,72 @@
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
       + '</style>'
-      + '</head><body><main>' + renderedHTML + '</main>'
+      + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'
       + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
+      + 'var _isPaged = ' + (currentDocEngine !== 'none') + ';'
+      + 'var _pageW = ' + getPageWidthPx() + ';'
+      + 'var _pageH = ' + getPageHeightPx() + ';'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
-      + 'document.addEventListener("DOMContentLoaded", function(){'
-      + '  function _fitPage() {'
-      + '    var page = document.querySelector(".pagedjs_page");'
-      + '    if (!page) return;'
-      + '    var pageW = page.offsetWidth;'
-      + '    var pageH = page.offsetHeight;'
-      + '    var iframeW = window.innerWidth;'
-      + '    var iframeH = window.innerHeight;'
-      + '    var scale = Math.min(1, iframeW / pageW, iframeH / pageH);'
-      + '    document.documentElement.style.height = "100%";'
-      + '    document.documentElement.style.overflow = "auto";'
-      + '    document.body.style.transform = "scale(" + scale + ")";'
-      + '    document.body.style.transformOrigin = "top center";'
-      + '  }'
-      + '  if (typeof window.PagedPolyfill !== "undefined") {'
-      + '    window.PagedPolyfill.on("afterRenderation", function(){'
+      + 'function _fitPage() {'
+      + '  if (!_isPaged) return;'
+      + '  var page = document.querySelector(".pagedjs_page");'
+      + '  var pageW = page ? page.offsetWidth : _pageW;'
+      + '  var pageH = page ? page.offsetHeight : _pageH;'
+      + '  var iframeW = window.innerWidth;'
+      + '  var iframeH = window.innerHeight;'
+      + '  var s = Math.min(iframeW / pageW, iframeH / pageH);'
+      + '  var scaledW = pageW * s;'
+      + '  var marginLeft = Math.max(0, (iframeW - scaledW) / 2);'
+      + '  document.documentElement.style.overflow = "hidden auto";'
+      + '  document.body.style.maxWidth = "none";'
+      + '  document.body.style.width = pageW + "px";'
+      + '  document.body.style.transform = "scale(" + s + ")";'
+      + '  document.body.style.transformOrigin = "top left";'
+      + '  document.body.style.marginLeft = marginLeft + "px";'
+      + '  document.body.style.marginRight = "0";'
+      + '}'
+      + 'function _registerPagedHook() {'
+      + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
+      + '    window.PagedPolyfill.on("afterPreview", function() {'
       + '      _fitPage();'
       + '      if (!_pagedReady) { _pagedReady = true;'
       + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '      }'
       + '    });'
-      + '  } else {'
-      + '    _fitPage();'
+      + '    return true;'
+      + '  }'
+      + '  return false;'
+      + '}'
+      + 'function _initFit() {'
+      + '  if (!_isPaged) {'
       + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '    return;'
       + '  }'
-      + '});'
+      + '  if (!_registerPagedHook()) {'
+      + '    var tries = 0;'
+      + '    var interval = setInterval(function() {'
+      + '      tries++;'
+      + '      if (_registerPagedHook() || tries > 50) { clearInterval(interval); _fitPage(); }'
+      + '    }, 100);'
+      + '  }'
+      + '  window.addEventListener("load", function() {'
+      + '    _fitPage();'
+      + '    if (!_pagedReady) { _pagedReady = true;'
+      + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '    }'
+      + '  });'
+      + '  var observer = new MutationObserver(function() {'
+      + '    if (document.querySelector(".pagedjs_page")) _fitPage();'
+      + '  });'
+      + '  observer.observe(document.body, { childList: true, subtree: true });'
+      + '  _fitPage();'
+      + '}'
+      + 'document.addEventListener("DOMContentLoaded", _initFit);'
       + 'var _scrollTimer;'
       + 'window.addEventListener("scroll", function(){'
       + '  clearTimeout(_scrollTimer);'
@@ -1842,7 +1892,7 @@
       + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
       + '  }'
       + '  if (e.data && e.data.type === "setContentWidth") {'
-      + '    if (!document.body.classList.contains("pagedjs")) {'
+      + '    if (document.body.classList.contains("engine-none")) {'
       + '      document.body.style.maxWidth = e.data.width + "px";'
       + '      document.body.style.marginLeft = "auto";'
       + '      document.body.style.marginRight = "auto";'

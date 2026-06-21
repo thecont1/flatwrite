@@ -136,7 +136,7 @@ describe("renderPreview — Paged.js integration", () => {
     expect(body).toContain("PagedPolyfill");
   });
   test("has fallback for non-paged layout", () => {
-    expect(body).toContain("body:not(.pagedjs)");
+    expect(body).toContain("body.engine-none");
   });
   test("still renders markdown", () => {
     expect(body).toContain("marked.parse");
