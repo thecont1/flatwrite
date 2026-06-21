@@ -1526,7 +1526,7 @@
     Letter: [215.9, 279.4], Legal: [215.9, 355.6]
   };
   var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
-  var MARGIN_MAP = { narrow: "15mm", normal: "25mm 20mm", wide: "35mm 30mm" };
+  var MARGIN_MAP = { narrow: "10mm", normal: "25mm 20mm", wide: "40mm 30mm" };
 
   function getPageCSS() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -1613,7 +1613,10 @@
 
     if (surfaceMode === "doc" && engine.script) {
       /* Paged.js or Vivliostyle: handles show content area (page minus margins) */
-      effectiveWidth = getContentWidthPx();
+      var pageW = getPageWidthPx();
+      var iframeW = wrapW; /* iframe fills the wrapper */
+      var pageScale = Math.min(1, iframeW / pageW);
+      effectiveWidth = getContentWidthPx() * pageScale;
       if (currentDocEngine === "pagedjs") {
         isDotted = true;
       } else {
@@ -1820,17 +1823,25 @@
       + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
-      /* After Paged.js finishes, restore scroll */
+      /* After Paged.js finishes, scale pages to fit iframe and restore scroll */
       + 'document.addEventListener("DOMContentLoaded", function(){'
       + '  if (typeof window.PagedPolyfill !== "undefined") {'
       + '    window.PagedPolyfill.on("afterRenderation", function(){'
+      + '      var page = document.querySelector(".pagedjs_page");'
+      + '      if (page) {'
+      + '        var pageW = page.offsetWidth;'
+      + '        var iframeW = window.innerWidth;'
+      + '        var scale = Math.min(1, iframeW / pageW);'
+      + '        document.body.style.transform = "scale(" + scale + ")";'
+      + '        document.body.style.transformOrigin = "top center";'
+      + '        document.body.style.width = (100 / scale) + "%";'
+      + '      }'
       + '      if (!_pagedReady) { _pagedReady = true;'
       + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '      }'
       + '    });'
       + '  } else {'
-      /* No engine script — restore scroll immediately */
       + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '  }'
