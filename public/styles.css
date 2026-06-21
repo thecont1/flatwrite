@@ -1193,57 +1193,19 @@ body {
 }
 
 /* ==========================================================================
-   FRAMEWORK PILL (Phase 3: toolbar framework selector, View mode only)
+   SECTION STAR (Framework label decoration) + COMPONENT STAR
    ========================================================================== */
 
-.toolbar-framework-pill {
-  display: none;
-  flex-wrap: nowrap;
-  gap: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding: 3px;
-  background: rgba(255, 255, 255, 0.35);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  flex-shrink: 0;
+.section-star {
+  vertical-align: -2px;
+  margin-right: 3px;
+  opacity: 0.6;
 }
 
-.toolbar-framework-pill::-webkit-scrollbar {
-  display: none;
-}
-
-.mode-preview .toolbar-framework-pill {
-  display: flex;
-}
-
-.fw-pill {
-  font-family: "Unbounded", system-ui, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.fw-pill:hover {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.fw-pill.active {
-  color: var(--fw-accent, var(--accent));
-  background: rgba(255, 255, 255, 0.85);
-  border-color: var(--fw-accent, var(--accent));
+.comp-star {
+  vertical-align: -1px;
+  margin-left: 3px;
+  opacity: 0.55;
 }
 
 /* ==========================================================================
