@@ -1063,7 +1063,8 @@
       window.addEventListener("mousemove", function (e) {
         if (!dragging) return;
         e.preventDefault();
-        var delta = e.clientX - startX;
+        var zoom = zoomStep / 100;
+        var delta = (e.clientX - startX) / zoom;
 
         if (handle.dataset.mode === "stepped") {
           var step = Math.round(delta / 60);
@@ -2244,6 +2245,8 @@
       + '      font-weight: ' + weight + ' !important;\n'
       + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
+      + '      max-width: ' + contentWidth + 'px;\n'
+      + '      margin: 0 auto;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
       /* Fallback layout when no paged-media engine is active */
@@ -2322,6 +2325,8 @@
       + '      font-weight: ' + weight + ' !important;\n'
       + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
+      + '      max-width: ' + contentWidth + 'px;\n'
+      + '      margin: 0 auto;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
       + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
