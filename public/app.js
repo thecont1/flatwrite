@@ -837,7 +837,7 @@
           if (fm.framework && FRAMEWORKS[fm.framework]) {
             currentFramework = fm.framework;
             frameworkDropdown.value = currentFramework;
-            if (fwDropdownLabel) fwDropdownLabel.textContent = FRAMEWORKS[currentFramework].label;
+            if (fwDropdownLabel) fwDropdownLabel.innerHTML = FW_STAR + " " + FRAMEWORKS[currentFramework].label;
           }
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -931,7 +931,7 @@
         currentFramework = record.framework;
       }
       frameworkDropdown.value = currentFramework;
-      if (fwDropdownLabel) fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
+      if (fwDropdownLabel) fwDropdownLabel.innerHTML = FW_STAR + " " + (FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework);
 
       var t = record.typography || {};
       if (t.family && COMFORT_FONTS.some(function (f) { return f.value === t.family; })) {
@@ -1081,7 +1081,7 @@
         initialEditorContent = "";
         currentFramework = "spectre";
         frameworkDropdown.value = "spectre";
-        if (fwDropdownLabel) fwDropdownLabel.textContent = "Spectre.css";
+        if (fwDropdownLabel) fwDropdownLabel.innerHTML = FW_STAR + " Spectre.css";
         sizeStep = 0;
         weightStep = 0;
         lineStep = 0;
@@ -1132,7 +1132,7 @@
       if (!item) return;
       currentFramework = item.dataset.fw;
       frameworkDropdown.value = currentFramework;
-      fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
+      fwDropdownLabel.innerHTML = FW_STAR + " " + (FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework);
       fwDropdownList.querySelectorAll(".fw-dropdown-item").forEach(function (el) {
         el.classList.toggle("selected", el.dataset.fw === currentFramework);
       });
@@ -1517,7 +1517,7 @@
       item.innerHTML = FW_STAR + " " + fw.label;
       fwDropdownList.appendChild(item);
     });
-    fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
+    fwDropdownLabel.innerHTML = FW_STAR + " " + (FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework);
   }
 
   function renderComponentGrid() {
@@ -1536,7 +1536,7 @@
       var isNative = snippet && snippet !== comp.snippets.default;
 
       /* Label: "Card ★" with star if native, or "Card" if fallback */
-      btn.innerHTML = comp.label + (isNative ? ' <small class="star">\u2605</small>' : "");
+      btn.innerHTML = comp.label + (isNative ? " " + FW_STAR : "");
       if (!isNative) {
         btn.title = comp.label + " (rendered via fallback in " + fwLabel + ")";
       }
