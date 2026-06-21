@@ -1535,8 +1535,8 @@
       var snippet = comp.snippets[currentFramework];
       var isNative = snippet && snippet !== comp.snippets.default;
 
-      /* Label: "Card ★" with star if native, or "Card" if fallback */
-      btn.innerHTML = comp.label + (isNative ? " " + FW_STAR : "");
+      /* Label: "★ Card" with star if native, or "Card" if fallback */
+      btn.innerHTML = (isNative ? FW_STAR + " " : "") + comp.label;
       if (!isNative) {
         btn.title = comp.label + " (rendered via fallback in " + fwLabel + ")";
       }
