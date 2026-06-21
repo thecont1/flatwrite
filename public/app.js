@@ -2211,6 +2211,28 @@
   }
 
   /* ==========================================================================
+     Font dropdown builder
+     ========================================================================== */
+
+  function buildFontDropdown() {
+    if (!fontPickerList) {
+      fontPickerList = document.createElement("div");
+      fontPickerList.className = "font-dropdown-list hidden";
+      document.body.appendChild(fontPickerList);
+    }
+    fontPickerList.innerHTML = "";
+    COMFORT_FONTS.forEach(function (f) {
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "font-dropdown-item" + (f.value === comfortFont ? " selected" : "");
+      item.dataset.font = f.value;
+      item.textContent = f.label;
+      item.style.fontFamily = '"' + f.value + '", system-ui, sans-serif';
+      fontPickerList.appendChild(item);
+    });
+  }
+
+  /* ==========================================================================
      App framework dropdown and component picker
      ========================================================================== */
 
