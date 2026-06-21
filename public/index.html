@@ -130,16 +130,6 @@
         <h1 class="app-title">FlatWrite</h1>
         <p class="tagline">Write once, style many worlds.</p>
 
-        <!-- Surface mode toggle: Doc | App -->
-        <label class="sidebar-section-label">Surface</label>
-         <div class="surface-toggle" id="surface-toggle">
-          <button class="surface-btn active" data-surface="doc" type="button">Doc</button>
-          <button class="surface-btn" data-surface="app" type="button">App</button>
-          <span class="surface-slider" id="surface-slider"></span>
-        </div>
-
-        <hr class="sidebar-divider" />
-
         <!-- Load section -->
         <div class="load-panel">
           <p class="sidebar-section-label">Load</p>
@@ -152,8 +142,18 @@
 
         <hr class="sidebar-divider" />
 
-        <!-- Engine selector -->
-        <div class="engine-selector doc-only">
+        <!-- Surface mode toggle: Doc | App -->
+        <label class="sidebar-section-label">Surface</label>
+        <div class="surface-toggle" id="surface-toggle">
+          <button class="surface-btn active" data-surface="doc" type="button">Doc</button>
+          <button class="surface-btn" data-surface="app" type="button">App</button>
+          <span class="surface-slider" id="surface-slider"></span>
+        </div>
+
+        <hr class="sidebar-divider" />
+
+        <!-- Engine selector with attached Document controls pane -->
+        <div class="engine-pane doc-only">
           <label class="sidebar-section-label">Engine</label>
           <div class="engine-toggle" id="engine-toggle">
             <button class="engine-btn active" data-engine="none" type="button">Plain</button>
@@ -161,50 +161,45 @@
             <button class="engine-btn" data-engine="vivliostyle" type="button">Vivliostyle</button>
             <span class="engine-slider" id="engine-slider"></span>
           </div>
-        </div>
-
-        <hr class="sidebar-divider" />
-
-        <!-- Document layout controls -->
-        <div class="doc-controls doc-only">
-          <p class="sidebar-section-label">Document</p>
-          <div class="doc-control-row">
-            <label for="page-size" class="doc-label">Page</label>
-            <select id="page-size" class="doc-select">
-              <option value="A4">A4</option>
-              <option value="A5">A5</option>
-              <option value="Letter">Letter</option>
-              <option value="Legal">Legal</option>
-            </select>
-          </div>
-          <div class="doc-control-row">
-            <label for="page-margins" class="doc-label">Margins</label>
-            <select id="page-margins" class="doc-select">
-              <option value="narrow">Narrow</option>
-              <option value="normal" selected>Normal</option>
-              <option value="wide">Wide</option>
-            </select>
-          </div>
-          <div class="doc-control-row">
-            <label for="page-columns" class="doc-label">Columns</label>
-            <select id="page-columns" class="doc-select">
-              <option value="1" selected>1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-            </select>
-          </div>
-          <div class="doc-control-row">
-            <label for="page-baseline" class="doc-label">Grid</label>
-            <input type="range" id="page-baseline" class="doc-range" min="12" max="20" value="16" step="1" />
-            <span class="doc-range-val" id="page-baseline-val">1.6</span>
-          </div>
-          <div class="doc-control-row">
-            <span class="doc-label">Headers</span>
-            <button class="doc-toggle" id="toggle-headers" type="button" data-state="off">Off</button>
-          </div>
-          <div class="doc-control-row">
-            <span class="doc-label">Pages</span>
-            <button class="doc-toggle" id="toggle-pages" type="button" data-state="off">Off</button>
+          <div class="doc-controls" id="doc-controls">
+            <div class="doc-control-row">
+              <label for="page-size" class="doc-label">Page</label>
+              <select id="page-size" class="doc-select">
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+                <option value="Letter">Letter</option>
+                <option value="Legal">Legal</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-margins" class="doc-label">Margins</label>
+              <select id="page-margins" class="doc-select">
+                <option value="narrow">Narrow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="wide">Wide</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-columns" class="doc-label">Columns</label>
+              <select id="page-columns" class="doc-select">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-baseline" class="doc-label">Grid</label>
+              <input type="range" id="page-baseline" class="doc-range" min="12" max="20" value="16" step="1" />
+              <span class="doc-range-val" id="page-baseline-val">1.6</span>
+            </div>
+            <div class="doc-control-row">
+              <span class="doc-label">Headers</span>
+              <button class="doc-toggle" id="toggle-headers" type="button" data-state="off">Off</button>
+            </div>
+            <div class="doc-control-row">
+              <span class="doc-label">Pages</span>
+              <button class="doc-toggle" id="toggle-pages" type="button" data-state="off">Off</button>
+            </div>
           </div>
         </div>
 
@@ -227,6 +222,8 @@
           <label for="components-grid" class="sidebar-section-label">Components</label>
           <div class="components-grid" id="components-grid"></div>
         </div>
+
+        <hr class="sidebar-divider" />
 
         <!-- UI Zoom -->
         <div class="zoom-selector">

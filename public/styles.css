@@ -565,11 +565,29 @@ body {
 .engine-toggle.none .engine-slider {
   left: 3px;
 }
-/* ---------- Document layout controls (sidebar) ---------- */
-.doc-controls {
+
+/* ---------- Engine pane (engine toggle + attached doc-controls) ---------- */
+.engine-pane {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.engine-pane .doc-controls {
+  border: 1px solid var(--glass-border);
+  border-radius: 0 0 10px 10px;
+  border-top: none;
+  background: rgba(255, 255, 255, 0.25);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: -1px; /* overlap with engine toggle bottom border */
+}
+
+/* Hide doc-controls when Plain engine is selected */
+.engine-none .doc-controls {
+  display: none;
 }
 
 .doc-control-row {
