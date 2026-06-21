@@ -1069,12 +1069,6 @@ body {
   display: none;
 }
 
-/* Disable free-resize handles in Paged.js/Vivliostyle modes */
-.app-shell.engine-pagedjs .width-handle,
-.app-shell.engine-vivliostyle .width-handle {
-  display: none !important;
-}
-
 .width-drag-overlay {
   position: absolute;
   inset: 0;

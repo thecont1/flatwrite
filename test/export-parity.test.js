@@ -44,8 +44,8 @@ describe("v3 architecture: DOC_ENGINES registry", () => {
 });
 
 describe("IDB persistence v3", () => {
-  test("DB_VERSION is 2", () => {
-    expect(SRC).toContain("var DB_VERSION = 2");
+  test("DB_VERSION is 3", () => {
+    expect(SRC).toContain("var DB_VERSION = 3");
   });
   test("saveToIDB persists docEngine", () => {
     const body = fnBody("saveToIDB");
@@ -87,9 +87,13 @@ describe("buildPageCSS", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("counter(page)");
   });
-  test("supports running headers", () => {
+  test("supports running footers", () => {
     const body = fnBody("buildPageCSS");
-    expect(body).toContain("string(chapter)");
+    expect(body).toContain("string(chapter");
+  });
+  test("footer prints page n of N", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain('"Page " counter(page) " of " counter(pages)');
   });
 });
 
