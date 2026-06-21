@@ -300,10 +300,22 @@ body {
 .surface-doc .app-only { display: none !important; }
 .surface-app .doc-only { display: none !important; }
 
-/* Engine gating: grey out Document controls when Plain engine is selected */
-.surface-doc.engine-none .doc-controls {
-  opacity: 0.45;
+/* Engine gating: per-control disabling based on engine */
+.doc-control-disabled {
+  opacity: 0.4;
   pointer-events: none;
+}
+
+/* Headers/Pages on same row */
+.doc-control-row-split {
+  display: flex;
+  gap: var(--space-3);
+}
+.doc-control-half {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
 }
 
 /* ---------- Framework dropdown (App surface) ---------- */

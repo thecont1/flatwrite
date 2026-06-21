@@ -664,6 +664,7 @@
       setDocEngine(currentDocEngine);
       setSurfaceMode(surfaceMode);
       syncDocControlsUI();
+      updateDocControlStates();
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
@@ -1426,14 +1427,34 @@
         btn.classList.toggle("active", btn.dataset.engine === engineKey);
       });
     }
-    /* Gate Document controls: only active when a paged engine is selected */
+    /* Update app-shell engine class */
     var appShell = document.querySelector(".app-shell");
     if (appShell) {
       appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
       appShell.classList.add("engine-" + engineKey);
     }
+    updateDocControlStates();
     scheduleAutosave();
     if (mode === "preview" || mode === "read") renderPreview();
+  }
+
+  /* Per-engine control states:
+     Plain       → all disabled
+     Paged.js    → all enabled except Headers
+     Vivliostyle → all enabled */
+  var DOC_CONTROL_IDS = ["page-size", "page-margins", "page-columns", "page-baseline", "toggle-headers", "toggle-pages"];
+  var PAGEDJS_DISABLED = { "toggle-headers": true };
+
+  function updateDocControlStates() {
+    var allDisabled = (currentDocEngine === "none");
+    for (var i = 0; i < DOC_CONTROL_IDS.length; i++) {
+      var id = DOC_CONTROL_IDS[i];
+      var el = document.getElementById(id);
+      var row = el ? el.closest(".doc-control-row") : null;
+      var disabled = allDisabled || PAGEDJS_DISABLED[id] || false;
+      if (el) el.disabled = disabled;
+      if (row) row.classList.toggle("doc-control-disabled", disabled);
+    }
   }
 
   /* ==========================================================================
@@ -1449,6 +1470,10 @@
     var css = '@page { size: ' + size + '; margin: ' + margin + '; }';
     if (pageColumns > 1) {
       css += ' main { column-count: ' + pageColumns + '; column-gap: 2em; }';
+    }
+    /* Grid: baseline line-height for paged engines */
+    if (currentDocEngine !== "none" && pageBaseline) {
+      css += ' body { line-height: ' + (pageBaseline / 10) + '; }';
     }
     if (showPages) {
       css += '@page { @bottom-center { content: counter(page); font-size: 10px; color: #888; } }';
