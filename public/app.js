@@ -1590,8 +1590,12 @@
     if (surfaceMode === "doc" && engine.script) {
       /* Paged.js & Vivliostyle: dashed margin lines, non-interactive */
       var pageW = getPageWidthPx();
+      var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+      var hMm = orientation === "landscape" ? dims[0] : dims[1];
+      var pageH = Math.round(hMm * 3.78);
       var iframeW = wrapW;
-      var pageScale = Math.min(1, iframeW / pageW);
+      var iframeH = frame.clientHeight || 600;
+      var pageScale = Math.min(1, iframeW / pageW, iframeH / pageH);
       effectiveWidth = getContentWidthPx() * pageScale;
       isDotted = true;
     } else {
@@ -1767,7 +1771,8 @@
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' overflow-x: hidden; }'
+      + ' margin: 0; overflow-x: hidden; }'
+      + 'html { height: 100%; }'
       /* Non-paged fallback: constrain to contentWidth */
       + 'body:not(.pagedjs) { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
       + 'body:not(.pagedjs) main { padding: 0.5rem 1rem; }'
@@ -1793,25 +1798,31 @@
       + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
-      /* After Paged.js finishes, scale pages to fit iframe and restore scroll */
+      /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'document.addEventListener("DOMContentLoaded", function(){'
+      + '  function _fitPage() {'
+      + '    var page = document.querySelector(".pagedjs_page");'
+      + '    if (!page) return;'
+      + '    var pageW = page.offsetWidth;'
+      + '    var pageH = page.offsetHeight;'
+      + '    var iframeW = window.innerWidth;'
+      + '    var iframeH = window.innerHeight;'
+      + '    var scale = Math.min(1, iframeW / pageW, iframeH / pageH);'
+      + '    document.documentElement.style.height = "100%";'
+      + '    document.documentElement.style.overflow = "auto";'
+      + '    document.body.style.transform = "scale(" + scale + ")";'
+      + '    document.body.style.transformOrigin = "top center";'
+      + '  }'
       + '  if (typeof window.PagedPolyfill !== "undefined") {'
       + '    window.PagedPolyfill.on("afterRenderation", function(){'
-      + '      var page = document.querySelector(".pagedjs_page");'
-      + '      if (page) {'
-      + '        var pageW = page.offsetWidth;'
-      + '        var iframeW = window.innerWidth;'
-      + '        var scale = Math.min(1, iframeW / pageW);'
-      + '        document.body.style.transform = "scale(" + scale + ")";'
-      + '        document.body.style.transformOrigin = "top center";'
-      + '        document.body.style.width = (100 / scale) + "%";'
-      + '      }'
+      + '      _fitPage();'
       + '      if (!_pagedReady) { _pagedReady = true;'
       + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '      }'
       + '    });'
       + '  } else {'
+      + '    _fitPage();'
       + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '  }'
