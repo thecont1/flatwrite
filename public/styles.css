@@ -540,6 +540,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 5px;
+  margin-top: var(--space-3);
 }
 
 .comp-btn {
@@ -1254,9 +1255,9 @@ body {
    ========================================================================== */
 
 .star {
-  vertical-align: -2px;
+  vertical-align: -1px;
   margin-right: 2px;
-  opacity: 0.5;
+  opacity: 0.75;
 }
 
 .mode-edit .editor:focus {
