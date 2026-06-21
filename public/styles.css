@@ -1048,6 +1048,33 @@ body {
   background: var(--accent);
 }
 
+/* Dotted handles (Paged.js) — non-interactive page edge indicators */
+.width-handle-dotted {
+  background: transparent !important;
+  border-left: 2px dashed rgba(180, 160, 200, 0.5);
+  cursor: default !important;
+  pointer-events: none;
+}
+.width-handle-dotted::after {
+  display: none;
+}
+
+/* Stepped handles (Vivliostyle) — snap to page sizes */
+.width-handle-stepped {
+  background: rgba(176, 106, 179, 0.25);
+}
+.width-handle-stepped::after {
+  background: rgba(176, 106, 179, 0.6);
+}
+
+/* Orientation toggle button */
+.doc-orient-btn {
+  min-width: 28px !important;
+  padding: 4px 6px !important;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
 .width-drag-overlay {
   position: absolute;
   inset: 0;

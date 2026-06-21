@@ -165,11 +165,16 @@
             <div class="doc-control-row">
               <label for="page-size" class="doc-label">Page</label>
               <select id="page-size" class="doc-select">
-                <option value="A4">A4</option>
+                <option value="A0">A0</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="A3">A3</option>
+                <option value="A4" selected>A4</option>
                 <option value="A5">A5</option>
                 <option value="Letter">Letter</option>
                 <option value="Legal">Legal</option>
               </select>
+              <button class="doc-toggle doc-orient-btn" id="toggle-orient" type="button" data-state="portrait" title="Toggle orientation">P</button>
             </div>
             <div class="doc-control-row">
               <label for="page-margins" class="doc-label">Margins</label>

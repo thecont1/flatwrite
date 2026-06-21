@@ -73,7 +73,7 @@
       docEngine:  currentDocEngine,
       surfaceMode: surfaceMode,
       appFramework: currentAppFramework,
-      docLayout:  { pageSize: pageSize, margins: pageMargins, columns: pageColumns,
+      docLayout:  { pageSize: pageSize, orientation: orientation, margins: pageMargins, columns: pageColumns,
                     baseline: pageBaseline, headers: showHeaders, pages: showPages },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
@@ -105,6 +105,8 @@
       "docEngine: " + currentDocEngine,
       "surfaceMode: " + surfaceMode,
       "appFramework: " + currentAppFramework,
+      "pageSize: " + pageSize,
+      "orientation: " + orientation,
       "font: " + comfortFont,
       "size: " + sizeStep,
       "weight: " + weightStep,
@@ -489,6 +491,7 @@
 
   /* Document layout state */
   var pageSize     = "A4";
+  var orientation  = "portrait";
   var pageMargins  = "normal";
   var pageColumns  = 1;
   var pageBaseline = 16;  /* × 0.1 = line-height */
@@ -728,6 +731,8 @@
           if (fm.appFramework && APP_FRAMEWORKS[fm.appFramework]) {
             currentAppFramework = fm.appFramework;
           }
+          if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
+          if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
             fontPickerLabel.textContent = comfortFont;
@@ -847,6 +852,7 @@
 
       var dl = record.docLayout || {};
       if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
+      if (dl.orientation === "portrait" || dl.orientation === "landscape") orientation = dl.orientation;
       if (dl.margins && MARGIN_MAP[dl.margins])   pageMargins = dl.margins;
       if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
       if (dl.baseline)  pageBaseline = clampInt(dl.baseline, 12, 20, 16);
@@ -984,6 +990,8 @@
         initialEditorContent = "";
         currentDocEngine = "none";
         setDocEngine(currentDocEngine);
+        pageSize = "A4";
+        orientation = "portrait";
         sizeStep = 0;
         weightStep = 0;
         lineStep = 0;
@@ -1029,31 +1037,61 @@
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
-      var dragging = false, startX, startWidth;
+      var dragging = false, startX, startIndex;
+
       handle.addEventListener("mousedown", function (e) {
+        /* Dotted handles (Paged.js) are non-interactive */
+        if (handle.dataset.mode === "dotted") return;
+
         e.preventDefault();
         e.stopPropagation();
         dragging = true;
         startX = e.clientX;
-        startWidth = contentWidth;
         handle.classList.add("dragging");
         widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
+
+        if (handle.dataset.mode === "stepped") {
+          startIndex = PAGE_SIZE_KEYS.indexOf(pageSize);
+          if (startIndex === -1) startIndex = 4; /* A4 */
+        }
       });
+
       window.addEventListener("mousemove", function (e) {
         if (!dragging) return;
         e.preventDefault();
         var delta = e.clientX - startX;
-        var newWidth;
-        if (side === "right") {
-          newWidth = Math.max(400, Math.min(1400, startWidth + delta * 2));
+
+        if (handle.dataset.mode === "stepped") {
+          /* Snap to page sizes on drag */
+          var step = Math.round(delta / 60); /* ~60px per step */
+          var newIndex;
+          if (side === "right") {
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startIndex - step));
+          } else {
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startIndex + step));
+          }
+          var newSize = PAGE_SIZE_KEYS[newIndex];
+          if (newSize !== pageSize) {
+            pageSize = newSize;
+            if (pageSizeSel) pageSizeSel.value = pageSize;
+            positionWidthHandles();
+            if (mode === "preview" || mode === "read") renderPreview();
+          }
         } else {
-          newWidth = Math.max(400, Math.min(1400, startWidth - delta * 2));
+          /* Free drag (Plain mode) */
+          var newWidth;
+          if (side === "right") {
+            newWidth = Math.max(400, Math.min(1400, contentWidth + delta * 2));
+          } else {
+            newWidth = Math.max(400, Math.min(1400, contentWidth - delta * 2));
+          }
+          contentWidth = newWidth;
+          applyContentWidth();
         }
-        contentWidth = newWidth;
-        applyContentWidth();
       });
+
       window.addEventListener("mouseup", function () {
         if (!dragging) return;
         dragging = false;
@@ -1160,6 +1198,7 @@
       pageSizeSel.addEventListener("change", function () {
         pageSize = this.value;
         scheduleAutosave();
+        positionWidthHandles();
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
@@ -1200,6 +1239,19 @@
         this.dataset.state = showPages ? "on" : "off";
         this.textContent = showPages ? "On" : "Off";
         scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    /* Orientation toggle */
+    var orientBtn = document.getElementById("toggle-orient");
+    if (orientBtn) {
+      orientBtn.addEventListener("click", function () {
+        orientation = orientation === "portrait" ? "landscape" : "portrait";
+        this.dataset.state = orientation;
+        this.textContent = orientation === "portrait" ? "P" : "L";
+        this.title = orientation === "portrait" ? "Portrait" : "Landscape";
+        scheduleAutosave();
+        positionWidthHandles();
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
@@ -1442,7 +1494,7 @@
      Plain       → all disabled
      Paged.js    → all enabled except Headers
      Vivliostyle → all enabled */
-  var DOC_CONTROL_IDS = ["page-size", "page-margins", "page-columns", "page-baseline", "toggle-headers", "toggle-pages"];
+  var DOC_CONTROL_IDS = ["page-size", "toggle-orient", "page-margins", "page-columns", "page-baseline", "toggle-headers", "toggle-pages"];
   var PAGEDJS_DISABLED = { "toggle-headers": true };
 
   function updateDocControlStates() {
@@ -1462,11 +1514,30 @@
      buildPageCSS — assemble @page + layout rules from current controls
      ========================================================================== */
 
-  var PAGE_SIZES = { A4: "210mm 297mm", A5: "148mm 210mm", Letter: "8.5in 11in", Legal: "8.5in 14in" };
+  var PAGE_SIZES = {
+    A0: [841, 1189], A1: [594, 841], A2: [420, 594], A3: [297, 420],
+    A4: [210, 297], A5: [148, 210],
+    Letter: [215.9, 279.4], Legal: [215.9, 355.6]
+  };
+  var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
   var MARGIN_MAP = { narrow: "15mm", normal: "25mm 20mm", wide: "35mm 30mm" };
 
+  function getPageCSS() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var w = orientation === "landscape" ? dims[1] : dims[0];
+    var h = orientation === "landscape" ? dims[0] : dims[1];
+    return w + "mm " + h + "mm";
+  }
+
+  function getPageWidthPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var wMm = orientation === "landscape" ? dims[1] : dims[0];
+    /* approximate: 1mm ≈ 3.78px at 96dpi */
+    return Math.round(wMm * 3.78);
+  }
+
   function buildPageCSS() {
-    var size = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var size = getPageCSS();
     var margin = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
     var css = '@page { size: ' + size + '; margin: ' + margin + '; }';
     if (pageColumns > 1) {
@@ -1488,6 +1559,12 @@
 
   function syncDocControlsUI() {
     if (pageSizeSel)     pageSizeSel.value = pageSize;
+    var orientBtn = document.getElementById("toggle-orient");
+    if (orientBtn) {
+      orientBtn.dataset.state = orientation;
+      orientBtn.textContent = orientation === "portrait" ? "P" : "L";
+      orientBtn.title = orientation === "portrait" ? "Portrait" : "Landscape";
+    }
     if (pageMarginsSel)  pageMarginsSel.value = pageMargins;
     if (pageColumnsSel)  pageColumnsSel.value = String(pageColumns);
     if (pageBaselineRange) {
@@ -1512,22 +1589,40 @@
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
 
-    /* In Doc mode with a paged engine, handles can't control page dimensions */
+    /* Determine effective width based on engine */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    if (surfaceMode === "doc" && engine && engine.script) {
-      hLeft.style.display = "none";
-      hRight.style.display = "none";
-      return;
-    }
-    hLeft.style.display = "";
-    hRight.style.display = "";
+    var effectiveWidth;
+    var isStepped = false;
+    var isDotted = false;
 
-    var effectiveWidth = contentWidth;
+    if (surfaceMode === "doc" && engine.script) {
+      /* Paged.js or Vivliostyle: use page width */
+      effectiveWidth = getPageWidthPx();
+      if (currentDocEngine === "pagedjs") {
+        isDotted = true; /* non-interactive, just shows edges */
+      } else {
+        isStepped = true; /* Vivliostyle: handles snap to page sizes */
+      }
+    } else {
+      effectiveWidth = contentWidth;
+    }
+
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
+    hLeft.style.left = edge + "px";
     hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
     hRight.style.right = edge + "px";
     hRight.style.left = "auto";
+
+    /* Visual mode: dotted (paged.js), stepped (vivliostyle), solid (plain) */
+    hLeft.style.display = "";
+    hRight.style.display = "";
+    hLeft.classList.toggle("width-handle-dotted", isDotted);
+    hRight.classList.toggle("width-handle-dotted", isDotted);
+    hLeft.classList.toggle("width-handle-stepped", isStepped);
+    hRight.classList.toggle("width-handle-stepped", isStepped);
+    hLeft.dataset.mode = isDotted ? "dotted" : (isStepped ? "stepped" : "free");
+    hRight.dataset.mode = isDotted ? "dotted" : (isStepped ? "stepped" : "free");
   }
 
   /* ==========================================================================
