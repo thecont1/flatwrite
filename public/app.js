@@ -954,6 +954,7 @@
   }
 
   function renderPreview() {
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
@@ -961,8 +962,14 @@
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
     var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
+
+    /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
+    var engineScript = (engine && engine.script)
+      ? '<script src="' + engine.script + '" defer><' + '/script>'
+      : '';
 
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
       + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
@@ -970,14 +977,26 @@
       + '<link rel="preconnect" href="https://fonts.googleapis.com">'
       + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
       + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+      + engineScript
       + '<style>'
+      /* --- @page rules: A4 with 25mm margins --- */
+      + '@page { size: A4 portrait; margin: 25mm 20mm; }'
+      /* --- Crop marks at page corners --- */
+      + '.pagedjs_page { overflow: visible !important; }'
+      + '.pagedjs_page::before, .pagedjs_page::after,'
+      + '.pagedjs_sheet::before, .pagedjs_sheet::after {'
+      + '  content: ""; position: absolute; background: #000; z-index: 9999; }'
+      + '.pagedjs_page::before { top: -8px; left: -1px; width: 12px; height: 1px; }'
+      + '.pagedjs_page::after  { top: -1px;  left: -8px; width: 1px; height: 12px; }'
+      + '.pagedjs_sheet::before { bottom: -8px; right: -1px; width: 12px; height: 1px; }'
+      + '.pagedjs_sheet::after  { bottom: -1px;  right: -8px; width: 1px; height: 12px; }'
+      /* --- Typography --- */
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem;'
       + ' overflow-x: hidden; }'
-      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; overflow-wrap: break-word; word-break: break-word; }'
+      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
       + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
       + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
@@ -994,12 +1013,28 @@
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
+      /* --- Fallback if Paged.js fails to load --- */
+      + 'body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }'
       + '</style>'
       + '</head><body><main>' + renderedHTML + '</main>'
       + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
-      + 'var _max = document.documentElement.scrollHeight - window.innerHeight;'
-      + 'if (_max > 0) window.scrollTo(0, Math.round(_scrollRatio * _max));'
+      + 'var _pagedReady = false;'
+      /* After Paged.js finishes, restore scroll */
+      + 'document.addEventListener("DOMContentLoaded", function(){'
+      + '  if (typeof window.PagedPolyfill !== "undefined") {'
+      + '    window.PagedPolyfill.on("afterRenderation", function(){'
+      + '      if (!_pagedReady) { _pagedReady = true;'
+      + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '      }'
+      + '    });'
+      + '  } else {'
+      /* No engine script — restore scroll immediately */
+      + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '  }'
+      + '});'
       + 'var _scrollTimer;'
       + 'window.addEventListener("scroll", function(){'
       + '  clearTimeout(_scrollTimer);'
@@ -1319,6 +1354,7 @@
   }
 
   function exportHTML() {
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
@@ -1328,6 +1364,11 @@
     var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
     var headWeight = Math.min(weight + 200, 900);
 
+    /* Engine script tag — self-paginating HTML export */
+    var engineScript = (engine && engine.script)
+      ? '  <script src="' + engine.script + '" defer><' + '/script>\n'
+      : '';
+
     var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
       + '  <meta charset="UTF-8">\n'
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
@@ -1336,18 +1377,21 @@
       + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
       + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
       + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + engineScript
       + '  <style>\n'
+      /* --- @page rules --- */
+      + '    @page { size: A4 portrait; margin: 25mm 20mm; }\n'
+      /* --- Typography --- */
       + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
       + '    body {\n'
       + '      font-size: ' + (15 * scale) + 'px !important;\n'
       + '      font-weight: ' + weight + ' !important;\n'
       + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 3rem auto;\n'
-      + '      padding: 0 1.5rem;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
+      /* Fallback layout when no paged-media engine is active */
+      + '    body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }\n'
       + '    h1, h2, h3, h4, h5, h6 {\n'
       + '      font-weight: ' + headWeight + ' !important;\n'
       + '      overflow-wrap: break-word;\n'

@@ -107,17 +107,36 @@ describe("syncExportActionsTop", () => {
   });
 });
 
-describe("renderPreview — no framework injection", () => {
+describe("renderPreview — Paged.js integration", () => {
   const body = fnBody("renderPreview");
 
-  test("does not serialize framework style functions", () => {
-    expect(body).not.toContain("styleFnStr");
-    expect(body).not.toContain("styleFn(document)");
+  test("looks up engine from DOC_ENGINES", () => {
+    expect(body).toContain("DOC_ENGINES[currentDocEngine]");
   });
 
-  test("does not load framework CSS or JS", () => {
-    expect(body).not.toContain("fw.css");
-    expect(body).not.toContain("fw.js");
+  test("injects engine script tag when available", () => {
+    expect(body).toContain("engineScript");
+    expect(body).toContain("engine.script");
+  });
+
+  test("includes @page CSS rules", () => {
+    expect(body).toContain("@page");
+    expect(body).toContain("A4 portrait");
+    expect(body).toContain("25mm 20mm");
+  });
+
+  test("includes crop mark styles", () => {
+    expect(body).toContain("pagedjs_page");
+    expect(body).toContain("pagedjs_sheet");
+  });
+
+  test("uses PagedPolyfill.on afterRenderation for scroll restore", () => {
+    expect(body).toContain("PagedPolyfill");
+    expect(body).toContain("afterRenderation");
+  });
+
+  test("has fallback for non-paged layout", () => {
+    expect(body).toContain("body:not(.pagedjs)");
   });
 
   test("still renders markdown via marked.parse", () => {
@@ -128,28 +147,39 @@ describe("renderPreview — no framework injection", () => {
     expect(body).toContain("sanitizeHTML");
   });
 
-  test("has basic typography CSS in iframe", () => {
+  test("has basic typography CSS", () => {
     expect(body).toContain("font-size");
     expect(body).toContain("font-weight");
     expect(body).toContain("line-height");
   });
 });
 
-describe("exportHTML — no framework injection", () => {
+describe("exportHTML — Paged.js integration", () => {
   const body = fnBody("exportHTML");
 
-  test("does not serialize framework style functions", () => {
-    expect(body).not.toContain("styleFnStr");
-    expect(body).not.toContain("styleFn(document)");
+  test("looks up engine from DOC_ENGINES", () => {
+    expect(body).toContain("DOC_ENGINES[currentDocEngine]");
   });
 
-  test("does not load framework CSS or JS", () => {
+  test("injects engine script tag for self-paginating export", () => {
+    expect(body).toContain("engineScript");
+    expect(body).toContain("engine.script");
+  });
+
+  test("includes @page CSS rules", () => {
+    expect(body).toContain("@page");
+    expect(body).toContain("A4 portrait");
+  });
+
+  test("has fallback for non-paged layout", () => {
+    expect(body).toContain("body:not(.pagedjs)");
+  });
+
+  test("does not reference old framework CSS", () => {
     expect(body).not.toContain("fw.css");
     expect(body).not.toContain("fw.js");
-  });
-
-  test("does not reference FALLBACK_CSS", () => {
     expect(body).not.toContain("FALLBACK_CSS");
+    expect(body).not.toContain("styleFnStr");
   });
 
   test("has typography CSS properties", () => {
