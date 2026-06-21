@@ -107,6 +107,7 @@
       "appFramework: " + currentAppFramework,
       "pageSize: " + pageSize,
       "orientation: " + orientation,
+      "margins: " + pageMargins,
       "font: " + comfortFont,
       "size: " + sizeStep,
       "weight: " + weightStep,
@@ -733,6 +734,7 @@
           }
           if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
           if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
+          if (fm.margins && MARGIN_MAP[fm.margins]) pageMargins = fm.margins;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
             fontPickerLabel.textContent = comfortFont;
@@ -1206,6 +1208,7 @@
       pageMarginsSel.addEventListener("change", function () {
         pageMargins = this.value;
         scheduleAutosave();
+        positionWidthHandles();
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
@@ -1248,8 +1251,7 @@
       orientBtn.addEventListener("click", function () {
         orientation = orientation === "portrait" ? "landscape" : "portrait";
         this.dataset.state = orientation;
-        this.textContent = orientation === "portrait" ? "P" : "L";
-        this.title = orientation === "portrait" ? "Portrait" : "Landscape";
+        this.textContent = orientation === "portrait" ? "Portrait" : "Landscape";
         scheduleAutosave();
         positionWidthHandles();
         if (mode === "preview" || mode === "read") renderPreview();
@@ -1532,8 +1534,19 @@
   function getPageWidthPx() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var wMm = orientation === "landscape" ? dims[1] : dims[0];
-    /* approximate: 1mm ≈ 3.78px at 96dpi */
     return Math.round(wMm * 3.78);
+  }
+
+  function getContentWidthPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var wMm = orientation === "landscape" ? dims[1] : dims[0];
+    var margins = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
+    var parts = margins.split(/\s+/).map(function (s) { return parseFloat(s); });
+    var totalMarginMm;
+    if (parts.length === 1) { totalMarginMm = parts[0] * 2; }
+    else if (parts.length === 2) { totalMarginMm = parts[0] + parts[1]; }
+    else { totalMarginMm = parts[0] + parts[2]; }
+    return Math.round((wMm - totalMarginMm) * 3.78);
   }
 
   function buildPageCSS() {
@@ -1562,8 +1575,7 @@
     var orientBtn = document.getElementById("toggle-orient");
     if (orientBtn) {
       orientBtn.dataset.state = orientation;
-      orientBtn.textContent = orientation === "portrait" ? "P" : "L";
-      orientBtn.title = orientation === "portrait" ? "Portrait" : "Landscape";
+      orientBtn.textContent = orientation === "portrait" ? "Portrait" : "Landscape";
     }
     if (pageMarginsSel)  pageMarginsSel.value = pageMargins;
     if (pageColumnsSel)  pageColumnsSel.value = String(pageColumns);
@@ -1596,12 +1608,12 @@
     var isDotted = false;
 
     if (surfaceMode === "doc" && engine.script) {
-      /* Paged.js or Vivliostyle: use page width */
-      effectiveWidth = getPageWidthPx();
+      /* Paged.js or Vivliostyle: handles show content area (page minus margins) */
+      effectiveWidth = getContentWidthPx();
       if (currentDocEngine === "pagedjs") {
-        isDotted = true; /* non-interactive, just shows edges */
+        isDotted = true;
       } else {
-        isStepped = true; /* Vivliostyle: handles snap to page sizes */
+        isStepped = true;
       }
     } else {
       effectiveWidth = contentWidth;
@@ -1778,6 +1790,7 @@
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
+      + ' max-width: ' + contentWidth + 'px; margin: 0 auto;'
       + ' overflow-x: hidden; }'
       + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
@@ -1797,7 +1810,7 @@
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
       /* --- Fallback if Paged.js fails to load --- */
-      + 'body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }'
+      + 'body:not(.pagedjs) main { padding: 0.5rem 1rem; }'
       + '</style>'
       + '</head><body><main>' + renderedHTML + '</main>'
       + '<script>'
@@ -2235,7 +2248,7 @@
       + '      overflow-x: hidden;\n'
       + '    }\n'
       /* Fallback layout when no paged-media engine is active */
-      + '    body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }\n'
+      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
       + '    h1, h2, h3, h4, h5, h6 {\n'
       + '      font-weight: ' + headWeight + ' !important;\n'
       + '      overflow-wrap: break-word;\n'
@@ -2312,7 +2325,7 @@
       + '      color: #2d2a3e;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
-      + '    body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }\n'
+      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
       + '    h1, h2, h3, h4, h5, h6 {\n'
       + '      font-weight: ' + headWeight + ' !important;\n'
       + '      overflow-wrap: break-word; word-break: break-word;\n'

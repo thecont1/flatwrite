@@ -1067,14 +1067,6 @@ body {
   background: rgba(176, 106, 179, 0.6);
 }
 
-/* Orientation toggle button */
-.doc-orient-btn {
-  min-width: 28px !important;
-  padding: 4px 6px !important;
-  font-weight: 700;
-  font-size: 0.72rem;
-}
-
 .width-drag-overlay {
   position: absolute;
   inset: 0;
