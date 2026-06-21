@@ -1292,15 +1292,6 @@
       if (btn) applyMarkdownFormat(btn.dataset.md);
     });
 
-    /* Sidebar md-toolbar buttons use the same data-md mechanism */
-    var sidebarMdToolbar = document.querySelector(".sidebar-md-toolbar");
-    if (sidebarMdToolbar) {
-      sidebarMdToolbar.addEventListener("click", function (e) {
-        var btn = e.target.closest("[data-md]");
-        if (btn) applyMarkdownFormat(btn.dataset.md);
-      });
-    }
-
     modalInsertBtn.addEventListener("click", handleModalInsert);
     modalCancelBtn.addEventListener("click", closeComponentModal);
     modalCloseBtn.addEventListener("click", closeComponentModal);
