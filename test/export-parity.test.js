@@ -82,10 +82,15 @@ describe("IDB persistence v3", () => {
     expect(SRC).toContain("var DB_VERSION = 2");
   });
 
-  test("saveToIDB persists docEngine (not framework)", () => {
+  test("saveToIDB persists docEngine", () => {
     const body = fnBody("saveToIDB");
     expect(body).toContain("docEngine");
     expect(body).not.toContain("framework:");
+  });
+
+  test("saveToIDB persists docLayout", () => {
+    const body = fnBody("saveToIDB");
+    expect(body).toContain("docLayout");
   });
 });
 
@@ -107,6 +112,44 @@ describe("syncExportActionsTop", () => {
   });
 });
 
+describe("buildPageCSS", () => {
+  test("function exists in source", () => {
+    expect(SRC).toContain("function buildPageCSS");
+  });
+
+  test("contains @page rule", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("@page");
+  });
+
+  test("references PAGE_SIZES for page dimensions", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("PAGE_SIZES");
+    expect(body).toContain("size:");
+  });
+
+  test("references MARGIN_MAP for margins", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("MARGIN_MAP");
+    expect(body).toContain("margin:");
+  });
+
+  test("supports columns", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("column-count");
+  });
+
+  test("supports page numbers", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("counter(page)");
+  });
+
+  test("supports running headers", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("string(chapter)");
+  });
+});
+
 describe("renderPreview — Paged.js integration", () => {
   const body = fnBody("renderPreview");
 
@@ -119,10 +162,8 @@ describe("renderPreview — Paged.js integration", () => {
     expect(body).toContain("engine.script");
   });
 
-  test("includes @page CSS rules", () => {
-    expect(body).toContain("@page");
-    expect(body).toContain("A4 portrait");
-    expect(body).toContain("25mm 20mm");
+  test("delegates @page rules to buildPageCSS()", () => {
+    expect(body).toContain("buildPageCSS()");
   });
 
   test("includes crop mark styles", () => {
@@ -161,14 +202,13 @@ describe("exportHTML — Paged.js integration", () => {
     expect(body).toContain("DOC_ENGINES[currentDocEngine]");
   });
 
-  test("injects engine script tag for self-paginating export", () => {
+  test("injects engine script tag", () => {
     expect(body).toContain("engineScript");
     expect(body).toContain("engine.script");
   });
 
-  test("includes @page CSS rules", () => {
-    expect(body).toContain("@page");
-    expect(body).toContain("A4 portrait");
+  test("delegates @page rules to buildPageCSS()", () => {
+    expect(body).toContain("buildPageCSS()");
   });
 
   test("has fallback for non-paged layout", () => {

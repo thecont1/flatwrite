@@ -68,6 +68,8 @@
       markdown:   editor.value,
       mode:       mode,
       docEngine:  currentDocEngine,
+      docLayout:  { pageSize: pageSize, margins: pageMargins, columns: pageColumns,
+                    baseline: pageBaseline, headers: showHeaders, pages: showPages },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
       updated:    new Date().toISOString()
@@ -194,6 +196,13 @@
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
 
+  /* Document layout state */
+  var pageSize     = "A4";
+  var pageMargins  = "normal";
+  var pageColumns  = 1;
+  var pageBaseline = 16;  /* × 0.1 = line-height */
+  var showHeaders  = false;
+  var showPages    = false;
   /* ==========================================================================
      DOM references
      ========================================================================== */
@@ -201,6 +210,15 @@
   /* Engine selector DOM refs */
   var engineToggle      = document.getElementById("engine-toggle");
   var engineSlider      = document.getElementById("engine-slider");
+
+  /* Document controls DOM refs */
+  var pageSizeSel       = document.getElementById("page-size");
+  var pageMarginsSel    = document.getElementById("page-margins");
+  var pageColumnsSel    = document.getElementById("page-columns");
+  var pageBaselineRange = document.getElementById("page-baseline");
+  var pageBaselineVal   = document.getElementById("page-baseline-val");
+  var toggleHeadersBtn  = document.getElementById("toggle-headers");
+  var togglePagesBtn    = document.getElementById("toggle-pages");
 
   var editor            = document.getElementById("editor");
   var editorWrap        = document.getElementById("editor-wrap");
@@ -351,6 +369,7 @@
       initialEditorContent = editor.value;
       buildFontDropdown();
       setDocEngine(currentDocEngine);
+      syncDocControlsUI();
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
@@ -518,6 +537,15 @@
       applyZoom();
       applyContentWidth();
       setDocEngine(currentDocEngine);
+
+      var dl = record.docLayout || {};
+      if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
+      if (dl.margins && MARGIN_MAP[dl.margins])   pageMargins = dl.margins;
+      if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
+      if (dl.baseline)  pageBaseline = clampInt(dl.baseline, 12, 20, 16);
+      if (dl.headers)   showHeaders  = true;
+      if (dl.pages)     showPages    = true;
+      syncDocControlsUI();
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -660,6 +688,7 @@
         applyZoom();
         contentWidth = 780;
         applyContentWidth();
+        syncDocControlsUI();
         suppressAutosave = false;
         mode = "edit";
         setMode("edit");
@@ -758,6 +787,55 @@
         var btn = e.target.closest(".engine-btn");
         if (!btn || btn.classList.contains("active")) return;
         setDocEngine(btn.dataset.engine);
+      });
+    }
+
+    /* Document controls */
+    if (pageSizeSel) {
+      pageSizeSel.addEventListener("change", function () {
+        pageSize = this.value;
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageMarginsSel) {
+      pageMarginsSel.addEventListener("change", function () {
+        pageMargins = this.value;
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageColumnsSel) {
+      pageColumnsSel.addEventListener("change", function () {
+        pageColumns = parseInt(this.value, 10) || 1;
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageBaselineRange) {
+      pageBaselineRange.addEventListener("input", function () {
+        pageBaseline = parseInt(this.value, 10);
+        if (pageBaselineVal) pageBaselineVal.textContent = (pageBaseline / 10).toFixed(1);
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (toggleHeadersBtn) {
+      toggleHeadersBtn.addEventListener("click", function () {
+        showHeaders = !showHeaders;
+        this.dataset.state = showHeaders ? "on" : "off";
+        this.textContent = showHeaders ? "On" : "Off";
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (togglePagesBtn) {
+      togglePagesBtn.addEventListener("click", function () {
+        showPages = !showPages;
+        this.dataset.state = showPages ? "on" : "off";
+        this.textContent = showPages ? "On" : "Off";
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
       });
     }
 
@@ -964,6 +1042,48 @@
     if (mode === "preview" || mode === "read") renderPreview();
   }
 
+  /* ==========================================================================
+     buildPageCSS — assemble @page + layout rules from current controls
+     ========================================================================== */
+
+  var PAGE_SIZES = { A4: "210mm 297mm", A5: "148mm 210mm", Letter: "8.5in 11in", Legal: "8.5in 14in" };
+  var MARGIN_MAP = { narrow: "15mm", normal: "25mm 20mm", wide: "35mm 30mm" };
+
+  function buildPageCSS() {
+    var size = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var margin = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
+    var css = '@page { size: ' + size + '; margin: ' + margin + '; }';
+    if (pageColumns > 1) {
+      css += ' main { column-count: ' + pageColumns + '; column-gap: 2em; }';
+    }
+    if (showPages) {
+      css += '@page { @bottom-center { content: counter(page); font-size: 10px; color: #888; } }';
+    }
+    if (showHeaders) {
+      css += '@page { @top-center { content: string(chapter); font-size: 10px; color: #888; } }';
+      css += 'h1 { string-set: chapter content(); }';
+    }
+    return css;
+  }
+
+  function syncDocControlsUI() {
+    if (pageSizeSel)     pageSizeSel.value = pageSize;
+    if (pageMarginsSel)  pageMarginsSel.value = pageMargins;
+    if (pageColumnsSel)  pageColumnsSel.value = String(pageColumns);
+    if (pageBaselineRange) {
+      pageBaselineRange.value = pageBaseline;
+      if (pageBaselineVal) pageBaselineVal.textContent = (pageBaseline / 10).toFixed(1);
+    }
+    if (toggleHeadersBtn) {
+      toggleHeadersBtn.dataset.state = showHeaders ? "on" : "off";
+      toggleHeadersBtn.textContent = showHeaders ? "On" : "Off";
+    }
+    if (togglePagesBtn) {
+      togglePagesBtn.dataset.state = showPages ? "on" : "off";
+      togglePagesBtn.textContent = showPages ? "On" : "Off";
+    }
+  }
+
   function positionWidthHandles() {
     var frame = document.getElementById("preview-frame");
     var hLeft = document.getElementById("width-handle-left");
@@ -1015,8 +1135,8 @@
       + '<link href="' + FONTS_URL + '" rel="stylesheet">'
       + engineScript
       + '<style>'
-      /* --- @page rules: A4 with 25mm margins --- */
-      + '@page { size: A4 portrait; margin: 25mm 20mm; }'
+      /* --- @page rules from document controls --- */
+      + buildPageCSS()
       /* --- Crop marks at page corners --- */
       + '.pagedjs_page { overflow: visible !important; }'
       + '.pagedjs_page::before, .pagedjs_page::after,'
@@ -1415,8 +1535,8 @@
       + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      /* --- @page rules --- */
-      + '    @page { size: A4 portrait; margin: 25mm 20mm; }\n'
+      /* --- @page rules from document controls --- */
+      + '    ' + buildPageCSS() + '\n'
       /* --- Typography --- */
       + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
       + '    body {\n'

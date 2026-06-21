@@ -314,6 +314,105 @@ body {
 .engine-toggle.none .engine-slider {
   left: calc(66.666%);
 }
+/* ---------- Document layout controls (sidebar) ---------- */
+.doc-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.doc-control-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.doc-label {
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+.doc-select {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  appearance: auto;
+}
+
+.doc-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.doc-range {
+  flex: 1;
+  height: 4px;
+  background: rgba(180, 160, 200, 0.3);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.doc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.doc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.doc-range-val {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  min-width: 24px;
+  text-align: right;
+}
+
+.doc-toggle {
+  padding: 4px 12px;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.doc-toggle:hover {
+  border-color: var(--accent);
+}
+
+.doc-toggle[data-state="on"] {
+  background: rgba(176, 106, 179, 0.18);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 /* ---------- Typography controls (in toolbar) ---------- */
 .typo-controls {
