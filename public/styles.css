@@ -1017,43 +1017,41 @@ body {
   position: absolute;
   top: 5%;
   bottom: 5%;
-  width: 2px;
+  width: 1px;
   cursor: col-resize;
   z-index: 10;
-  background: rgba(180, 160, 200, 0.35);
-  border-radius: 1px;
-  transition: background 0.2s, width 0.2s;
+  background: rgba(180, 160, 200, 0.5);
+  transition: background 0.2s;
 }
 
-/* Drag knob — small rounded rectangle centered on the bar */
+/* Grab knob — centered on the bar */
 .width-handle::after {
   content: "";
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 8px;
-  height: 28px;
-  border-radius: 4px;
-  background: rgba(180, 160, 200, 0.5);
+  width: 6px;
+  height: 24px;
+  border-radius: 3px;
+  background: rgba(180, 160, 200, 0.45);
   transition: background 0.2s, width 0.2s, height 0.2s;
 }
 
 .width-handle:hover::after,
 .width-handle.dragging::after {
   background: var(--accent);
-  width: 10px;
-  height: 32px;
-  border-radius: 5px;
+  width: 8px;
+  height: 28px;
+  border-radius: 4px;
 }
 
 .width-handle:hover,
 .width-handle.dragging {
-  width: 4px;
   background: var(--accent);
 }
 
-/* Dashed handles (Paged.js) — non-interactive page edge indicators */
+/* Dashed handles (Paged.js & Vivliostyle) — non-interactive margin lines */
 .width-handle-dotted {
   width: 1px;
   background: repeating-linear-gradient(
@@ -1063,20 +1061,12 @@ body {
     transparent 3px,
     transparent 6px
   ) !important;
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default !important;
   pointer-events: none;
 }
 .width-handle-dotted::after {
   display: none;
-}
-
-/* Stepped handles (Vivliostyle) — snap to page sizes */
-.width-handle-stepped {
-  background: rgba(176, 106, 179, 0.25);
-}
-.width-handle-stepped::after {
-  background: rgba(176, 106, 179, 0.6);
 }
 
 .width-drag-overlay {

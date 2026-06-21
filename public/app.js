@@ -1049,17 +1049,11 @@
         dragging = true;
         startX = e.clientX;
         wrap = handle.parentElement;
-        /* Where the handle is relative to the wrapper's right edge at drag start */
         startEdge = (wrap.clientWidth - contentWidth) / 2;
         handle.classList.add("dragging");
         widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
-
-        if (handle.dataset.mode === "stepped") {
-          startEdge = PAGE_SIZE_KEYS.indexOf(pageSize);
-          if (startEdge === -1) startEdge = 4;
-        }
       });
 
       window.addEventListener("mousemove", function (e) {
@@ -1067,35 +1061,18 @@
         e.preventDefault();
         var delta = e.clientX - startX;
 
-        if (handle.dataset.mode === "stepped") {
-          var step = Math.round(delta / 60);
-          var newIndex;
-          if (side === "right") {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startEdge - step));
-          } else {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startEdge + step));
-          }
-          var newSize = PAGE_SIZE_KEYS[newIndex];
-          if (newSize !== pageSize) {
-            pageSize = newSize;
-            if (pageSizeSel) pageSizeSel.value = pageSize;
-            positionWidthHandles();
-            if (mode === "preview" || mode === "read") renderPreview();
-          }
+        /* Free drag — derive contentWidth from cursor position */
+        var wrapW = wrap.clientWidth;
+        var newEdge;
+        if (side === "right") {
+          newEdge = startEdge - delta;
         } else {
-          /* Free drag — derive contentWidth from cursor position */
-          var wrapW = wrap.clientWidth;
-          var newEdge;
-          if (side === "right") {
-            newEdge = startEdge - delta;
-          } else {
-            newEdge = startEdge + delta;
-          }
-          newEdge = Math.max(0, newEdge);
-          var newWidth = Math.max(400, Math.min(1400, wrapW - 2 * newEdge));
-          contentWidth = newWidth;
-          applyContentWidth();
+          newEdge = startEdge + delta;
         }
+        newEdge = Math.max(0, newEdge);
+        var newWidth = Math.max(400, Math.min(1400, wrapW - 2 * newEdge));
+        contentWidth = newWidth;
+        applyContentWidth();
       });
 
       window.addEventListener("mouseup", function () {
@@ -1526,7 +1503,7 @@
     Letter: [215.9, 279.4], Legal: [215.9, 355.6]
   };
   var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
-  var MARGIN_MAP = { narrow: "10mm", normal: "25mm 20mm", wide: "40mm 30mm" };
+  var MARGIN_MAP = { narrow: "10mm", normal: "20mm 20mm", wide: "30mm 30mm" };
 
   function getPageCSS() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -1608,20 +1585,15 @@
     /* Determine effective width based on engine */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var effectiveWidth;
-    var isStepped = false;
     var isDotted = false;
 
     if (surfaceMode === "doc" && engine.script) {
-      /* Paged.js or Vivliostyle: handles show content area (page minus margins) */
+      /* Paged.js & Vivliostyle: dashed margin lines, non-interactive */
       var pageW = getPageWidthPx();
-      var iframeW = wrapW; /* iframe fills the wrapper */
+      var iframeW = wrapW;
       var pageScale = Math.min(1, iframeW / pageW);
       effectiveWidth = getContentWidthPx() * pageScale;
-      if (currentDocEngine === "pagedjs") {
-        isDotted = true;
-      } else {
-        isStepped = true;
-      }
+      isDotted = true;
     } else {
       effectiveWidth = contentWidth;
     }
@@ -1638,10 +1610,8 @@
     hRight.style.display = "";
     hLeft.classList.toggle("width-handle-dotted", isDotted);
     hRight.classList.toggle("width-handle-dotted", isDotted);
-    hLeft.classList.toggle("width-handle-stepped", isStepped);
-    hRight.classList.toggle("width-handle-stepped", isStepped);
-    hLeft.dataset.mode = isDotted ? "dotted" : (isStepped ? "stepped" : "free");
-    hRight.dataset.mode = isDotted ? "dotted" : (isStepped ? "stepped" : "free");
+    hLeft.dataset.mode = isDotted ? "dotted" : "free";
+    hRight.dataset.mode = isDotted ? "dotted" : "free";
   }
 
   /* ==========================================================================
