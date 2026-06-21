@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-framework="spectre">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>flatwrite.md — pretty damn good markdown</title>
-  <meta name="description" content="A minimalist markdown editor with live preview, multiple CSS frameworks, and one-click export to HTML, PDF, or shareable URL." />
+  <meta name="description" content="A minimalist markdown editor with live preview, paged document layout, and one-click export to HTML, PDF, or shareable URL." />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
   <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
@@ -100,15 +100,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-  <!-- PoshUI CSS — loaded async for toast feedback (FlatWrite CSS overrides it) -->
-  <link rel="preload" href="https://poshui-components.netlify.app/css/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-  <noscript><link rel="stylesheet" href="https://poshui-components.netlify.app/css/main.css" /></noscript>
-
-  <!-- Base app styles (always loaded, overrides PoshUI for the shell) -->
+  <!-- Base app styles -->
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- Framework CSS is NOT loaded globally — it only applies inside the
-       preview iframe and HTML exports, keeping the app shell independent. -->
 
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
@@ -147,39 +140,6 @@
             <button class="comp-btn load-btn" id="btn-load-local" type="button">From Disk</button>
           </div>
           <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" aria-label="Load markdown file from disk" />
-        </div>
-
-        <hr class="sidebar-divider" />
-
-        <!-- Framework selector -->
-        <div class="framework-selector">
-          <label class="sidebar-section-label">Framework</label>
-          <div class="fw-dropdown" id="fw-dropdown">
-            <button class="fw-dropdown-btn" id="fw-dropdown-btn" type="button">
-              <span id="fw-dropdown-label">Spectre.css</span>
-              <span class="fw-dropdown-arrow">&#x25BC;</span>
-            </button>
-          </div>
-          <!-- Hidden <select> kept for state sync / form compatibility -->
-          <select id="framework-dropdown" class="sr-only" aria-hidden="true" tabindex="-1">
-            <option value="spectre">Spectre.css</option>
-            <option value="poshui">PoshUI</option>
-            <option value="oat">Oat</option>
-            <option value="pico">Pico CSS</option>
-            <option value="milligram">Milligram</option>
-            <option value="chota">Chota</option>
-            <option value="simple">Simple.css</option>
-          </select>
-        </div>
-
-        <hr class="sidebar-divider" />
-
-        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
-        <div class="components-panel">
-          <label for="components-grid" class="sidebar-section-label">Components</label>
-          <div class="components-grid" id="components-grid">
-            <!-- Populated dynamically by app.js based on selected framework -->
-          </div>
         </div>
 
         <hr class="sidebar-divider" />
@@ -276,7 +236,7 @@
             ></textarea>
           </div>
 
-          <!-- Preview pane (hidden by default) — uses iframe to sandbox framework CSS -->
+          <!-- Preview pane (hidden by default) — uses iframe for sandboxed rendering -->
           <div class="preview-wrap hidden" id="preview-wrap">
             <div class="width-handle width-handle-left" id="width-handle-left" title="Drag to resize"></div>
             <iframe id="preview-frame" class="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
@@ -313,20 +273,17 @@
 
   </div>
 
-
-  <!-- ===== COMPONENT MODAL ===== -->
-  <div class="comp-modal-overlay hidden" id="comp-modal-overlay">
-    <div class="comp-modal" id="comp-modal">
-      <div class="comp-modal-header">
-        <h3 class="comp-modal-title" id="comp-modal-title">Insert Component</h3>
-        <button class="comp-modal-close" id="comp-modal-close" type="button" title="Close">&times;</button>
+  <!-- Load from URL modal (replaces component modal) -->
+  <div class="load-modal-overlay hidden" id="load-modal-overlay">
+    <div class="load-modal" id="load-modal">
+      <div class="load-modal-header">
+        <h3 class="load-modal-title" id="load-modal-title">Load from URL</h3>
+        <button class="load-modal-close" id="load-modal-close" type="button" title="Close">&times;</button>
       </div>
-      <div class="comp-modal-body" id="comp-modal-body">
-        <!-- Dynamically populated form fields -->
-      </div>
-      <div class="comp-modal-footer">
-        <button class="btn btn-mode" id="comp-modal-cancel" type="button">Cancel</button>
-        <button class="btn btn-export" id="comp-modal-insert" type="button">Insert</button>
+      <div class="load-modal-body" id="load-modal-body"></div>
+      <div class="load-modal-footer">
+        <button class="btn btn-mode" id="load-modal-cancel" type="button">Cancel</button>
+        <button class="btn btn-export" id="load-modal-insert" type="button">Fetch</button>
       </div>
     </div>
   </div>

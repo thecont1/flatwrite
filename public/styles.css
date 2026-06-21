@@ -1,8 +1,7 @@
 /* ==========================================================================
    FlatWrite — styles.css
    Three-zone desktop shell: left utility rail | central canvas | right reserve.
-   This is the base stylesheet; UI libraries (PoshUI / Oat / Spectre.css)
-   are loaded dynamically and handle form controls + typography overrides.
+   This is the base stylesheet for the FlatWrite shell.
    ========================================================================== */
 
 /* ---------- Reset & Box Model ---------- */
@@ -96,27 +95,6 @@ body {
   );
   background-attachment: fixed;
   height: 100vh;
-}
-
-/* ---------- PoshUI Override — protect app shell from framework globals ---------- */
-.app-shell button,
-.app-shell select,
-.app-shell input,
-.app-shell textarea:not(.editor) {
-  font-family: var(--font-body);
-  color: var(--text-primary);
-  box-shadow: none;
-}
-
-.app-shell h1,
-.app-shell h2,
-.app-shell h3 {
-  font-family: var(--font-display);
-  color: var(--text-primary);
-}
-
-.app-shell a {
-  color: var(--accent);
 }
 
 /* ==========================================================================
@@ -277,95 +255,6 @@ body {
   letter-spacing: 0.06em;
   color: var(--text-secondary);
   margin-bottom: 2px;
-}
-
-/* ---------- Framework custom dropdown ---------- */
-.framework-selector {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.fw-dropdown {
-  position: relative;
-}
-
-.fw-dropdown-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--btn-border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.6);
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  text-align: left;
-}
-
-.fw-dropdown-btn:hover {
-  border-color: var(--accent);
-}
-
-.fw-dropdown-btn:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.18);
-}
-
-.fw-dropdown-arrow {
-  font-size: 0.5rem;
-  margin-left: auto;
-  opacity: 0.6;
-}
-
-.fw-dropdown-list {
-  position: fixed;
-  min-width: 180px;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--btn-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
-  padding: 4px 0;
-}
-
-.fw-dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 14px;
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  color: var(--text-primary);
-}
-
-.fw-dropdown-item:hover {
-  background: rgba(176, 106, 179, 0.1);
-}
-
-.fw-dropdown-item.selected {
-  background: rgba(176, 106, 179, 0.18);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.fw-dropdown-item .star {
-  flex-shrink: 0;
 }
 
 /* ---------- Typography controls (in toolbar) ---------- */
@@ -1169,7 +1058,7 @@ body {
 }
 
 /* ==========================================================================
-   PREVIEW (iframe-based, sandboxes framework CSS)
+   PREVIEW (iframe-based, sandboxed)
    ========================================================================== */
 
 .preview-wrap {
@@ -1254,11 +1143,6 @@ body {
    ACCENT THEMING (Phase 4: --fw-accent tints editor + toolbar)
    ========================================================================== */
 
-.star {
-  vertical-align: -1px;
-  margin-right: 2px;
-  opacity: 0.75;
-}
 
 .mode-edit .editor:focus {
   border-color: var(--fw-accent, var(--accent));
@@ -1295,156 +1179,6 @@ body {
 .sidebar-copy a:hover {
   color: var(--accent-hover);
   text-decoration: underline;
-}
-
-/* ==========================================================================
-   COMPONENT INSERT MODAL
-   ========================================================================== */
-
-.comp-modal-overlay {
-  position: fixed;
-  top: 80px;
-  right: 24px;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.comp-modal-overlay.hidden {
-  display: none;
-}
-
-.comp-modal {
-  pointer-events: auto;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(180, 160, 200, 0.4);
-  border-radius: 16px;
-  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
-  width: 380px;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  animation: modalSlideIn 0.25s ease;
-  resize: vertical;
-  overflow: hidden;
-}
-
-@keyframes modalSlideIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.comp-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
-  cursor: grab;
-  user-select: none;
-}
-
-.comp-modal-header:active {
-  cursor: grabbing;
-}
-
-.comp-modal-title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.comp-modal-close {
-  background: none;
-  border: none;
-  font-size: 1.4rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  transition: color 0.15s;
-}
-
-.comp-modal-close:hover {
-  color: var(--accent);
-}
-
-.comp-modal-body {
-  padding: 16px 22px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.comp-modal-body label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-  margin-top: 12px;
-}
-
-.comp-modal-body label:first-child {
-  margin-top: 0;
-}
-
-.comp-modal-body input[type="text"],
-.comp-modal-body input[type="url"],
-.comp-modal-body input[type="number"],
-.comp-modal-body textarea,
-.comp-modal-body select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(180, 160, 200, 0.35);
-  border-radius: 8px;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  box-sizing: border-box;
-}
-
-.comp-modal-body input:focus,
-.comp-modal-body textarea:focus,
-.comp-modal-body select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
-}
-
-.comp-modal-body textarea {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.comp-modal-body .modal-hint {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.comp-modal-body .modal-row {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-end;
-}
-
-.comp-modal-body .modal-row > div {
-  flex: 1;
-}
-
-.comp-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  padding: var(--space-3) 22px var(--space-5);
-  border-top: 1px solid rgba(180, 160, 200, 0.2);
 }
 
 /* ==========================================================================
@@ -1733,13 +1467,6 @@ body {
     gap: 6px;
   }
 
-  /* Framework dropdown */
-  .framework-dropdown {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 0.88rem;
-  }
-
   /* Markdown toolbar buttons */
   .md-btn {
     min-height: 44px;
@@ -1910,9 +1637,8 @@ body {
 .app-shell.focus-mode .sidebar-inner .tagline,
 .app-shell.focus-mode .sidebar-inner .sidebar-divider,
 .app-shell.focus-mode .sidebar-inner .load-panel,
-.app-shell.focus-mode .sidebar-inner .framework-selector,
 .app-shell.focus-mode .sidebar-inner .zoom-selector,
-.app-shell.focus-mode .sidebar-inner .components-panel,
+
 .app-shell.focus-mode .sidebar-inner .sidebar-copy {
   opacity: 0;
   pointer-events: none;
@@ -1997,6 +1723,119 @@ body {
 /* ==========================================================================
    Shared document error state (Mode B)
    ========================================================================== */
+
+/* ==========================================================================
+   LOAD FROM URL MODAL
+   ========================================================================== */
+
+.load-modal-overlay {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.load-modal-overlay.hidden {
+  display: none;
+}
+
+.load-modal {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(180, 160, 200, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
+  width: 380px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideIn 0.25s ease;
+  overflow: hidden;
+}
+
+.load-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
+}
+
+.load-modal-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.load-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.load-modal-close:hover {
+  color: var(--accent);
+}
+
+.load-modal-body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.load-modal-body label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 0;
+}
+
+.load-modal-body input[type="url"] {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(180, 160, 200, 0.35);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.load-modal-body input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
+}
+
+.load-modal-body .modal-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.load-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) 22px var(--space-5);
+  border-top: 1px solid rgba(180, 160, 200, 0.2);
+}
 
 .shared-error {
   display: flex;
