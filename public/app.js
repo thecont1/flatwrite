@@ -14,18 +14,21 @@
       var req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = function (e) {
         var db = e.target.result;
+        var tx = e.target.transaction;
         if (!db.objectStoreNames.contains("activeDocument")) db.createObjectStore("activeDocument");
         if (!db.objectStoreNames.contains("preferences"))   db.createObjectStore("preferences");
         /* Migration: rename "framework" key to "docEngine" in preferences */
-        var migration = db.transaction("preferences", "readwrite");
-        migration.objectStore("preferences").get("current").onsuccess = function(e) {
-          var rec = e.target.result;
-          if (rec && rec.framework && !rec.docEngine) {
-            rec.docEngine = rec.framework;
-            rec.framework = undefined;
-            migration.objectStore("preferences").put(rec, "current");
-          }
-        };
+        try {
+          var getReq = tx.objectStore("preferences").get("current");
+          getReq.onsuccess = function() {
+            var rec = getReq.result;
+            if (rec && rec.framework && !rec.docEngine) {
+              rec.docEngine = rec.framework;
+              delete rec.framework;
+              tx.objectStore("preferences").put(rec, "current");
+            }
+          };
+        } catch (ex) { /* migration is best-effort */ }
       };
       req.onsuccess = function (e) { resolve(e.target.result); };
       req.onerror   = function (e) { reject(e.target.error); };
