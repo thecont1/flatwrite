@@ -300,8 +300,11 @@ body {
 .surface-doc .app-only { display: none !important; }
 .surface-app .doc-only { display: none !important; }
 
-/* Engine gating: hide Document controls when Plain engine is selected */
-.surface-doc.engine-none .doc-controls { display: none !important; }
+/* Engine gating: grey out Document controls when Plain engine is selected */
+.surface-doc.engine-none .doc-controls {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 /* ---------- Framework dropdown (App surface) ---------- */
 .framework-selector {
@@ -511,6 +514,10 @@ body {
   gap: var(--space-2);
 }
 
+.engine-pane .engine-toggle {
+  border-radius: 10px 10px 0 0;
+}
+
 .engine-toggle {
   position: relative;
   display: grid;
@@ -582,12 +589,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: -1px; /* overlap with engine toggle bottom border */
+  margin-top: -1px;
+  transition: opacity 0.2s ease;
 }
 
-/* Hide doc-controls when Plain engine is selected */
-.engine-none .doc-controls {
-  display: none;
+.doc-control-disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .doc-control-row {
