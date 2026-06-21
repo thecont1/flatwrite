@@ -68,6 +68,7 @@
       markdown:   editor.value,
       mode:       mode,
       docEngine:  currentDocEngine,
+      surfaceMode: surfaceMode,
       docLayout:  { pageSize: pageSize, margins: pageMargins, columns: pageColumns,
                     baseline: pageBaseline, headers: showHeaders, pages: showPages },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
@@ -187,6 +188,7 @@
      ========================================================================== */
 
   var mode = "edit";
+  var surfaceMode = "doc";  /* "doc" | "app" */
   var currentDocEngine = "pagedjs";
   var sizeStep = 0;
   var weightStep = 0;
@@ -369,6 +371,7 @@
       initialEditorContent = editor.value;
       buildFontDropdown();
       setDocEngine(currentDocEngine);
+      setSurfaceMode(surfaceMode);
       syncDocControlsUI();
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
@@ -515,6 +518,9 @@
         mode = record.mode;
       }
 
+      if (record.surfaceMode === "doc" || record.surfaceMode === "app") {
+        surfaceMode = record.surfaceMode;
+      }
       if (record.docEngine && DOC_ENGINES[record.docEngine]) {
         currentDocEngine = record.docEngine;
       }
@@ -781,6 +787,16 @@
       requestAnimationFrame(checkToolbarOverflow);
     }
 
+    /* Surface mode toggle (Doc | App) */
+    var surfaceToggle = document.getElementById("surface-toggle");
+    if (surfaceToggle) {
+      surfaceToggle.addEventListener("click", function (e) {
+        var btn = e.target.closest(".surface-btn");
+        if (!btn || btn.classList.contains("active")) return;
+        setSurfaceMode(btn.dataset.surface);
+      });
+    }
+
     /* Engine toggle */
     if (engineToggle) {
       engineToggle.addEventListener("click", function (e) {
@@ -1021,6 +1037,30 @@
       previewFrame.contentWindow.postMessage({type: "setContentWidth", width: contentWidth}, "*");
     }
     positionWidthHandles();
+  }
+
+  /* ==========================================================================
+     Surface mode toggle (Doc | App)
+     ========================================================================== */
+
+  function setSurfaceMode(sm) {
+    if (sm !== "doc" && sm !== "app") sm = "doc";
+    surfaceMode = sm;
+    var appShell = document.querySelector(".app-shell");
+    if (appShell) {
+      appShell.classList.remove("surface-doc", "surface-app");
+      appShell.classList.add("surface-" + sm);
+    }
+    var toggle = document.getElementById("surface-toggle");
+    if (toggle) {
+      toggle.className = "surface-toggle " + sm;
+      var btns = toggle.querySelectorAll(".surface-btn");
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle("active", btns[i].dataset.surface === sm);
+      }
+    }
+    scheduleAutosave();
+    if (mode === "preview" || mode === "read") renderPreview();
   }
 
   /* ==========================================================================

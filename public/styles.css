@@ -246,6 +246,60 @@ body {
   margin: var(--space-4) 0;
 }
 
+/* ---------- Surface mode toggle (Doc | App) ---------- */
+.surface-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 3px;
+  margin-top: var(--space-3);
+}
+
+.surface-btn {
+  position: relative;
+  z-index: 1;
+  font-family: "Unbounded", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: color 0.25s ease;
+  white-space: nowrap;
+}
+
+.surface-btn.active {
+  color: var(--accent);
+}
+
+.surface-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+  width: calc(50% - 3px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.surface-toggle.app .surface-slider {
+  left: 50%;
+}
+
+/* Surface gating */
+.surface-doc .app-only { display: none !important; }
+.surface-app .doc-only { display: none !important; }
+
 /* Reusable sidebar section label */
 .sidebar-section-label {
   font-family: var(--font-display);
