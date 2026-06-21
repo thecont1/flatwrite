@@ -69,6 +69,7 @@
       mode:       mode,
       docEngine:  currentDocEngine,
       surfaceMode: surfaceMode,
+      appFramework: currentAppFramework,
       docLayout:  { pageSize: pageSize, margins: pageMargins, columns: pageColumns,
                     baseline: pageBaseline, headers: showHeaders, pages: showPages },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
@@ -99,6 +100,8 @@
     var lines = [
       "---",
       "docEngine: " + currentDocEngine,
+      "surfaceMode: " + surfaceMode,
+      "appFramework: " + currentAppFramework,
       "font: " + comfortFont,
       "size: " + sizeStep,
       "weight: " + weightStep,
@@ -472,6 +475,7 @@
   var mode = "edit";
   var surfaceMode = "doc";  /* "doc" | "app" */
   var currentDocEngine = "pagedjs";
+  var currentAppFramework = "spectre";
   var sizeStep = 0;
   var weightStep = 0;
   var lineStep = 0;
@@ -652,6 +656,8 @@
     function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
+      buildAppFrameworkDropdown();
+      renderComponentGrid();
       setDocEngine(currentDocEngine);
       setSurfaceMode(surfaceMode);
       syncDocControlsUI();
@@ -711,6 +717,12 @@
           var fm = parsed.frontmatter;
           if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
             currentDocEngine = fm.docEngine;
+          }
+          if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") {
+            surfaceMode = fm.surfaceMode;
+          }
+          if (fm.appFramework && APP_FRAMEWORKS[fm.appFramework]) {
+            currentAppFramework = fm.appFramework;
           }
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -802,6 +814,9 @@
 
       if (record.surfaceMode === "doc" || record.surfaceMode === "app") {
         surfaceMode = record.surfaceMode;
+      }
+      if (record.appFramework && APP_FRAMEWORKS[record.appFramework]) {
+        currentAppFramework = record.appFramework;
       }
       if (record.docEngine && DOC_ENGINES[record.docEngine]) {
         currentDocEngine = record.docEngine;
@@ -1076,6 +1091,54 @@
         var btn = e.target.closest(".surface-btn");
         if (!btn || btn.classList.contains("active")) return;
         setSurfaceMode(btn.dataset.surface);
+      });
+    }
+
+    /* App framework dropdown */
+    var fwDropdownBtn = document.getElementById("fw-dropdown-btn");
+    var fwDropdownList = document.getElementById("fw-dropdown-list");
+    var fwDropdownLabel = document.getElementById("fw-dropdown-label");
+    if (fwDropdownBtn && fwDropdownList) {
+      fwDropdownBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var isOpen = !fwDropdownList.classList.contains("hidden");
+        fwDropdownList.classList.add("hidden");
+        if (!isOpen) {
+          var rect = fwDropdownBtn.getBoundingClientRect();
+          fwDropdownList.style.left = rect.left + "px";
+          fwDropdownList.style.top = (rect.bottom + 4) + "px";
+          fwDropdownList.style.width = rect.width + "px";
+          fwDropdownList.classList.remove("hidden");
+        }
+      });
+      fwDropdownList.addEventListener("click", function (e) {
+        var item = e.target.closest(".fw-dropdown-item");
+        if (!item) return;
+        currentAppFramework = item.dataset.fw;
+        if (fwDropdownLabel) fwDropdownLabel.textContent = APP_FRAMEWORKS[currentAppFramework] ? APP_FRAMEWORKS[currentAppFramework].label : currentAppFramework;
+        fwDropdownList.querySelectorAll(".fw-dropdown-item").forEach(function (el) {
+          el.classList.toggle("selected", el.dataset.fw === currentAppFramework);
+        });
+        fwDropdownList.classList.add("hidden");
+        scheduleAutosave();
+        if (mode === "preview") renderPreview();
+      });
+      document.addEventListener("pointerdown", function (e) {
+        if (!fwDropdownList.classList.contains("hidden")) {
+          if (!fwDropdownList.contains(e.target) && !fwDropdownBtn.contains(e.target)) {
+            fwDropdownList.classList.add("hidden");
+          }
+        }
+      });
+    }
+
+    /* Component grid */
+    var compGrid = document.getElementById("components-grid");
+    if (compGrid) {
+      compGrid.addEventListener("click", function (e) {
+        var btn = e.target.closest("[data-component]");
+        if (!btn || btn.disabled) return;
+        insertComponent(btn.dataset.component);
       });
     }
 
@@ -1432,6 +1495,106 @@
   }
 
   function renderPreview() {
+    /* === App Surface: Framework CSS preview === */
+    if (surfaceMode === "app") {
+      var fw = APP_FRAMEWORKS[currentAppFramework];
+      var contentForRender = stripYamlFrontMatter(editor.value || "");
+      var rawHTML = marked.parse(contentForRender);
+      var renderedHTML = sanitizeHTML(rawHTML);
+      var scale = SIZE_SCALE[String(sizeStep)] || 1;
+      var weight = WEIGHT_MAP[String(weightStep)] || 400;
+      var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+      var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+      var headWeight = Math.min(weight + 200, 900);
+      var scrollRatio = lastScrollRatio;
+
+      /* Load framework CSS */
+      var fwCssLinks = "";
+      if (fw && fw.css) {
+        var cssArr = typeof fw.css === "string" ? [fw.css] : fw.css;
+        for (var ci = 0; ci < cssArr.length; ci++) {
+          fwCssLinks += '<link rel="stylesheet" href="' + cssArr[ci] + '">';
+        }
+      }
+      var fwJsTag = (fw && fw.js) ? '<script src="' + fw.js + '" defer><' + '/script>' : "";
+
+      /* Build framework style CSS */
+      var fwStyle = "";
+      if (fw && typeof fw.style === "function") {
+        fwStyle = fw.style("");
+      }
+
+      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + fwCssLinks
+        + fwJsTag
+        + '<style>'
+        + fwStyle
+        + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
+        + 'body { font-size: ' + (15 * scale) + 'px !important;'
+        + ' font-weight: ' + weight + ' !important;'
+        + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
+        + ' max-width: ' + contentWidth + 'px; margin: 2rem auto; padding: 0 1.5rem;'
+        + ' overflow-x: hidden; }'
+        + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; }'
+        + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
+        + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
+        + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
+        + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
+        + 'img { max-width: 100%; height: auto; display: block; }'
+        + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
+        + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
+        + 'table { table-layout: fixed; width: 100%; overflow: hidden; }'
+        + 'td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+        + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
+        + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
+        + 'li { margin: 0.15em 0; display: list-item; }'
+        + 'p { margin: 0.4em 0; }'
+        + '</style>'
+        + '</head><body><main>' + renderedHTML + '</main>'
+        + '<script>'
+        + 'var _scrollRatio = ' + scrollRatio + ';'
+        + 'var _max = document.documentElement.scrollHeight - window.innerHeight;'
+        + 'if (_max > 0) window.scrollTo(0, Math.round(_scrollRatio * _max));'
+        + 'var _scrollTimer;'
+        + 'window.addEventListener("scroll", function(){'
+        + '  clearTimeout(_scrollTimer);'
+        + '  _scrollTimer = setTimeout(function(){'
+        + '    var m = document.documentElement.scrollHeight - window.innerHeight;'
+        + '    var r = m > 0 ? window.scrollY / m : 0;'
+        + '    parent.postMessage({type:"scroll",ratio:r}, "*");'
+        + '  }, 150);'
+        + '});'
+        + 'window.addEventListener("message", function(e){'
+        + '  if (e.data && e.data.type === "setScroll") {'
+        + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
+        + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
+        + '  }'
+        + '  if (e.data && e.data.type === "setContentWidth") {'
+        + '    document.body.style.maxWidth = e.data.width + "px";'
+        + '  }'
+        + '});'
+        + 'document.addEventListener("pointerdown", function(){'
+        + '  parent.postMessage({type:"iframe-pointerdown"}, "*");'
+        + '});'
+        + 'document.addEventListener("dblclick", function(e) {'
+        + '  var sel = window.getSelection();'
+        + '  if (!sel || sel.rangeCount === 0) return;'
+        + '  var word = sel.toString().trim();'
+        + '  if (!word) return;'
+        + '  parent.postMessage({type:"dblclick", word:word, ctx:""}, "*");'
+        + '});'
+        + '<' + '/script>'
+        + '</body></html>';
+
+      previewFrame.srcdoc = html;
+      previewFrame.onload = positionWidthHandles;
+      setTimeout(positionWidthHandles, 250);
+      return;
+    }
+
+    /* === Doc Surface: Paged.js preview === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
@@ -1832,6 +1995,65 @@
   }
 
   function exportHTML() {
+    /* === App Surface: Framework CSS export === */
+    if (surfaceMode === "app") {
+      var fw = APP_FRAMEWORKS[currentAppFramework];
+      var contentForRender = stripYamlFrontMatter(editor.value || "");
+      var rawHTML = marked.parse(contentForRender);
+      var renderedHTML = sanitizeHTML(rawHTML);
+      var scale = SIZE_SCALE[String(sizeStep)] || 1;
+      var weight = WEIGHT_MAP[String(weightStep)] || 400;
+      var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+      var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+      var headWeight = Math.min(weight + 200, 900);
+
+      var fwCssLinks = "";
+      if (fw && fw.css) {
+        var cssArr = typeof fw.css === "string" ? [fw.css] : fw.css;
+        for (var ci = 0; ci < cssArr.length; ci++) {
+          fwCssLinks += '  <link rel="stylesheet" href="' + cssArr[ci] + '">\n';
+        }
+      }
+      var fwJsTag = (fw && fw.js) ? '  <script src="' + fw.js + '" defer><' + '/script>\n' : "";
+
+      var fwStyle = "";
+      if (fw && typeof fw.style === "function") {
+        fwStyle = fw.style("");
+      }
+
+      var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+        + '  <meta charset="UTF-8">\n'
+        + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        + '  <title>FlatWrite Export</title>\n'
+        + '  <base target="_blank" rel="noopener noreferrer">\n'
+        + fwCssLinks + fwJsTag
+        + '  <style>\n'
+        + '    ' + fwStyle + '\n'
+        + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
+        + '    body { font-size: ' + (15 * scale) + 'px !important;\n'
+        + '      font-weight: ' + weight + ' !important; line-height: ' + lineHeight + ' !important;\n'
+        + '      color: #2d2a3e; max-width: ' + contentWidth + 'px;\n'
+        + '      margin: 2rem auto; padding: 0 1.5rem; overflow-x: hidden; }\n'
+        + '    h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; }\n'
+        + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
+        + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; }\n'
+        + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; }\n'
+        + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
+        + '    img { max-width: 100%; height: auto; }\n'
+        + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
+        + '    pre { overflow-x: auto; white-space: pre-wrap; }\n'
+        + '    table { table-layout: fixed; width: 100%; }\n'
+        + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
+        + '  </style>\n'
+        + '</head>\n<body>\n  <main>\n'
+        + renderedHTML
+        + '\n  </main>\n</body>\n</html>';
+
+      openInNewTab(html, "text/html;charset=utf-8");
+      return;
+    }
+
+    /* === Doc Surface: Paged.js export === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
@@ -1901,6 +2123,18 @@
   }
 
   function exportPDF() {
+    /* === App Surface: Simple print === */
+    if (surfaceMode === "app") {
+      /* In App mode, just trigger the browser print dialog */
+      if (mode === "preview" || mode === "read") {
+        previewFrame.contentWindow.print();
+      } else {
+        window.print();
+      }
+      return;
+    }
+
+    /* === Doc Surface: Paged.js auto-print document === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
@@ -1974,6 +2208,62 @@
       + '</body>\n</html>';
 
     openInNewTab(html, "text/html;charset=utf-8");
+  }
+
+  /* ==========================================================================
+     App framework dropdown and component picker
+     ========================================================================== */
+
+  function buildAppFrameworkDropdown() {
+    var list = document.getElementById("fw-dropdown-list");
+    if (!list) {
+      list = document.createElement("div");
+      list.id = "fw-dropdown-list";
+      list.className = "fw-dropdown-list hidden";
+      document.body.appendChild(list);
+    }
+    list.innerHTML = "";
+    var keys = Object.keys(APP_FRAMEWORKS);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var fw = APP_FRAMEWORKS[key];
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "fw-dropdown-item" + (key === currentAppFramework ? " selected" : "");
+      item.dataset.fw = key;
+      item.textContent = fw.label;
+      list.appendChild(item);
+    }
+    var label = document.getElementById("fw-dropdown-label");
+    if (label) label.textContent = APP_FRAMEWORKS[currentAppFramework] ? APP_FRAMEWORKS[currentAppFramework].label : currentAppFramework;
+  }
+
+  function renderComponentGrid() {
+    var grid = document.getElementById("components-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    for (var i = 0; i < APP_COMPONENTS.length; i++) {
+      var comp = APP_COMPONENTS[i];
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comp-btn";
+      btn.dataset.component = comp.id;
+      btn.title = comp.label;
+      btn.textContent = comp.label;
+      grid.appendChild(btn);
+    }
+  }
+
+  function insertComponent(componentId) {
+    var comp = null;
+    for (var i = 0; i < APP_COMPONENTS.length; i++) {
+      if (APP_COMPONENTS[i].id === componentId) { comp = APP_COMPONENTS[i]; break; }
+    }
+    if (!comp) return;
+    var snippet = comp.snippets[currentAppFramework] || comp.snippets.spectre || "";
+    if (!snippet) return;
+    if (mode !== "edit") setMode("edit");
+    editorInsertBlock(snippet);
   }
 
   /* ==========================================================================

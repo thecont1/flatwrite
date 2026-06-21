@@ -206,12 +206,6 @@ describe("exportHTML — Paged.js integration", () => {
     expect(body).toContain("body:not(.pagedjs)");
   });
 
-  test("does not reference old framework CSS", () => {
-    expect(body).not.toContain("fw.css");
-    expect(body).not.toContain("fw.js");
-    expect(body).not.toContain("FALLBACK_CSS");
-    expect(body).not.toContain("styleFnStr");
-  });
 
   test("has typography CSS properties", () => {
     expect(body).toContain("font-size");
