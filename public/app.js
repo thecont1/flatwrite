@@ -140,6 +140,288 @@
   };
 
   /* ==========================================================================
+     App Frameworks registry (for App surface mode)
+     Each framework: label, css URLs (array), js URL (optional), category, style function.
+     ========================================================================== */
+
+  var APP_FRAMEWORKS = {
+    spectre: {
+      label: "Spectre",
+      css: ["https://unpkg.com/spectre.css/dist/spectre.min.css", "https://unpkg.com/spectre.css/dist/spectre-icons.min.css"],
+      js: null,
+      category: "grid",
+      style: function (css) { return css + "body { max-width: 1100px; margin: 0 auto; padding: 20px; }"; }
+    },
+    poshui: {
+      label: "Poshui",
+      css: ["https://unpkg.com/poshui/dist/poshui.min.css"],
+      js: null,
+      category: "minimal",
+      style: function (css) { return css + "body { max-width: 960px; margin: 0 auto; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }"; }
+    },
+    pico: {
+      label: "Pico",
+      css: ["https://unpkg.com/@picocss/pico@latest/css/pico.min.css"],
+      js: null,
+      category: "semantic",
+      style: function (css) { return css + "body { max-width: 900px; margin: 0 auto; padding: 20px; }"; }
+    },
+    milligram: {
+      label: "Milligram",
+      css: ["https://unpkg.com/milligram@1.4.1/dist/milligram.min.css"],
+      js: null,
+      category: "minimal",
+      style: function (css) { return css + "body { max-width: 800px; margin: 0 auto; padding: 20px; }"; }
+    },
+    chota: {
+      label: "Chota",
+      css: ["https://unpkg.com/chota@1.0.4/dist/chota.min.css"],
+      js: null,
+      category: "grid",
+      style: function (css) { return css + "body { max-width: 1000px; margin: 0 auto; padding: 20px; }"; }
+    }
+  };
+
+  /* ==========================================================================
+     App Components registry (for App surface mode)
+     Each component: id, label, support map, snippets per framework.
+     ========================================================================== */
+
+  var APP_COMPONENTS = [
+    {
+      id: "card", label: "Card",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="card"><div class="card-body">Card content</div></div>',
+        poshui: '<div class="card">Card content</div>',
+        pico: '<article class="card"><div class="card-body">Card content</div></article>',
+        milligram: '<div class="card"><p>Card content</p></div>',
+        chota: '<div class="card"><p>Card content</p></div>'
+      }
+    },
+    {
+      id: "button", label: "Button",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<button class="btn btn-primary">Primary</button>',
+        poshui: '<button class="button primary">Primary</button>',
+        pico: '<button class="secondary">Secondary</button>',
+        milligram: '<button class="button button-primary">Primary</button>',
+        chota: '<button class="button primary">Primary</button>'
+      }
+    },
+    {
+      id: "table", label: "Table",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<table class="table"><thead><tr><th>#</th><th>Name</th></tr></thead><tbody><tr><td>1</td><td>Item</td></tr></tbody></table>',
+        poshui: '<table class="table"><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>',
+        pico: '<table><thead><tr><th>#</th><th>Name</th></tr></thead><tbody><tr><td>1</td><td>Item</td></tr></tbody></table>',
+        milligram: '<table><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>',
+        chota: '<table><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>'
+      }
+    },
+    {
+      id: "list", label: "List",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<ul class="breadcrumb"><li><a href="#">Home</a></li><li><a href="#">Library</a></li></ul>',
+        poshui: '<ul class="list"><li>Item 1</li><li>Item 2</li></ul>',
+        pico: '<ul><li>Item 1</li><li>Item 2</li></ul>',
+        milligram: '<ul><li>Item 1</li><li>Item 2</li></ul>',
+        chota: '<ul><li>Item 1</li><li>Item 2</li></ul>'
+      }
+    },
+    {
+      id: "image", label: "Image",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<img src="https://via.placeholder.com/600x400" alt="Placeholder" class="img-responsive">',
+        poshui: '<img src="https://via.placeholder.com/600x400" alt="Placeholder" class="image">',
+        pico: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">',
+        milligram: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">',
+        chota: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">'
+      }
+    },
+    {
+      id: "alert", label: "Alert",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="alert alert-primary">Alert message</div>',
+        poshui: '<div class="alert">Alert message</div>',
+        pico: '<div class="alert alert-primary" role="alert">Alert message</div>',
+        milligram: '<p class="alert alert-warning">Alert message</p>',
+        chota: '<div class="notification"><p>Alert message</p></div>'
+      }
+    },
+    {
+      id: "button-group", label: "Button Group",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="btn-group"><button class="btn">Left</button><button class="btn">Right</button></div>',
+        poshui: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>',
+        pico: '<div class="button-group"><button>Left</button><button>Right</button></div>',
+        milligram: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>',
+        chota: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>'
+      }
+    },
+    {
+      id: "nav", label: "Nav",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<ul class="nav"><li class="nav-item"><a class="nav-link" href="#">Home</a></li></ul>',
+        poshui: '<nav class="navbar"><a href="#" class="navbar-item">Home</a></nav>',
+        pico: '<nav><ul><li><a href="#">Home</a></li></ul></nav>',
+        milligram: '<nav><ul><li><a href="#">Home</a></li></ul></nav>',
+        chota: '<nav><a href="#" class="nav-link">Home</a></nav>'
+      }
+    },
+    {
+      id: "badge", label: "Badge",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<span class="badge badge-primary">New</span>',
+        poshui: '<span class="badge primary">New</span>',
+        pico: '<span class="badge primary">New</span>',
+        milligram: '<span class="badge badge-pill badge-primary">New</span>',
+        chota: '<span class="badge primary">New</span>'
+      }
+    },
+    {
+      id: "input", label: "Input",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<input type="text" class="form-input" placeholder="Enter text...">',
+        poshui: '<input type="text" class="input" placeholder="Enter text...">',
+        pico: '<input type="text" placeholder="Enter text...">',
+        milligram: '<input type="text" class="input" placeholder="Enter text...">',
+        chota: '<input type="text" class="input" placeholder="Enter text...">'
+      }
+    },
+    {
+      id: "modal", label: "Modal",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<a href="#" class="btn btn-link" role="button">Launch</a><div class="modal"><div class="modal-content"><a href="#" class="btn btn-close">&times;</a><div class="modal-body">Content</div></div></div>',
+        poshui: '<button class="button" onclick="document.getElementById(\'modal\').classList.toggle(\'active\')">Launch</button><div id="modal" class="modal">Content</div>',
+        pico: '<dialog role="dialog" aria-modal="true" class="modal"><form method="dialog"><button>Close</button></form><p>Content</p></dialog>',
+        milligram: '<p><button class="button" onclick="document.getElementById(\'modal\').style.display=\'block\'">Launch</button></p><div id="modal" class="modal" style="display:none"><div class="modal-content">Content</div></div>',
+        chota: '<div class="modal"><div class="modal-content">Content</div></div>'
+      }
+    },
+    {
+      id: "accordion", label: "Accordion",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<details class="accordion"><summary class="accordion-header">Title</summary><div class="accordion-body">Content</div></details>',
+        poshui: '<details class="details"><summary class="details-summary">Title</summary><div class="details-content">Content</div></details>',
+        pico: '<details><summary>Title</summary><p>Content</p></details>',
+        milligram: '<details><summary>Title</summary><p>Content</p></details>',
+        chota: '<details class="details"><summary>Title</summary><div class="details-content">Content</div></details>'
+      }
+    },
+    {
+      id: "toast", label: "Toast",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="alert alert-success">Toast message</div>',
+        poshui: '<div class="alert success">Toast message</div>',
+        pico: '<div class="alert alert-success" role="alert">Toast message</div>',
+        milligram: '<p class="toast">Toast message</p>',
+        chota: '<div class="notification success">Toast message</div>'
+      }
+    },
+    {
+      id: "progress", label: "Progress",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="progress"><div class="progress-value" style="width: 50%"></div></div>',
+        poshui: '<div class="progress"><div class="progress-inner" style="width: 50%"></div></div>',
+        pico: '<progress value="50" max="100"></progress>',
+        milligram: '<progress value="50" max="100"></progress>',
+        chota: '<div class="progress"><div class="progress-inner" style="width: 50%"></div></div>'
+      }
+    },
+    {
+      id: "tab", label: "Tab",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="tabs"><ul class="tab-item active"><li class="tab-active"><a href="#">Home</a></li></ul></div>',
+        poshui: '<div class="tabs"><div class="tab-item active">Home</div></div>',
+        pico: '<div class="tabs" role="tablist"><button role="tab" aria-selected="true">Home</button></div>',
+        milligram: '<div class="tabs"><ul><li class="tab-active"><a href="#">Home</a></li></ul></div>',
+        chota: '<div class="tabs"><div class="tab-item active">Home</div></div>'
+      }
+    },
+    {
+      id: "tooltip", label: "Tooltip",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<span class="tooltipped" data-tooltip="Help text">Hover me</span>',
+        poshui: '<span class="tooltip" data-tooltip="Help text">Hover me</span>',
+        pico: '<span data-tooltip="Help text">Hover me</span>',
+        milligram: '<span class="tooltip" data-tooltip="Help text">Hover me</span>',
+        chota: '<span class="tooltip" data-tooltip="Help text">Hover me</span>'
+      }
+    },
+    {
+      id: "navbar", label: "Navbar",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<nav class="navbar"><a class="navbar-brand" href="#">Brand</a><ul class="nav"><li class="nav-item"><a class="nav-link" href="#">Home</a></li></ul></nav>',
+        poshui: '<nav class="navbar"><a href="#" class="navbar-brand">Brand</a><div class="navbar-item"><a href="#" class="navbar-link">Home</a></div></nav>',
+        pico: '<nav><a href="#">Brand</a><ul><li><a href="#">Home</a></li></ul></nav>',
+        milligram: '<nav class="navbar"><div class="container"><a class="navbar-title">Brand</a><ul><li><a href="#">Home</a></li></ul></div></nav>',
+        chota: '<nav class="navbar"><a href="#" class="nav-brand">Brand</a><div class="nav-links"><a href="#" class="nav-link">Home</a></div></nav>'
+      }
+    },
+    {
+      id: "footer", label: "Footer",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        poshui: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        pico: '<footer><p>&copy; 2026 My Site</p></footer>',
+        milligram: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        chota: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>'
+      }
+    },
+    {
+      id: "hero-wide", label: "Hero",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="hero"><div class="hero-body"><h1 class="hero-title">Welcome</h1><p class="hero-subtitle">Subtitle here</p></div></div>',
+        poshui: '<div class="hero"><h1>Welcome</h1><p>Subtitle here</p></div>',
+        pico: '<section aria-label="Hero section"><h1>Welcome</h1><p>Subtitle here</p></section>',
+        milligram: '<section class="hero"><h1>Welcome</h1><p class="hero-subtitle">Subtitle here</p></section>',
+        chota: '<div class="hero"><h1>Welcome</h1><p>Subtitle here</p></div>'
+      }
+    },
+    {
+      id: "two-col", label: "2-Col Layout",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="columns"><div class="column col-6">Left</div><div class="column col-6">Right</div></div>',
+        poshui: '<div class="row"><div class="col"><p>Left</p></div><div class="col"><p>Right</p></div></div>',
+        pico: '<div class="grid"><div class="grid-item">Left</div><div class="grid-item">Right</div></div>',
+        milligram: '<div class="row"><div class="column">Left</div><div class="column">Right</div></div>',
+        chota: '<div class="grid"><div class="grid-col">Left</div><div class="grid-col">Right</div></div>'
+      }
+    },
+    {
+      id: "three-col", label: "3-Col Layout",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="columns"><div class="column col-4">Left</div><div class="column col-4">Center</div><div class="column col-4">Right</div></div>',
+        poshui: '<div class="row"><div class="col"><p>Left</p></div><div class="col"><p>Center</p></div><div class="col"><p>Right</p></div></div>',
+        pico: '<div class="grid"><div class="grid-item">Left</div><div class="grid-item">Center</div><div class="grid-item">Right</div></div>',
+        milligram: '<div class="row"><div class="column">Left</div><div class="column">Center</div><div class="column">Right</div></div>',
+        chota: '<div class="grid"><div class="grid-col">Left</div><div class="grid-col">Center</div><div class="grid-col">Right</div></div>'
+      }
+    }
+  ];
+
+  /* ==========================================================================
      Typography presets
      ========================================================================== */
 

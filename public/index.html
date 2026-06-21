@@ -209,6 +209,24 @@
 
         <hr class="sidebar-divider" />
 
+        <!-- App surface: Framework selector -->
+        <div class="framework-selector app-only">
+          <label class="sidebar-section-label">Framework</label>
+          <div class="fw-dropdown" id="fw-dropdown">
+            <button class="fw-dropdown-btn" id="fw-dropdown-btn" type="button">
+              <span id="fw-dropdown-label">Spectre</span>
+              <span class="fw-dropdown-arrow">&#x25BC;</span>
+            </button>
+          </div>
+          <select id="framework-dropdown" class="sr-only" aria-hidden="true" tabindex="-1"></select>
+        </div>
+
+        <!-- App surface: Component picker -->
+        <div class="components-panel app-only">
+          <label for="components-grid" class="sidebar-section-label">Components</label>
+          <div class="components-grid" id="components-grid"></div>
+        </div>
+
         <!-- UI Zoom -->
         <div class="zoom-selector">
           <label for="zoom-slider" class="sidebar-section-label">UI Zoom</label>
@@ -349,6 +367,21 @@
       <div class="load-modal-footer">
         <button class="btn btn-mode" id="load-modal-cancel" type="button">Cancel</button>
         <button class="btn btn-export" id="load-modal-insert" type="button">Fetch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Component insert modal (App surface) -->
+  <div class="comp-modal-overlay hidden app-only" id="comp-modal-overlay">
+    <div class="comp-modal" id="comp-modal">
+      <div class="comp-modal-header">
+        <h3 class="comp-modal-title" id="comp-modal-title">Insert Component</h3>
+        <button class="comp-modal-close" id="comp-modal-close" type="button" title="Close">&times;</button>
+      </div>
+      <div class="comp-modal-body" id="comp-modal-body"></div>
+      <div class="comp-modal-footer">
+        <button class="btn btn-mode" id="comp-modal-cancel" type="button">Cancel</button>
+        <button class="btn btn-export" id="comp-modal-insert" type="button">Insert</button>
       </div>
     </div>
   </div>

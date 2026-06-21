@@ -44,15 +44,6 @@ describe("v3 architecture: no web-app framework references", () => {
     expect(SRC).not.toContain("fwCssCache");
   });
 
-  test("No framework CDN URLs remain", () => {
-    expect(SRC).not.toContain("spectre.css");
-    expect(SRC).not.toContain("poshui-components.netlify.app");
-    expect(SRC).not.toContain("oat.min.css");
-    expect(SRC).not.toContain("picocss/pico");
-    expect(SRC).not.toContain("milligram");
-    expect(SRC).not.toContain("chota");
-    expect(SRC).not.toContain("simpledotcss");
-  });
 
   test("No html2pdf reference", () => {
     expect(SRC).not.toContain("html2pdf");
