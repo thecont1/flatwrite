@@ -1479,7 +1479,17 @@
     if (!frame || !hLeft || !hRight) return;
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+
+    /* In Doc mode with a paged engine, handles can't control page dimensions */
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
+    if (surfaceMode === "doc" && engine && engine.script) {
+      hLeft.style.display = "none";
+      hRight.style.display = "none";
+      return;
+    }
+    hLeft.style.display = "";
+    hRight.style.display = "";
+
     var effectiveWidth = contentWidth;
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
     hLeft.style.left = edge + "px";
@@ -1576,6 +1586,8 @@
         + '  }'
         + '  if (e.data && e.data.type === "setContentWidth") {'
         + '    document.body.style.maxWidth = e.data.width + "px";'
+        + '    document.body.style.marginLeft = "auto";'
+        + '    document.body.style.marginRight = "auto";'
         + '  }'
         + '});'
         + 'document.addEventListener("pointerdown", function(){'
@@ -1695,6 +1707,8 @@
       + '  }'
       + '  if (e.data && e.data.type === "setContentWidth") {'
       + '    document.body.style.maxWidth = e.data.width + "px";'
+      + '    document.body.style.marginLeft = "auto";'
+      + '    document.body.style.marginRight = "auto";'
       + '  }'
       + '});'
       + 'document.addEventListener("pointerdown", function(){'
