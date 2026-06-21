@@ -1579,8 +1579,79 @@
   }
 
   function exportPDF() {
-    /* Simple print-based PDF export */
-    window.print();
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
+    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var rawHTML = marked.parse(contentForRender);
+    var renderedHTML = sanitizeHTML(rawHTML);
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
+
+    /* Engine script — Paged.js for proper @page pagination */
+    var engineScript = (engine && engine.script)
+      ? '  <script src="' + engine.script + '"><' + '/script>\n'
+      : '';
+
+    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+      + '  <meta charset="UTF-8">\n'
+      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+      + '  <title>FlatWrite PDF</title>\n'
+      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
+      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + engineScript
+      + '  <style>\n'
+      + '    ' + buildPageCSS() + '\n'
+      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
+      + '    body {\n'
+      + '      font-size: ' + (15 * scale) + 'px !important;\n'
+      + '      font-weight: ' + weight + ' !important;\n'
+      + '      line-height: ' + lineHeight + ' !important;\n'
+      + '      color: #2d2a3e;\n'
+      + '      overflow-x: hidden;\n'
+      + '    }\n'
+      + '    body:not(.pagedjs) main { max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem; }\n'
+      + '    h1, h2, h3, h4, h5, h6 {\n'
+      + '      font-weight: ' + headWeight + ' !important;\n'
+      + '      overflow-wrap: break-word; word-break: break-word;\n'
+      + '    }\n'
+      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
+      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
+      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
+      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
+      + '    img { max-width: 100%; height: auto; display: block; }\n'
+      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
+      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
+      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
+      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
+      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
+      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
+      + '    li { margin: 0.15em 0; display: list-item; }\n'
+      + '    li > ul, li > ol { margin: 0.15em 0; }\n'
+      + '    li::marker { display: inline; }\n'
+      + '    p { margin: 0.4em 0; }\n'
+      + '    br { margin: 0.3em 0; }\n'
+      + '  </style>\n'
+      + '</head>\n<body>\n  <main>\n'
+      + renderedHTML
+      + '\n  </main>\n'
+      /* Auto-print after Paged.js renders */
+      + '  <script>\n'
+      + '    document.addEventListener("DOMContentLoaded", function() {\n'
+      + '      if (typeof window.PagedPolyfill !== "undefined") {\n'
+      + '        window.PagedPolyfill.on("afterRenderation", function() {\n'
+      + '          setTimeout(function() { window.print(); }, 200);\n'
+      + '        });\n'
+      + '      } else {\n'
+      + '        setTimeout(function() { window.print(); }, 500);\n'
+      + '      }\n'
+      + '    });\n'
+      + '  <' + '/script>\n'
+      + '</body>\n</html>';
+
+    openInNewTab(html, "text/html;charset=utf-8");
   }
 
   /* ==========================================================================
