@@ -1451,11 +1451,10 @@
       var id = DOC_CONTROL_IDS[i];
       var el = document.getElementById(id);
       if (!el) continue;
-      /* For split rows, target the half-container; otherwise the row */
-      var container = el.closest(".doc-control-half") || el.closest(".doc-control-row");
+      var row = el.closest(".doc-control-row");
       var disabled = allDisabled || PAGEDJS_DISABLED[id] || false;
       el.disabled = disabled;
-      if (container) container.classList.toggle("doc-control-disabled", disabled);
+      if (row) row.classList.toggle("doc-control-disabled", disabled);
     }
   }
 

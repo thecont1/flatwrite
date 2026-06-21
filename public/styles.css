@@ -306,18 +306,6 @@ body {
   pointer-events: none;
 }
 
-/* Headers/Pages on same row */
-.doc-control-row-split {
-  display: flex;
-  gap: var(--space-3);
-}
-.doc-control-half {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 1;
-}
-
 /* ---------- Framework dropdown (App surface) ---------- */
 .framework-selector {
   display: flex;
@@ -528,6 +516,8 @@ body {
 
 .engine-pane .engine-toggle {
   border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .engine-toggle {
@@ -591,12 +581,6 @@ body {
   flex-direction: column;
 }
 
-.engine-pane .engine-toggle {
-  border-radius: 10px 10px 0 0;
-  border-bottom: none;
-  margin-bottom: 0;
-}
-
 .engine-pane .doc-controls {
   border: 1px solid var(--glass-border);
   border-radius: 0 0 10px 10px;
@@ -650,6 +634,8 @@ body {
 
 .doc-range {
   flex: 1;
+  min-width: 0;
+  width: 0;
   height: 4px;
   background: rgba(180, 160, 200, 0.3);
   border-radius: 2px;
@@ -682,6 +668,7 @@ body {
   font-size: 0.72rem;
   color: var(--text-secondary);
   min-width: 24px;
+  flex-shrink: 0;
   text-align: right;
 }
 
