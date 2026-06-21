@@ -1450,10 +1450,12 @@
     for (var i = 0; i < DOC_CONTROL_IDS.length; i++) {
       var id = DOC_CONTROL_IDS[i];
       var el = document.getElementById(id);
-      var row = el ? el.closest(".doc-control-row") : null;
+      if (!el) continue;
+      /* For split rows, target the half-container; otherwise the row */
+      var container = el.closest(".doc-control-half") || el.closest(".doc-control-row");
       var disabled = allDisabled || PAGEDJS_DISABLED[id] || false;
-      if (el) el.disabled = disabled;
-      if (row) row.classList.toggle("doc-control-disabled", disabled);
+      el.disabled = disabled;
+      if (container) container.classList.toggle("doc-control-disabled", disabled);
     }
   }
 
