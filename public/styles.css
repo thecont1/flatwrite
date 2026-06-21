@@ -1254,7 +1254,7 @@ body {
    ========================================================================== */
 
 .star {
-  vertical-align: middle;
+  vertical-align: -2px;
   margin-right: 2px;
   opacity: 0.5;
 }
