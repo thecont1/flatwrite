@@ -593,6 +593,7 @@ body {
 
 .engine-pane .engine-toggle {
   border-radius: 10px 10px 0 0;
+  border-bottom: none;
   margin-bottom: 0;
 }
 
