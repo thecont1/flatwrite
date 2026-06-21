@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#eab8e4"/>
       <stop offset="20%" stop-color="#f5c2da"/>
       <stop offset="40%" stop-color="#f7e9a1"/>
@@ -8,10 +8,13 @@
       <stop offset="82%" stop-color="#7eb8d4"/>
       <stop offset="100%" stop-color="#5d7a8e"/>
     </linearGradient>
+    <linearGradient id="fg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#b06ab3"/>
+      <stop offset="100%" stop-color="#4568dc"/>
+    </linearGradient>
   </defs>
-  <rect width="48" height="48" fill="#000"/>
-  <circle cx="24" cy="24" r="21" fill="url(#g)"/>
+  <rect width="48" height="48" fill="url(#bg)"/>
   <text x="24" y="24.5" text-anchor="middle" dominant-baseline="central"
-        fill="#fff" font-family="Inter,Arial,Helvetica,sans-serif"
-        font-weight="700" font-size="15" letter-spacing="0.5">FW</text>
+        fill="url(#fg)" font-family="Unbounded,Arial,sans-serif"
+        font-weight="700" font-size="42" letter-spacing="0.5">FW</text>
 </svg>
