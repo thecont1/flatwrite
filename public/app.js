@@ -1475,7 +1475,7 @@
       var isNative = snippet && snippet !== comp.snippets.default;
 
       /* Label: "Card ★" with star if native, or "Card" if fallback */
-      btn.textContent = comp.label + (isNative ? " \u2605" : "");
+      btn.innerHTML = comp.label + (isNative ? ' <small class="star">\u2605</small>' : "");
       if (!isNative) {
         btn.title = comp.label + " (rendered via fallback in " + fwLabel + ")";
       }

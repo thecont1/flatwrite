@@ -1196,6 +1196,11 @@ body {
    ACCENT THEMING (Phase 4: --fw-accent tints editor + toolbar)
    ========================================================================== */
 
+.star {
+  font-size: 0.65em;
+  opacity: 0.5;
+}
+
 .mode-edit .editor:focus {
   border-color: var(--fw-accent, var(--accent));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw-accent, var(--accent)) 14%, transparent);
