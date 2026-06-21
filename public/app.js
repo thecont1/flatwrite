@@ -1039,24 +1039,24 @@
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
-      var dragging = false, startX, startIndex;
+      var dragging = false, startX, startContentWidth;
 
       handle.addEventListener("mousedown", function (e) {
-        /* Dotted handles (Paged.js) are non-interactive */
         if (handle.dataset.mode === "dotted") return;
 
         e.preventDefault();
         e.stopPropagation();
         dragging = true;
         startX = e.clientX;
+        startContentWidth = contentWidth;
         handle.classList.add("dragging");
         widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
 
         if (handle.dataset.mode === "stepped") {
-          startIndex = PAGE_SIZE_KEYS.indexOf(pageSize);
-          if (startIndex === -1) startIndex = 4; /* A4 */
+          startContentWidth = PAGE_SIZE_KEYS.indexOf(pageSize);
+          if (startContentWidth === -1) startContentWidth = 4;
         }
       });
 
@@ -1066,13 +1066,12 @@
         var delta = e.clientX - startX;
 
         if (handle.dataset.mode === "stepped") {
-          /* Snap to page sizes on drag */
-          var step = Math.round(delta / 60); /* ~60px per step */
+          var step = Math.round(delta / 60);
           var newIndex;
           if (side === "right") {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startIndex - step));
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startContentWidth - step));
           } else {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startIndex + step));
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startContentWidth + step));
           }
           var newSize = PAGE_SIZE_KEYS[newIndex];
           if (newSize !== pageSize) {
@@ -1082,12 +1081,12 @@
             if (mode === "preview" || mode === "read") renderPreview();
           }
         } else {
-          /* Free drag (Plain mode) */
+          /* Free drag — 1:1 mouse tracking */
           var newWidth;
           if (side === "right") {
-            newWidth = Math.max(400, Math.min(1400, contentWidth + delta * 2));
+            newWidth = Math.max(400, Math.min(1400, startContentWidth + delta));
           } else {
-            newWidth = Math.max(400, Math.min(1400, contentWidth - delta * 2));
+            newWidth = Math.max(400, Math.min(1400, startContentWidth - delta));
           }
           contentWidth = newWidth;
           applyContentWidth();
