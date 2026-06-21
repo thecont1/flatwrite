@@ -612,6 +612,9 @@
      ========================================================================== */
 
   var frameworkDropdown = document.getElementById("framework-dropdown");
+  var fwDropdownBtn     = document.getElementById("fw-dropdown-btn");
+  var fwDropdownLabel   = document.getElementById("fw-dropdown-label");
+  var fwDropdownList    = null;
   var editor            = document.getElementById("editor");
   var editorWrap        = document.getElementById("editor-wrap");
   var previewWrap       = document.getElementById("preview-wrap");
@@ -774,6 +777,7 @@
     function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
+      buildFrameworkDropdown();
       renderComponentGrid();
       applyAccentTheme();
       bindEvents();
@@ -833,6 +837,7 @@
           if (fm.framework && FRAMEWORKS[fm.framework]) {
             currentFramework = fm.framework;
             frameworkDropdown.value = currentFramework;
+            if (fwDropdownLabel) fwDropdownLabel.textContent = FRAMEWORKS[currentFramework].label;
           }
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -926,6 +931,7 @@
         currentFramework = record.framework;
       }
       frameworkDropdown.value = currentFramework;
+      if (fwDropdownLabel) fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
 
       var t = record.typography || {};
       if (t.family && COMFORT_FONTS.some(function (f) { return f.value === t.family; })) {
@@ -1075,6 +1081,7 @@
         initialEditorContent = "";
         currentFramework = "spectre";
         frameworkDropdown.value = "spectre";
+        if (fwDropdownLabel) fwDropdownLabel.textContent = "Spectre.css";
         sizeStep = 0;
         weightStep = 0;
         lineStep = 0;
@@ -1095,8 +1102,41 @@
       });
     }
 
-    frameworkDropdown.addEventListener("change", function () {
-      currentFramework = frameworkDropdown.value;
+    /* Framework custom dropdown — open/close */
+    fwDropdownBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var isOpen = fwDropdownList && !fwDropdownList.classList.contains("hidden");
+      closeFwDropdown();
+      if (!isOpen) {
+        var zoom = zoomStep / 100;
+        var rect = fwDropdownBtn.getBoundingClientRect();
+        fwDropdownList.style.left = (rect.left / zoom) + "px";
+        fwDropdownList.style.top = ((rect.bottom / zoom) + 4) + "px";
+        fwDropdownList.style.width = (rect.width / zoom) + "px";
+        fwDropdownList.classList.remove("hidden");
+      }
+    });
+
+    function closeFwDropdown() {
+      if (fwDropdownList) fwDropdownList.classList.add("hidden");
+    }
+
+    document.addEventListener("pointerdown", function (e) {
+      if (!fwDropdownList || fwDropdownList.classList.contains("hidden")) return;
+      if (fwDropdownList.contains(e.target) || fwDropdownBtn.contains(e.target)) return;
+      closeFwDropdown();
+    });
+
+    fwDropdownList.addEventListener("click", function (e) {
+      var item = e.target.closest(".fw-dropdown-item");
+      if (!item) return;
+      currentFramework = item.dataset.fw;
+      frameworkDropdown.value = currentFramework;
+      fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
+      fwDropdownList.querySelectorAll(".fw-dropdown-item").forEach(function (el) {
+        el.classList.toggle("selected", el.dataset.fw === currentFramework);
+      });
+      closeFwDropdown();
       scheduleAutosave();
       renderComponentGrid();
       applyAccentTheme();
@@ -1457,6 +1497,27 @@
       item.style.fontFamily = '"' + f.value + '", system-ui, sans-serif';
       fontPickerList.appendChild(item);
     });
+  }
+
+  var FW_STAR = '<svg class="star" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1196 1196" width="10" height="10"><path d="M597.417 193q6 0 10 7l117 248 15 31 33 5 263 40q7 1 9 9 3 11-3 17l-190 193-23 24 5 32 45 272q2 11-5 16h-1q-2 2-5 2-2 0-5-1l-234-129-31-17-31 17-234 129h-1q-2 1-4 1-3 0-5-2h-1q-7-6-5-16l45-272 5-32-23-24-190-193q-6-7-3-17 2-8 9-9l263-40 33-5 15-31 117-248q4-7 10-7zm0-64q-22 0-40 12t-28 32l-117 248-262 40q-22 3-38.5 17.5t-23 36-1.5 43 21 37.5l190 193-45 273q-4 22 4 43t26 34q20 15 44 15 19 0 36-9l234-129 235 129q16 9 35 9 25 0 44-15 18-13 26-34t4-43l-44-273 189-193q16-15 21-37t-1.5-43.5-23-36-38.5-17.5l-262-40-117-248q-10-20-28-32t-40-12z" fill="currentColor"/></svg>';
+
+  function buildFrameworkDropdown() {
+    if (!fwDropdownList) {
+      fwDropdownList = document.createElement("div");
+      fwDropdownList.className = "fw-dropdown-list hidden";
+      document.body.appendChild(fwDropdownList);
+    }
+    fwDropdownList.innerHTML = "";
+    Object.keys(FRAMEWORKS).forEach(function (key) {
+      var fw = FRAMEWORKS[key];
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "fw-dropdown-item" + (key === currentFramework ? " selected" : "");
+      item.dataset.fw = key;
+      item.innerHTML = FW_STAR + " " + fw.label;
+      fwDropdownList.appendChild(item);
+    });
+    fwDropdownLabel.textContent = FRAMEWORKS[currentFramework] ? FRAMEWORKS[currentFramework].label : currentFramework;
   }
 
   function renderComponentGrid() {

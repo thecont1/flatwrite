@@ -279,14 +279,21 @@ body {
   margin-bottom: 2px;
 }
 
-/* ---------- Framework selector ---------- */
+/* ---------- Framework custom dropdown ---------- */
 .framework-selector {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.framework-dropdown {
+.fw-dropdown {
+  position: relative;
+}
+
+.fw-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--btn-border);
@@ -297,18 +304,68 @@ body {
   color: var(--text-primary);
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s;
-  appearance: auto;
+  text-align: left;
 }
 
-.framework-dropdown:focus {
+.fw-dropdown-btn:hover {
+  border-color: var(--accent);
+}
+
+.fw-dropdown-btn:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.18);
 }
 
-.framework-current {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.fw-dropdown-arrow {
+  font-size: 0.5rem;
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.fw-dropdown-list {
+  position: fixed;
+  min-width: 180px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.fw-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.fw-dropdown-item:hover {
+  background: rgba(176, 106, 179, 0.1);
+}
+
+.fw-dropdown-item.selected {
+  background: rgba(176, 106, 179, 0.18);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.fw-dropdown-item .star {
+  flex-shrink: 0;
 }
 
 /* ---------- Typography controls (in toolbar) ---------- */

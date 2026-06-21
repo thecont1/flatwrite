@@ -131,15 +131,22 @@
 
         <!-- Framework selector -->
         <div class="framework-selector">
-          <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
-          <select id="framework-dropdown" class="framework-dropdown">
-            <option value="spectre">★ Spectre.css</option>
-            <option value="poshui">★ PoshUI</option>
-            <option value="oat">★ Oat</option>
-            <option value="pico">★ Pico CSS</option>
-            <option value="milligram">★ Milligram</option>
-            <option value="chota">★ Chota</option>
-            <option value="simple">★ Simple.css</option>
+          <label class="sidebar-section-label">Framework</label>
+          <div class="fw-dropdown" id="fw-dropdown">
+            <button class="fw-dropdown-btn" id="fw-dropdown-btn" type="button">
+              <span id="fw-dropdown-label">Spectre.css</span>
+              <span class="fw-dropdown-arrow">&#x25BC;</span>
+            </button>
+          </div>
+          <!-- Hidden <select> kept for state sync / form compatibility -->
+          <select id="framework-dropdown" class="sr-only" aria-hidden="true" tabindex="-1">
+            <option value="spectre">Spectre.css</option>
+            <option value="poshui">PoshUI</option>
+            <option value="oat">Oat</option>
+            <option value="pico">Pico CSS</option>
+            <option value="milligram">Milligram</option>
+            <option value="chota">Chota</option>
+            <option value="simple">Simple.css</option>
           </select>
         </div>
 
