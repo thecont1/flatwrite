@@ -300,6 +300,9 @@ body {
 .surface-doc .app-only { display: none !important; }
 .surface-app .doc-only { display: none !important; }
 
+/* Engine gating: hide Document controls when Plain engine is selected */
+.surface-doc.engine-none .doc-controls { display: none !important; }
+
 /* ---------- Framework dropdown (App surface) ---------- */
 .framework-selector {
   display: flex;

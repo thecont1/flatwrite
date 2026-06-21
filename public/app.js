@@ -1426,6 +1426,12 @@
         btn.classList.toggle("active", btn.dataset.engine === engineKey);
       });
     }
+    /* Gate Document controls: only active when a paged engine is selected */
+    var appShell = document.querySelector(".app-shell");
+    if (appShell) {
+      appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
+      appShell.classList.add("engine-" + engineKey);
+    }
     scheduleAutosave();
     if (mode === "preview" || mode === "read") renderPreview();
   }
