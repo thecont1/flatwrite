@@ -198,6 +198,10 @@
      DOM references
      ========================================================================== */
 
+  /* Engine selector DOM refs */
+  var engineToggle      = document.getElementById("engine-toggle");
+  var engineSlider      = document.getElementById("engine-slider");
+
   var editor            = document.getElementById("editor");
   var editorWrap        = document.getElementById("editor-wrap");
   var previewWrap       = document.getElementById("preview-wrap");
@@ -346,6 +350,7 @@
     function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
+      setDocEngine(currentDocEngine);
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
@@ -402,7 +407,7 @@
           var fm = parsed.frontmatter;
           if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
             currentDocEngine = fm.docEngine;
-                                  }
+          }
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
             fontPickerLabel.textContent = comfortFont;
@@ -416,6 +421,7 @@
           zoomValue.textContent = zoomStep + "%";
           applyZoom();
           applyContentWidth();
+          setDocEngine(currentDocEngine);
         }
 
         editor.setSelectionRange(0, 0);
@@ -511,6 +517,7 @@
       zoomValue.textContent = zoomStep + "%";
       applyZoom();
       applyContentWidth();
+      setDocEngine(currentDocEngine);
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -641,7 +648,8 @@
         editor.value = "";
         initialEditorContent = "";
         currentDocEngine = "pagedjs";
-                sizeStep = 0;
+        setDocEngine(currentDocEngine);
+        sizeStep = 0;
         weightStep = 0;
         lineStep = 0;
         comfortFont = "Inter";
@@ -742,6 +750,15 @@
     }
     if (toolbarCenter) {
       requestAnimationFrame(checkToolbarOverflow);
+    }
+
+    /* Engine toggle */
+    if (engineToggle) {
+      engineToggle.addEventListener("click", function (e) {
+        var btn = e.target.closest(".engine-btn");
+        if (!btn || btn.classList.contains("active")) return;
+        setDocEngine(btn.dataset.engine);
+      });
     }
 
     btnExportMd.addEventListener("click", exportMarkdown);
@@ -926,6 +943,25 @@
       previewFrame.contentWindow.postMessage({type: "setContentWidth", width: contentWidth}, "*");
     }
     positionWidthHandles();
+  }
+
+  /* ==========================================================================
+     Document engine selector
+     ========================================================================== */
+
+  function setDocEngine(engineKey) {
+    if (!DOC_ENGINES[engineKey]) engineKey = "none";
+    currentDocEngine = engineKey;
+    /* Update toggle UI */
+    if (engineToggle) {
+      engineToggle.className = "engine-toggle " + engineKey;
+      var btns = engineToggle.querySelectorAll(".engine-btn");
+      btns.forEach(function (btn) {
+        btn.classList.toggle("active", btn.dataset.engine === engineKey);
+      });
+    }
+    scheduleAutosave();
+    if (mode === "preview" || mode === "read") renderPreview();
   }
 
   function positionWidthHandles() {
