@@ -1039,7 +1039,7 @@
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
-      var dragging = false, startX, startContentWidth;
+      var dragging = false, startX, startEdge, wrap;
 
       handle.addEventListener("mousedown", function (e) {
         if (handle.dataset.mode === "dotted") return;
@@ -1048,31 +1048,32 @@
         e.stopPropagation();
         dragging = true;
         startX = e.clientX;
-        startContentWidth = contentWidth;
+        wrap = handle.parentElement;
+        /* Where the handle is relative to the wrapper's right edge at drag start */
+        startEdge = (wrap.clientWidth - contentWidth) / 2;
         handle.classList.add("dragging");
         widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
 
         if (handle.dataset.mode === "stepped") {
-          startContentWidth = PAGE_SIZE_KEYS.indexOf(pageSize);
-          if (startContentWidth === -1) startContentWidth = 4;
+          startEdge = PAGE_SIZE_KEYS.indexOf(pageSize);
+          if (startEdge === -1) startEdge = 4;
         }
       });
 
       window.addEventListener("mousemove", function (e) {
         if (!dragging) return;
         e.preventDefault();
-        var zoom = zoomStep / 100;
-        var delta = (e.clientX - startX) / zoom;
+        var delta = e.clientX - startX;
 
         if (handle.dataset.mode === "stepped") {
           var step = Math.round(delta / 60);
           var newIndex;
           if (side === "right") {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startContentWidth - step));
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startEdge - step));
           } else {
-            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startContentWidth + step));
+            newIndex = Math.max(0, Math.min(PAGE_SIZE_KEYS.length - 1, startEdge + step));
           }
           var newSize = PAGE_SIZE_KEYS[newIndex];
           if (newSize !== pageSize) {
@@ -1082,13 +1083,16 @@
             if (mode === "preview" || mode === "read") renderPreview();
           }
         } else {
-          /* Free drag — 1:1 mouse tracking */
-          var newWidth;
+          /* Free drag — derive contentWidth from cursor position */
+          var wrapW = wrap.clientWidth;
+          var newEdge;
           if (side === "right") {
-            newWidth = Math.max(400, Math.min(1400, startContentWidth + delta));
+            newEdge = startEdge - delta;
           } else {
-            newWidth = Math.max(400, Math.min(1400, startContentWidth - delta));
+            newEdge = startEdge + delta;
           }
+          newEdge = Math.max(0, newEdge);
+          var newWidth = Math.max(400, Math.min(1400, wrapW - 2 * newEdge));
           contentWidth = newWidth;
           applyContentWidth();
         }
