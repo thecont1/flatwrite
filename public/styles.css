@@ -2163,7 +2163,7 @@ body {
 
 /* Dim toolbar — keep mode-switch visible */
 .app-shell.focus-mode .toolbar-left,
-.app-shell.focus-mode .toolbar-center {
+.app-shell.focus-mode .toolbar-right {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
@@ -2185,21 +2185,9 @@ body {
     gap: 0;
     padding-top: 56px;
   }
-  .app-shell.focus-mode .toolbar {
-    height: 0;
-    overflow: hidden;
-    gap: 0;
-  }
   .app-shell.focus-mode .toolbar-left,
-  .app-shell.focus-mode .toolbar-center,
   .app-shell.focus-mode .toolbar-right {
     display: none;
-  }
-
-  /* Bring back the mode-switch (Close button) in read mode */
-  .app-shell.focus-mode.mode-read .mode-switch {
-    opacity: 1;
-    pointer-events: auto;
   }
 }
 
