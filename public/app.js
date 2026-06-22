@@ -150,7 +150,7 @@
 
   var DOC_ENGINES = {
     pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media" },
-    vivliostyle: { label: "Vivliostyle", script: null, category: "css-books" },
+    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true },
     none: { label: "Plain CSS", script: null, category: "unstyled" }
   };
 
@@ -449,25 +449,25 @@
     { value: "Unbounded",        label: "Unbounded" }
   ];
 
-  var SIZE_SCALE = { "-3": 0.76, "-2": 0.84, "-1": 0.92, "0": 1, "1": 1.1, "2": 1.2, "3": 1.32, "4": 1.46 };
-  var SIZE_MIN = -3;
-  var SIZE_MAX = 4;
+  var SIZE_SCALE = { "-5": 0.62, "-4": 0.68, "-3": 0.76, "-2": 0.84, "-1": 0.92, "0": 1, "1": 1.1, "2": 1.2, "3": 1.32, "4": 1.46, "5": 1.62, "6": 1.8 };
+  var SIZE_MIN = -5;
+  var SIZE_MAX = 6;
 
-  var WEIGHT_MAP = { "-1": 300, "0": 400, "1": 600, "2": 700 };
-  var WEIGHT_MIN = -1;
+  var WEIGHT_MAP = { "-3": 100, "-2": 200, "-1": 300, "0": 400, "1": 600, "2": 700 };
+  var WEIGHT_MIN = -3;
   var WEIGHT_MAX = 2;
 
   var LINE_SCALE = { "-2": 1.3, "-1": 1.5, "0": 1.75, "1": 2.0, "2": 2.3, "3": 2.6 };
   var LINE_MIN = -2;
   var LINE_MAX = 3;
 
-  var FONTS_URL = "https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700"
-    + "&family=Lato:wght@300;400;700"
-    + "&family=Inter:wght@300;400;600;700"
-    + "&family=Merriweather:wght@300;400;700"
-    + "&family=JetBrains+Mono:wght@300;400;600;700"
-    + "&family=Playfair+Display:wght@400;600;700"
+  var FONTS_URL = "https://fonts.googleapis.com/css2?family=Unbounded:wght@200;300;400;500;600;700;800;900"
+    + "&family=Lato:wght@100;300;400;700;900"
+    + "&family=Inter:wght@100;200;300;400;500;600;700"
+    + "&family=Merriweather:wght@300;400;700;900"
     + "&family=Lora:wght@400;500;600;700"
+    + "&family=Playfair+Display:wght@400;500;600;700;900"
+    + "&family=JetBrains+Mono:wght@300;400;600;700"
     + "&display=swap";
 
   /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
@@ -1355,6 +1355,9 @@
       if (e.data && e.data.type === "iframe-pointerdown") {
         closeFontDropdown();
       }
+      if (e.data && e.data.type === "vivl-ready") {
+        positionWidthHandles();
+      }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
         editor.focus();
@@ -1537,7 +1540,9 @@
     var margin = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
     var css = '@page { size: ' + size + '; margin: ' + margin + '; }';
     if (pageColumns > 1) {
-      css += ' main { column-count: ' + pageColumns + '; column-gap: 2em; }';
+      var marginMm = parseFloat(margin.split(/\s+/)[0]);
+      var gap = (marginMm / 2) + 'mm';
+      css += ' main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; }';
     }
     /* Grid: baseline line-height for paged engines */
     if (currentDocEngine !== "none" && pageBaseline) {
@@ -1546,8 +1551,8 @@
     /* Always capture the L1 heading so it can be used by the footer */
     css += 'h1 { string-set: chapter content(); }';
     if (showFooter) {
-      css += '@page { @bottom-left { content: string(chapter, first); font-size: 10px; color: #888; }';
-      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 10px; color: #888; } }';
+      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; }';
+      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; } }';
       css += '.pagedjs_page .pagedjs_margin-bottom-right>.pagedjs_margin-content::after { content: none !important; }';
     }
     return css;
@@ -1587,14 +1592,30 @@
 
     if (surfaceMode === "doc" && currentDocEngine !== "none") {
       /* Paged.js & Vivliostyle: non-interactive dashed lines at the actual rendered page edges */
-      var pageW = getPageWidthPx();
-      var pageH = getPageHeightPx();
-      var iframeW = wrapW;
-      var iframeH = frame.clientHeight || 600;
-      var s = Math.min(iframeW / pageW, iframeH / pageH);
-      if (orientation === "landscape") s *= 0.92;
-      var scaledW = pageW * s;
-      var edge = Math.max(0, (wrapW - scaledW) / 2);
+      var edge = 0;
+      try {
+        var iframeDoc = frame.contentDocument;
+        var pageEl = currentDocEngine === "vivliostyle"
+          ? iframeDoc.querySelector("[data-vivliostyle-page-container]")
+          : iframeDoc.querySelector(".pagedjs_page");
+        if (pageEl) {
+          var frameRect = frame.getBoundingClientRect();
+          var pageRect = pageEl.getBoundingClientRect();
+          var scaledW = pageRect.width;
+          edge = Math.max(0, (wrapW - scaledW) / 2);
+        }
+      } catch (e) {
+        edge = 0;
+      }
+      if (edge === 0) {
+        var pageW = getPageWidthPx();
+        var pageH = getPageHeightPx();
+        var iframeW = wrapW;
+        var iframeH = frame.clientHeight || 600;
+        var s = Math.min(iframeW / pageW, iframeH / pageH);
+        if (orientation === "landscape") s *= 0.92;
+        edge = Math.max(0, (wrapW - pageW * s) / 2);
+      }
 
       hLeft.style.left = edge + "px";
       hLeft.style.right = "auto";
@@ -1751,43 +1772,18 @@
     var scrollRatio = lastScrollRatio;
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
-    var engineScript = (engine && engine.script)
+    var engineScript = (engine && engine.script && !engine.module)
       ? '<script src="' + engine.script + '" defer><' + '/script>'
       : '';
 
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-      + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-      + '<base target="_blank" rel="noopener noreferrer">'
-      + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-      + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-      + '<link href="' + FONTS_URL + '" rel="stylesheet">'
-      + engineScript
-      + '<style>'
-      /* --- @page rules from document controls --- */
-      + buildPageCSS()
-      /* --- Page-boundary dashed lines (top/bottom) + corner ticks (left/right) --- */
-      + '.pagedjs_page { overflow: visible !important; }'
-      + '.pagedjs_page::before, .pagedjs_page::after,'
-      + '.pagedjs_sheet::before, .pagedjs_sheet::after {'
-      + '  content: ""; position: absolute; background: transparent; z-index: 9999; }'
-      + '.pagedjs_page::before { top: -8px; left: 0; width: 100%; height: 1px; border-top: 1px dashed #000; }'
-      + '.pagedjs_page::after  { top: -1px;  left: -8px; width: 12px; height: 1px; background: #000; }'
-      + '.pagedjs_sheet::before { bottom: -8px; left: 0; width: 100%; height: 1px; border-bottom: 1px dashed #000; }'
-      + '.pagedjs_sheet::after  { bottom: -1px;  right: -8px; width: 12px; height: 1px; background: #000; }'
-      /* --- Dashed separator between pages --- */
-      + '.pagedjs_page:not(:last-child) { box-sizing: border-box !important; border-bottom: 1px dashed #000 !important; }'
-      /* --- Typography --- */
+    /* Shared document CSS (without engine-specific page-boundary rules) */
+    var docCss = buildPageCSS()
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
       + ' margin: 0; overflow-x: hidden; }'
       + 'html { height: 100%; }'
-      /* Plain mode: constrain body width to contentWidth */
-      + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
-      + 'body.engine-none main { padding: 0.5rem 1rem; }'
-      /* Paged modes: body fills the iframe viewport */
-      + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; }'
       + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
       + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
@@ -1804,10 +1800,125 @@
       + 'li > ul, li > ol { margin: 0.15em 0; }'
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
-      + 'br { margin: 0.3em 0; }'
-      + '</style>'
-      + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'
-      + '<script>'
+      + 'br { margin: 0.3em 0; }';
+
+    var html;
+    if (currentDocEngine === 'vivliostyle') {
+      /* Vivliostyle: CoreViewer loads a blob document and paginates it */
+      var vivlDocHTML = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<style>' + docCss + '</style>'
+        + '</head><body><main>' + renderedHTML + '</main></body></html>';
+      html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}#vivl-viewport{width:100%;height:100%;overflow:auto;}</style>'
+        + '</head><body><div id="vivl-viewport"></div>'
+        + '<script type="module">'
+        + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
+        + 'const CoreViewer = Vivliostyle.CoreViewer;'
+        + 'const docHTML = ' + JSON.stringify(vivlDocHTML) + ';'
+        + 'const blob = new Blob([docHTML], { type: "text/html" });'
+        + 'const docUrl = URL.createObjectURL(blob);'
+        + 'const _pageW = ' + getPageWidthPx() + ';'
+        + 'const _pageH = ' + getPageHeightPx() + ';'
+        + 'const _orientation = "' + orientation + '";'
+        + 'const _scrollRatio = ' + scrollRatio + ';'
+        + 'function _computeZoom() {'
+        + '  var w = window.innerWidth;'
+        + '  var h = window.innerHeight;'
+        + '  var s = Math.min(w / _pageW, h / _pageH);'
+        + '  if (_orientation === "landscape") s *= 0.92;'
+        + '  return s;'
+        + '}'
+        + 'const viewer = new CoreViewer({'
+        + '  viewportElement: document.getElementById("vivl-viewport"),'
+        + '  userAgentRootURL: "https://unpkg.com/@vivliostyle/core@2.43.3/",'
+        + '  window: window'
+        + '});'
+        + 'viewer.setOptions({ renderAllPages: true, pageViewMode: "autoSpread", zoom: 1, fitToScreen: false, autoResize: false, allowScripts: false });'
+        + 'const viewport = document.getElementById("vivl-viewport");'
+        + 'function _vivlEnableScroll() {'
+        + '  var style = document.getElementById("vivl-scroll-style");'
+        + '  if (!style) {'
+        + '    style = document.createElement("style");'
+        + '    style.id = "vivl-scroll-style";'
+        + '    style.textContent = "[data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: hidden !important; margin: 0 auto 20px !important; box-sizing: border-box !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: 100% !important; align-items: center !important; zoom: 1 !important; transform: none !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: 100% !important; }";'
+        + '    document.head.appendChild(style);'
+        + '  }'
+        + '  var scale = _computeZoom();'
+        + '  var cw = Math.round(_pageW * scale);'
+        + '  var ch = Math.round(_pageH * scale);'
+        + '  var pages = document.querySelectorAll("[data-vivliostyle-page-container]");'
+        + '  for (var i = 0; i < pages.length; i++) {'
+        + '    var child = pages[i].firstElementChild;'
+        + '    if (!child) continue;'
+        + '    pages[i].style.zoom = 1;'
+        + '    pages[i].style.width = cw + "px";'
+        + '    pages[i].style.height = ch + "px";'
+        + '    child.style.width = _pageW + "px";'
+        + '    child.style.height = _pageH + "px";'
+        + '    child.style.maxWidth = _pageW + "px";'
+        + '    child.style.maxHeight = _pageH + "px";'
+        + '    child.style.transform = "scale(" + scale + ")";'
+        + '    child.style.transformOrigin = "top left";'
+        + '  }'
+        + '}'
+        + 'function _vivlNotify() {'
+        + '  _vivlEnableScroll();'
+        + '  var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '  if (m > 0) viewport.scrollTop = Math.round(_scrollRatio * m);'
+        + '  parent.postMessage({type:"vivl-ready"}, "*");'
+        + '}'
+        + 'viewer.addListener("loaded", _vivlNotify);'
+        + 'viewer.loadDocument(docUrl);'
+        + 'setTimeout(_vivlNotify, 3000);'
+        + 'window.addEventListener("resize", function() { viewer.setOptions({ zoom: 1 }); _vivlEnableScroll(); });'
+        + 'viewport.addEventListener("scroll", function() {'
+        + '  var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '  var r = m > 0 ? viewport.scrollTop / m : 0;'
+        + '  parent.postMessage({type:"scroll", ratio:r}, "*");'
+        + '});'
+        + 'window.addEventListener("message", function(e) {'
+        + '  if (e.data && e.data.type === "setScroll") {'
+        + '    var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '    if (m > 0) viewport.scrollTop = Math.round(e.data.ratio * m);'
+        + '  }'
+        + '});'
+        + '</script>'
+        + '</body></html>';
+    } else {
+      html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + engineScript
+        + '<style>'
+        + docCss
+        /* --- Page-boundary dashed lines (top/bottom) + corner ticks (left/right) --- */
+        + '.pagedjs_page { overflow: visible !important; }'
+        + '.pagedjs_page::before, .pagedjs_page::after,'
+        + '.pagedjs_sheet::before, .pagedjs_sheet::after {'
+        + '  content: ""; position: absolute; background: transparent; z-index: 9999; }'
+        + '.pagedjs_page::before { top: -8px; left: 0; width: 100%; height: 1px; border-top: 1px dashed #000; }'
+        + '.pagedjs_page::after  { top: -1px;  left: -8px; width: 12px; height: 1px; background: #000; }'
+        + '.pagedjs_sheet::before { bottom: -8px; left: 0; width: 100%; height: 1px; border-bottom: 1px dashed #000; }'
+        + '.pagedjs_sheet::after  { bottom: -1px;  right: -8px; width: 12px; height: 1px; background: #000; }'
+        /* --- Dashed separator between pages --- */
+        + '.pagedjs_page:not(:last-child) { box-sizing: border-box !important; border-bottom: 1px dashed #000 !important; }'
+        /* Plain mode: constrain body width to contentWidth */
+        + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
+        + 'body.engine-none main { padding: 0.5rem 1rem; }'
+        /* Paged modes: body fills the iframe viewport */
+        + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; }'
+        + '</style>'
+        + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'
+        + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
       + 'var _isPaged = ' + (currentDocEngine !== 'none') + ';'
@@ -1847,8 +1958,10 @@
       + '    var box = pages[i].querySelector(".pagedjs_margin-bottom-right .pagedjs_margin-content");'
       + '    if (box) {'
       + '      box.textContent = "Page " + (i + 1) + " of " + total;'
-      + '      box.style.fontSize = "10px";'
+      + '      box.style.fontSize = "8px";'
       + '      box.style.color = "#888";'
+      + '      box.style.verticalAlign = "bottom";'
+      + '      box.style.paddingBottom = "3mm";'
       + '      updated++;'
       + '    }'
       + '  }'
@@ -1954,6 +2067,7 @@
       + '});'
       + '<' + '/script>'
       + '</body></html>';
+    }
 
     previewFrame.srcdoc = html;
     /* Reposition width handles after iframe content loads */
