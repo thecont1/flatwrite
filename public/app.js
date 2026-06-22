@@ -1336,9 +1336,9 @@
     });
 
     window.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && mode === "read") {
+      if (e.key === "Escape" && (mode === "read" || mode === "preview")) {
         e.preventDefault();
-        setMode("preview");
+        setMode("edit");
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
@@ -2162,9 +2162,6 @@
     btnRead.classList.remove("active");
     modeSwitch.classList.remove("preview", "read");
 
-    /* Reset Read button label */
-    btnRead.textContent = "Read";
-    btnRead.dataset.mode = "read";
 
     if (mode === "edit") {
       if (prevMode !== "edit") savePreviewScroll();
@@ -2223,9 +2220,6 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
-        /* Relabel Read → Close, exit back to whatever mode we came from */
-        btnRead.textContent = "Close";
-        btnRead.dataset.mode = prevMode;
         modeSwitch.classList.add("read");
         /* Hide stripe in Read mode */
         if (previewFrame && previewFrame.contentWindow) {
