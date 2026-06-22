@@ -1800,7 +1800,8 @@
       + 'li > ul, li > ol { margin: 0.15em 0; }'
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
-      + 'br { margin: 0.3em 0; }';
+      + 'br { margin: 0.3em 0; }'
+      + ' .pagedjs_page { border-top: 1px dashed #d0d0d0; border-bottom: 1px dashed #d0d0d0; }';
 
     var html;
     if (currentDocEngine === 'vivliostyle') {
@@ -2392,7 +2393,14 @@
       return;
     }
 
-    /* === Doc Surface: Paged.js export === */
+    /* === Doc Surface: reuse the rendered preview for an exact Read-mode match === */
+    var srcdoc = previewFrame.getAttribute("srcdoc");
+    if (srcdoc && (mode === "preview" || mode === "read")) {
+      openInNewTab(srcdoc, "text/html;charset=utf-8");
+      return;
+    }
+
+    /* === Doc Surface fallback: build a self-paginating HTML from scratch === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
@@ -2403,8 +2411,8 @@
     var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
     var headWeight = Math.min(weight + 200, 900);
 
-    /* Engine script tag — self-paginating HTML export */
-    var engineScript = (engine && engine.script)
+    /* Engine script tag — self-paginating HTML export (skip ESM modules) */
+    var engineScript = (engine && engine.script && !engine.module)
       ? '  <script src="' + engine.script + '" defer><' + '/script>\n'
       : '';
 
@@ -2427,8 +2435,7 @@
       + '      font-weight: ' + weight + ' !important;\n'
       + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 0 auto;\n'
+      + '      margin: 0;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
       /* Fallback layout when no paged-media engine is active */
@@ -2482,7 +2489,13 @@
     if (srcdoc && (mode === "preview" || mode === "read")) {
       var printScript = '<script>'
         + '(function(){'
-        + '  function doPrint(){ window.print(); }'
+        + '  function doPrint(){'
+        + '    var style = document.createElement("style");'
+        + '    style.media = "print";'
+        + '    style.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; } body { transform: none !important; margin-left: 0 !important; width: auto !important; max-width: none !important; } #vivl-viewport { overflow: visible !important; height: auto !important; } .pagedjs_page { border-top: none !important; border-bottom: none !important; } }";'
+        + '    document.head.appendChild(style);'
+        + '    window.print();'
+        + '  }'
         + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
         + '    var done=false; var p=function(){ if (done) return; done=true; setTimeout(doPrint, 200); };'
         + '    window.PagedPolyfill.on("afterPreview", p);'
