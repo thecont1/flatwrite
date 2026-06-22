@@ -1359,6 +1359,9 @@
       if (e.data && e.data.type === "vivl-ready") {
         positionWidthHandles();
       }
+      if (e.data && e.data.type === "zoomChanged") {
+        positionWidthHandles();
+      }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
         editor.focus();
@@ -1621,7 +1624,7 @@
       hRight.style.display = "none";
       return;
     } else {
-      effectiveWidth = contentWidth;
+      effectiveWidth = contentWidth * (zoomStep / 100);
     }
 
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
@@ -2022,6 +2025,7 @@
       + '      _fitPage();'
       + '    } else {'
       + '      document.body.style.zoom = _zoomFactor;'
+      + '      parent.postMessage({type:"zoomChanged"}, "*");'
       + '    }'
       + '  }'
       + '});'
