@@ -1655,17 +1655,18 @@
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
 
-    /* Determine effective width based on engine */
-    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
+    /* Determine effective width based on engine (Read mode always renders as Plain) */
+    var effectiveEngineKey = (mode === "read") ? "none" : currentDocEngine;
+    var engine = DOC_ENGINES[effectiveEngineKey] || DOC_ENGINES.none;
     var effectiveWidth;
     var isDotted = false;
 
-    if (surfaceMode === "doc" && currentDocEngine !== "none") {
+    if (surfaceMode === "doc" && effectiveEngineKey !== "none") {
       /* Paged.js & Vivliostyle: non-interactive dashed lines at the actual rendered page edges */
       var edge = 0;
       try {
         var iframeDoc = frame.contentDocument;
-        var pageEl = currentDocEngine === "vivliostyle"
+        var pageEl = effectiveEngineKey === "vivliostyle"
           ? iframeDoc.querySelector("[data-vivliostyle-page-container]")
           : iframeDoc.querySelector(".pagedjs_page");
         if (pageEl) {
@@ -1874,7 +1875,7 @@
       + ' .pagedjs_page { margin: 8px 0; }'
 
     var html;
-    if (currentDocEngine === 'vivliostyle') {
+    if (renderEngineKey === 'vivliostyle') {
       /* Vivliostyle: CoreViewer loads a blob document and paginates it */
       var vivlDocHTML = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
@@ -2283,16 +2284,16 @@
           lastScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
         }
       }
-      /* Read mode always renders as Plain; switching to/from Read requires a
-         fresh render so the right engine (Plain or selected doc engine) is shown. */
-      if (mode === "read" || prevMode === "read") {
+      previewWrap.classList.remove("hidden");
+
+      /* Render whenever the preview becomes visible (edit -> preview/read, or
+         read <-> preview) so the content is current. Render after the wrap is
+         visible so the iframe can measure its viewport correctly. */
+      if (mode !== "edit") {
         renderPreview();
       }
 
-      previewWrap.classList.remove("hidden");
-
-      /* Re-apply scroll after the iframe is visible; the initial render while
-         hidden can mis-measure window.innerHeight, causing a jump to the end. */
+      /* Re-apply scroll after the iframe is visible. */
       requestAnimationFrame(function () {
         setTimeout(function () {
           if (previewFrame.contentWindow) {
