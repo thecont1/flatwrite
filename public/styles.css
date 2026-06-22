@@ -1405,7 +1405,6 @@ body {
 .zoom-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -5px;
   width: 14px;
   height: 14px;
   background: var(--accent);
@@ -1430,6 +1429,12 @@ body {
 
 .zoom-slider:hover::-moz-range-thumb {
   background: var(--accent-hover);
+}
+
+/* Zoom disabled in Plain mode */
+.app-shell.engine-none .zoom-selector {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .zoom-value {

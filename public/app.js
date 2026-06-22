@@ -1477,6 +1477,13 @@
     /* Disable PDF export in Plain mode — use a paged engine for PDF */
     var btnPdf = document.getElementById("btn-export-pdf");
     if (btnPdf) btnPdf.disabled = (engineKey === "none");
+    /* Reset zoom to 100% in Plain mode — zoom is WYSIWYG-irrelevant there */
+    if (engineKey === "none" && zoomStep !== 100) {
+      zoomStep = 100;
+      zoomSlider.value = 100;
+      zoomValue.textContent = "100%";
+      applyZoom();
+    }
     updateDocControlStates();
     scheduleAutosave();
     if (mode === "preview" || mode === "read") renderPreview();
