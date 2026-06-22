@@ -1339,9 +1339,15 @@
     });
 
     window.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && (mode === "read" || mode === "preview")) {
+      if (e.key === "Escape") {
         e.preventDefault();
-        setMode("edit");
+        if (mode === "read") {
+          /* Read → View > Plain */
+          setMode("preview");
+          setDocEngine("none");
+        } else if (mode === "preview") {
+          setMode("edit");
+        }
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
