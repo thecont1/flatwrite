@@ -565,9 +565,14 @@ body {
   width: auto;
   max-width: 100%;
   object-fit: contain;
-  opacity: 0.3;
-  filter: saturate(0);
+  opacity: 0.55;
+  filter: saturate(0.4);
   transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.engine-btn:hover .engine-logo {
+  opacity: 0.8;
+  filter: saturate(0.7);
 }
 
 .engine-btn.active .engine-logo {
