@@ -963,11 +963,11 @@ body {
 .export-icon {
   background: none;
   border: none;
-  color: var(--text-muted);
-  opacity: 0.4;
+  color: #1a1a1a;
+  opacity: 1;
   cursor: pointer;
   padding: 6px;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -979,7 +979,16 @@ body {
 }
 
 .export-icon:hover {
+  color: var(--accent);
   opacity: 1;
+}
+
+/* PDF disabled in Plain mode */
+.app-shell.engine-none #btn-export-pdf,
+#btn-export-pdf:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ---------- Load (sidebar) ---------- */

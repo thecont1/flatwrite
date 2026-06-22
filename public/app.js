@@ -1468,6 +1468,9 @@
       appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
       appShell.classList.add("engine-" + engineKey);
     }
+    /* Disable PDF export in Plain mode — use a paged engine for PDF */
+    var btnPdf = document.getElementById("btn-export-pdf");
+    if (btnPdf) btnPdf.disabled = (engineKey === "none");
     updateDocControlStates();
     scheduleAutosave();
     if (mode === "preview" || mode === "read") renderPreview();
