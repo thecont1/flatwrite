@@ -1801,7 +1801,7 @@
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
-      + ' .pagedjs_page { border-top: 1px dashed #d0d0d0; border-bottom: 1px dashed #d0d0d0; }';
+      + ' .pagedjs_page { box-sizing: border-box; border: 1px dashed #bbb; margin: 8px 0; }';
 
     var html;
     if (currentDocEngine === 'vivliostyle') {
@@ -1901,17 +1901,8 @@
         + engineScript
         + '<style>'
         + docCss
-        /* --- Page-boundary dashed lines (top/bottom) + corner ticks (left/right) --- */
-        + '.pagedjs_page { overflow: visible !important; }'
-        + '.pagedjs_page::before, .pagedjs_page::after,'
-        + '.pagedjs_sheet::before, .pagedjs_sheet::after {'
-        + '  content: ""; position: absolute; background: transparent; z-index: 9999; }'
-        + '.pagedjs_page::before { top: -8px; left: 0; width: 100%; height: 1px; border-top: 1px dashed #000; }'
-        + '.pagedjs_page::after  { top: -1px;  left: -8px; width: 12px; height: 1px; background: #000; }'
-        + '.pagedjs_sheet::before { bottom: -8px; left: 0; width: 100%; height: 1px; border-bottom: 1px dashed #000; }'
-        + '.pagedjs_sheet::after  { bottom: -1px;  right: -8px; width: 12px; height: 1px; background: #000; }'
-        /* --- Dashed separator between pages --- */
-        + '.pagedjs_page:not(:last-child) { box-sizing: border-box !important; border-bottom: 1px dashed #000 !important; }'
+        /* --- Page-boundary dashed borders on all four sides --- */
+        + '.pagedjs_page { overflow: visible !important; box-sizing: border-box !important; border: 1px dashed #bbb !important; margin: 8px 0 !important; }'
         /* Plain mode: constrain body width to contentWidth */
         + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
@@ -2501,7 +2492,7 @@
         + '    if (vp) { vp.style.overflow = ""; vp.style.height = ""; vp.style.width = ""; }'
         + '    var s = document.createElement("style");'
         + '    s.media = "print";'
-        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { border-top: none !important; border-bottom: none !important; } }";'
+        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { border: none !important; margin: 0 !important; } }";'
         + '    document.head.appendChild(s);'
         + '    window.print();'
         + '  }'
