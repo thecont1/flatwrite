@@ -944,6 +944,8 @@
       btnShare.disabled = len >= SHARE_CHAR_LIMIT;
       btnShare.title = len >= SHARE_CHAR_LIMIT ? "Document too large to share" : "Share as URL";
     }
+    var sbUrl = document.getElementById("sidebar-share-url");
+    if (sbUrl) sbUrl.disabled = len >= SHARE_CHAR_LIMIT;
   }
 
   /* ==========================================================================
@@ -1290,6 +1292,16 @@
     btnExportPdf.addEventListener("click", exportPDF);
     btnShare.addEventListener("click", shareDocument);
 
+    /* Sidebar share buttons (mobile) */
+    var sbMd   = document.getElementById("sidebar-export-md");
+    var sbHtml = document.getElementById("sidebar-export-html");
+    var sbPdf  = document.getElementById("sidebar-export-pdf");
+    var sbUrl  = document.getElementById("sidebar-share-url");
+    if (sbMd)   sbMd.addEventListener("click", exportMarkdown);
+    if (sbHtml) sbHtml.addEventListener("click", exportHTML);
+    if (sbPdf)  sbPdf.addEventListener("click", exportPDF);
+    if (sbUrl)  sbUrl.addEventListener("click", shareDocument);
+
     editor.addEventListener("input", function () {
       suppressAutosave = false;
       scheduleAutosave();
@@ -1540,6 +1552,8 @@
     /* Disable PDF export in Plain mode — use a paged engine for PDF */
     var btnPdf = document.getElementById("btn-export-pdf");
     if (btnPdf) btnPdf.disabled = (engineKey === "none");
+    var sbPdf = document.getElementById("sidebar-export-pdf");
+    if (sbPdf) sbPdf.disabled = (engineKey === "none");
     /* Reset zoom to 100% in Plain mode — zoom is WYSIWYG-irrelevant there */
     if (engineKey === "none" && zoomStep !== 100) {
       zoomStep = 100;

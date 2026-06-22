@@ -101,12 +101,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <!-- Base app styles -->
-  <link rel="stylesheet" href="styles.css?v=90" />
+  <link rel="stylesheet" href="styles.css?v=91" />
 
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
-  <script src="app.js?v=90" defer></script>
+  <script src="app.js?v=91" defer></script>
 
   <!-- Google AdSense -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3564536130489009" crossorigin="anonymous"></script>
@@ -163,7 +163,7 @@
           </div>
           <div class="doc-controls" id="doc-controls">
             <div class="doc-control-row">
-              <label for="page-size" class="doc-label">Page</label>
+              <label for="page-size" class="doc-label">Page Size</label>
               <select id="page-size" class="doc-select">
                 <option value="A0">A0</option>
                 <option value="A1">A1</option>
@@ -176,7 +176,7 @@
               </select>
             </div>
             <div class="doc-control-row">
-              <span class="doc-label">Orient</span>
+              <span class="doc-label">Orientation</span>
               <button class="doc-toggle" id="toggle-orient" type="button" data-state="portrait">Portrait</button>
             </div>
             <div class="doc-control-row">
@@ -236,6 +236,19 @@
           <div class="zoom-controls">
             <input type="range" id="zoom-slider" class="zoom-slider" min="50" max="150" value="100" step="5" />
             <span class="zoom-value" id="zoom-value">100%</span>
+          </div>
+        </div>
+
+        <hr class="sidebar-divider" />
+
+        <!-- Share / Export (mobile only — relocated from bottom bar) -->
+        <div class="sidebar-share" id="sidebar-share">
+          <p class="sidebar-section-label">Share</p>
+          <div class="sidebar-share-buttons">
+            <button class="comp-btn share-btn" id="sidebar-export-md" type="button">Markdown</button>
+            <button class="comp-btn share-btn" id="sidebar-export-html" type="button">HTML</button>
+            <button class="comp-btn share-btn" id="sidebar-export-pdf" type="button">PDF</button>
+            <button class="comp-btn share-btn" id="sidebar-share-url" type="button">Share URL</button>
           </div>
         </div>
 

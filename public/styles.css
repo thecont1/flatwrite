@@ -247,6 +247,18 @@ body {
   margin: var(--space-4) 0;
 }
 
+/* ---------- Sidebar share section (mobile only) ---------- */
+.sidebar-share {
+  display: none;
+}
+
+.sidebar-share-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
 /* ---------- Surface mode toggle (Doc | App) ---------- */
 .surface-toggle {
   position: relative;
@@ -1902,16 +1914,17 @@ body {
 
   /* Shell fills viewport, not auto-height flow */
   .app-shell {
-    position: relative;
-    top: auto;
-    left: auto;
-    transform: none;
-    width: 100%;
-    max-width: 100%;
-    height: 100dvh;
-    flex-direction: column;
-    padding: var(--space-3);
-    gap: var(--space-3);
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    flex-direction: column !important;
+    padding: var(--space-3) !important;
+    gap: var(--space-3) !important;
+    overflow: hidden !important;
   }
 
   /* Show hamburger + logo (positioned via base styles with position:fixed) */
@@ -1920,18 +1933,24 @@ body {
     display: flex;
   }
 
-  /* Sidebar becomes off-canvas drawer */
+  /* Sidebar becomes modal covering just the content rectangle */
   .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 280px;
-    z-index: 100;
-    max-height: none;
-    transform: translateX(-100%);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    padding: 0;
+    position: absolute !important;
+    top: var(--space-3) !important;
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    bottom: var(--space-3) !important;
+    width: auto !important;
+    height: auto !important;
+    z-index: 101;
+    max-height: none !important;
+    align-self: stretch !important;
+    transform: translateX(calc(-100% - var(--space-3)));
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 0 !important;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .app-shell.drawer-open .sidebar {
@@ -1945,16 +1964,31 @@ body {
   }
 
   .sidebar-inner {
-    border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
+    border-radius: var(--radius-inner) !important;
+    border: 1px solid rgba(180, 160, 200, 0.3) !important;
+    box-shadow: 0 8px 32px rgba(45, 42, 62, 0.18) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     /* Top padding matches fixed hamburger+logo position */
     padding: 64px var(--space-5) var(--space-6);
-    background: #ffffff;
-    border-color: rgba(0, 0, 0, 0.08);
+    background: #ffffff !important;
+    flex: 1 1 auto !important;
+    min-height: 100% !important;
+    height: 100% !important;
+    overflow-y: auto !important;
   }
 
   /* Drawer backdrop */
   .drawer-backdrop {
     display: block;
+    position: absolute !important;
+    top: var(--space-3) !important;
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    bottom: var(--space-3) !important;
+    inset: auto !important;
+    z-index: 99;
+    border-radius: var(--radius-inner);
   }
 
   .app-shell.drawer-open .drawer-backdrop {
@@ -2096,28 +2130,39 @@ body {
     flex: 1;
   }
 
-  /* Export actions inline */
-  .main-panel-wrapper {
-    padding-right: 0;
+  /* Export actions hidden on mobile — relocated to sidebar */
+  .export-actions {
+    display: none !important;
   }
 
-  .export-actions {
-    position: relative;
-    top: auto;
-    left: auto;
-    right: auto;
-    flex-direction: row;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: var(--space-2) 0;
-    z-index: 1;
-    /* Reset tab bubble styles on mobile */
-    background: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
+  /* Show sidebar share section on mobile */
+  .sidebar-share {
+    display: block;
+  }
+
+  /* Hide Engine and Zoom on mobile — Surface stays */
+  .engine-pane,
+  .zoom-selector {
+    display: none !important;
+  }
+
+  /* Hide orphaned dividers around hidden sections */
+  .engine-pane + .sidebar-divider,
+  .zoom-selector + .sidebar-divider,
+  .sidebar-divider:has(+ .engine-pane) {
+    display: none;
+  }
+
+  /* Hide width handles on mobile (all modes) */
+  .width-handle {
+    display: none !important;
+  }
+
+  /* Disable tooltips on mobile */
+  .md-btn::after,
+  [data-tooltip]:hover::before,
+  [data-tooltip]:hover::after {
+    display: none !important;
   }
 
   .export-icon svg {
