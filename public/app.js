@@ -1304,13 +1304,16 @@
       }
     }
 
-    document.addEventListener("pointerdown", function (e) {
+    function maybeCloseFontDropdown(e) {
       if (!fontPickerList) return;
       if (fontPickerList.classList.contains("hidden")) return;
       if (fontPickerList.contains(e.target)) return;
       if (fontPicker.contains(e.target)) return;
       fontPickerList.classList.add("hidden");
-    });
+    }
+
+    document.addEventListener("pointerdown", maybeCloseFontDropdown);
+    document.addEventListener("click", maybeCloseFontDropdown);
 
     fontPickerList.addEventListener("click", function (e) {
       var item = e.target.closest(".font-dropdown-item");
