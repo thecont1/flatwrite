@@ -78,8 +78,8 @@
       docEngine:  currentDocEngine,
       surfaceMode: surfaceMode,
       appFramework: currentAppFramework,
-      docLayout:  { pageSize: pageSize, orientation: orientation, margins: pageMargins, columns: pageColumns,
-                    baseline: pageBaseline, footer: showFooter },
+      docLayout:  { pageSize: pageSize, orientation: orientation, marginsLR: pageMarginsLR, marginsTB: pageMarginsTB, columns: pageColumns,
+                    footer: showFooter },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
       updated:    new Date().toISOString()
@@ -112,7 +112,8 @@
       "appFramework: " + currentAppFramework,
       "pageSize: " + pageSize,
       "orientation: " + orientation,
-      "margins: " + pageMargins,
+      "marginsLR: " + pageMarginsLR,
+      "marginsTB: " + pageMarginsTB,
       "footer: " + showFooter,
       "font: " + comfortFont,
       "size: " + sizeStep,
@@ -499,9 +500,9 @@
   /* Document layout state */
   var pageSize     = "A4";
   var orientation  = "portrait";
-  var pageMargins  = "normal";
+  var pageMarginsLR = "normal";
+  var pageMarginsTB = "normal";
   var pageColumns  = 1;
-  var pageBaseline = 16;  /* × 0.1 = line-height */
   var showFooter   = false;
   /* ==========================================================================
      DOM references
@@ -513,10 +514,9 @@
 
   /* Document controls DOM refs */
   var pageSizeSel       = document.getElementById("page-size");
-  var pageMarginsSel    = document.getElementById("page-margins");
+  var pageMarginsLRSel  = document.getElementById("page-margins-lr");
+  var pageMarginsTBSel  = document.getElementById("page-margins-tb");
   var pageColumnsSel    = document.getElementById("page-columns");
-  var pageBaselineRange = document.getElementById("page-baseline");
-  var pageBaselineVal   = document.getElementById("page-baseline-val");
   var toggleFooterBtn   = document.getElementById("toggle-footer");
 
   var editor            = document.getElementById("editor");
@@ -738,7 +738,8 @@
           }
           if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
           if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
-          if (fm.margins && MARGIN_MAP[fm.margins]) pageMargins = fm.margins;
+          if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
+          if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
           if (fm.footer === "true" || fm.footer === "on") showFooter = true;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -860,9 +861,10 @@
       var dl = record.docLayout || {};
       if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
       if (dl.orientation === "portrait" || dl.orientation === "landscape") orientation = dl.orientation;
-      if (dl.margins && MARGIN_MAP[dl.margins])   pageMargins = dl.margins;
+      if (dl.marginsLR && MARGIN_MAP[dl.marginsLR]) pageMarginsLR = dl.marginsLR;
+      if (dl.marginsTB && MARGIN_MAP[dl.marginsTB]) pageMarginsTB = dl.marginsTB;
+      if (dl.margins && MARGIN_MAP[dl.margins]) { pageMarginsLR = dl.margins; pageMarginsTB = dl.margins; }
       if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
-      if (dl.baseline)  pageBaseline = clampInt(dl.baseline, 12, 20, 16);
       if (dl.footer)    showFooter   = true;
       syncDocControlsUI();
     }).catch(function (err) {
@@ -1190,25 +1192,24 @@
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
-    if (pageMarginsSel) {
-      pageMarginsSel.addEventListener("change", function () {
-        pageMargins = this.value;
+    if (pageMarginsLRSel) {
+      pageMarginsLRSel.addEventListener("change", function () {
+        pageMarginsLR = this.value;
         scheduleAutosave();
         positionWidthHandles();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageMarginsTBSel) {
+      pageMarginsTBSel.addEventListener("change", function () {
+        pageMarginsTB = this.value;
+        scheduleAutosave();
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
     if (pageColumnsSel) {
       pageColumnsSel.addEventListener("change", function () {
         pageColumns = parseInt(this.value, 10) || 1;
-        scheduleAutosave();
-        if (mode === "preview" || mode === "read") renderPreview();
-      });
-    }
-    if (pageBaselineRange) {
-      pageBaselineRange.addEventListener("input", function () {
-        pageBaseline = parseInt(this.value, 10);
-        if (pageBaselineVal) pageBaselineVal.textContent = (pageBaseline / 10).toFixed(1);
         scheduleAutosave();
         if (mode === "preview" || mode === "read") renderPreview();
       });
@@ -1476,7 +1477,7 @@
      Plain       → all disabled
      Paged.js    → all enabled
      Vivliostyle → all enabled */
-  var DOC_CONTROL_IDS = ["page-size", "toggle-orient", "page-margins", "page-columns", "page-baseline", "toggle-footer"];
+  var DOC_CONTROL_IDS = ["page-size", "toggle-orient", "page-margins-lr", "page-margins-tb", "page-columns", "toggle-footer"];
   var PAGEDJS_DISABLED = {};
 
   function updateDocControlStates() {
@@ -1502,7 +1503,7 @@
     Letter: [215.9, 279.4], Legal: [215.9, 355.6]
   };
   var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
-  var MARGIN_MAP = { narrow: "10mm", normal: "20mm 20mm", wide: "30mm 30mm" };
+  var MARGIN_MAP = { narrow: "10mm", normal: "20mm", wide: "30mm" };
 
   function getPageCSS() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -1526,27 +1527,19 @@
   function getContentWidthPx() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var wMm = orientation === "landscape" ? dims[1] : dims[0];
-    var margins = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
-    var parts = margins.split(/\s+/).map(function (s) { return parseFloat(s); });
-    var totalMarginMm;
-    if (parts.length === 1) { totalMarginMm = parts[0] * 2; }
-    else if (parts.length === 2) { totalMarginMm = parts[0] + parts[1]; }
-    else { totalMarginMm = parts[0] + parts[2]; }
-    return Math.round((wMm - totalMarginMm) * 3.78);
+    var lrMm = parseFloat(MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal);
+    return Math.round((wMm - lrMm * 2) * 3.78);
   }
 
   function buildPageCSS() {
     var size = getPageCSS();
-    var margin = MARGIN_MAP[pageMargins] || MARGIN_MAP.normal;
-    var css = '@page { size: ' + size + '; margin: ' + margin + '; }';
+    var lrMm = MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal;
+    var tbMm = MARGIN_MAP[pageMarginsTB] || MARGIN_MAP.normal;
+    var css = '@page { size: ' + size + '; margin: ' + tbMm + ' ' + lrMm + '; }';
     if (pageColumns > 1) {
-      var marginMm = parseFloat(margin.split(/\s+/)[0]);
+      var marginMm = parseFloat(lrMm);
       var gap = (marginMm / 2) + 'mm';
       css += ' main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; }';
-    }
-    /* Grid: baseline line-height for paged engines */
-    if (currentDocEngine !== "none" && pageBaseline) {
-      css += ' body { line-height: ' + (pageBaseline / 10) + '; }';
     }
     /* Always capture the L1 heading so it can be used by the footer */
     css += 'h1 { string-set: chapter content(); }';
@@ -1565,12 +1558,9 @@
       orientBtn.dataset.state = orientation;
       orientBtn.textContent = orientation === "portrait" ? "Portrait" : "Landscape";
     }
-    if (pageMarginsSel)  pageMarginsSel.value = pageMargins;
+    if (pageMarginsLRSel) pageMarginsLRSel.value = pageMarginsLR;
+    if (pageMarginsTBSel) pageMarginsTBSel.value = pageMarginsTB;
     if (pageColumnsSel)  pageColumnsSel.value = String(pageColumns);
-    if (pageBaselineRange) {
-      pageBaselineRange.value = pageBaseline;
-      if (pageBaselineVal) pageBaselineVal.textContent = (pageBaseline / 10).toFixed(1);
-    }
     if (toggleFooterBtn) {
       toggleFooterBtn.dataset.state = showFooter ? "on" : "off";
       toggleFooterBtn.textContent = showFooter ? "On" : "Off";
