@@ -1892,9 +1892,10 @@
         + '<style>'
         + docCss
         /* --- Page-boundary dashed borders on all four sides --- */
-        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; }'
-        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.5px solid #000 !important; outline: none !important; }'
-        + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; }'
+        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.5px solid #000 !important; outline: none !important; box-shadow: none !important; }'
+        + '.pagedjs_pagebox { box-shadow: none !important; outline: none !important; border: none !important; }'
+        + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; box-shadow: none !important; }'
         + '.pagedjs_bleed, .pagedjs_bleed-top, .pagedjs_bleed-bottom, .pagedjs_bleed-left, .pagedjs_bleed-right { display: none !important; }'
         /* Plain mode: constrain body width to contentWidth */
         + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
