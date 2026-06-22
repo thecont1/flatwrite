@@ -1897,7 +1897,9 @@
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
-        + 'html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+        + (currentDocEngine !== 'none'
+            ? 'html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+            : 'html { background: #fff !important; }')
         + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
         + '</style>'
         + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'

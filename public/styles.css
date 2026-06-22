@@ -2091,6 +2091,12 @@ body {
   display: none;
 }
 
+/* No stripe in Plain engine or Read mode — plain white background */
+.app-shell.engine-none .preview-wrap,
+.app-shell.mode-read .preview-wrap {
+  background: #fff;
+}
+
 /* Strip sidebar glass */
 .app-shell.focus-mode .sidebar-inner {
   background: transparent;
