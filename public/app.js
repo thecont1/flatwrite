@@ -1801,7 +1801,8 @@
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
-      + ' .pagedjs_page { box-sizing: border-box; border: 1px dashed #bbb; margin: 8px 0; }';
+      + ' .pagedjs_page { margin: 8px 0; }'
+      + ' .pagedjs_sheet { box-sizing: border-box; border: 1px dashed #bbb; }'
 
     var html;
     if (currentDocEngine === 'vivliostyle') {
@@ -1902,7 +1903,8 @@
         + '<style>'
         + docCss
         /* --- Page-boundary dashed borders on all four sides --- */
-        + '.pagedjs_page { overflow: visible !important; box-sizing: border-box !important; border: 1px dashed #bbb !important; margin: 8px 0 !important; }'
+        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 1px dashed #bbb !important; }'
         /* Plain mode: constrain body width to contentWidth */
         + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
@@ -2492,7 +2494,7 @@
         + '    if (vp) { vp.style.overflow = ""; vp.style.height = ""; vp.style.width = ""; }'
         + '    var s = document.createElement("style");'
         + '    s.media = "print";'
-        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { border: none !important; margin: 0 !important; } }";'
+        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { margin: 0 !important; } .pagedjs_sheet { border: none !important; } }";'
         + '    document.head.appendChild(s);'
         + '    window.print();'
         + '  }'
