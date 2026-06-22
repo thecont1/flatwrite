@@ -749,7 +749,7 @@
           if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
           if (fm.line !== undefined)   lineStep   = clampInt(fm.line,   LINE_MIN,   LINE_MAX,   lineStep);
           if (fm.width !== undefined)  contentWidth = clampInt(fm.width, 400, 1400, contentWidth);
-          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 100, 120, zoomStep);
+          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 50, 150, zoomStep);
           zoomSlider.value = zoomStep;
           zoomValue.textContent = zoomStep + "%";
           applyZoom();
@@ -849,7 +849,7 @@
       if (t.lineStep !== undefined)   lineStep   = clampInt(t.lineStep,   LINE_MIN,   LINE_MAX,   lineStep);
 
       var l = record.layout || {};
-      if (l.zoomStep !== undefined)     zoomStep     = clampInt(l.zoomStep, 100, 120, zoomStep);
+      if (l.zoomStep !== undefined)     zoomStep     = clampInt(l.zoomStep, 50, 150, zoomStep);
       if (l.contentWidth !== undefined) contentWidth = clampInt(l.contentWidth, 400, 1400, contentWidth);
 
       zoomSlider.value = zoomStep;
@@ -1412,7 +1412,10 @@
      ========================================================================== */
 
   function applyZoom() {
-    document.querySelector(".app-shell").style.zoom = zoomStep / 100;
+    var frame = document.getElementById("preview-frame");
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.postMessage({ type: "setZoom", zoom: zoomStep / 100 }, "*");
+    }
   }
 
   function applyContentWidth() {
@@ -1741,7 +1744,7 @@
         + '</body></html>';
 
       previewFrame.srcdoc = html;
-      previewFrame.onload = positionWidthHandles;
+      previewFrame.onload = function() { positionWidthHandles(); applyZoom(); };
       setTimeout(positionWidthHandles, 250);
       return;
     }
@@ -1816,11 +1819,12 @@
         + 'const _pageH = ' + getPageHeightPx() + ';'
         + 'const _orientation = "' + orientation + '";'
         + 'const _scrollRatio = ' + scrollRatio + ';'
+        + 'var _zoomFactor = 1;'
         + 'function _computeZoom() {'
         + '  var w = window.innerWidth;'
         + '  var h = window.innerHeight;'
         + '  var inset = 20;'
-        + '  var s = Math.min((w - inset * 2) / _pageW, (h - inset * 2) / _pageH);'
+        + '  var s = Math.min((w - inset * 2) / _pageW, (h - inset * 2) / _pageH) * _zoomFactor;'
         + '  return s;'
         + '}'
         + 'const viewer = new CoreViewer({'
@@ -1876,6 +1880,10 @@
         + '    var m = viewport.scrollHeight - viewport.clientHeight;'
         + '    if (m > 0) viewport.scrollTop = Math.round(e.data.ratio * m);'
         + '  }'
+        + '  if (e.data && e.data.type === "setZoom") {'
+        + '    _zoomFactor = e.data.zoom || 1;'
+        + '    _vivlEnableScroll();'
+        + '  }'
         + '});'
         + '</script>'
         + '</body></html>';
@@ -1908,6 +1916,7 @@
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
       + 'var _isPaged = ' + (currentDocEngine !== 'none') + ';'
+      + 'var _zoomFactor = 1;'
       + 'var _pageW = ' + getPageWidthPx() + ';'
       + 'var _pageH = ' + getPageHeightPx() + ';'
       + 'var _orientation = "' + orientation + '";'
@@ -1920,7 +1929,7 @@
       + '  var iframeW = window.innerWidth;'
       + '  var iframeH = window.innerHeight;'
       + '  var inset = 20;'
-      + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH);'
+      + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH) * _zoomFactor;'
       + '  var scaledW = pageW * s;'
       + '  var marginLeft = Math.max(inset, (iframeW - scaledW) / 2);'
       + '  document.documentElement.style.overflow = "hidden auto";'
@@ -2007,6 +2016,10 @@
       + '    var el = document.getElementById("_fw_stripe");'
       + '    if (el) el.disabled = !e.data.visible;'
       + '  }'
+      + '  if (e.data && e.data.type === "setZoom") {'
+      + '    _zoomFactor = e.data.zoom || 1;'
+      + '    _fitPage();'
+      + '  }'
       + '});'
       + 'document.addEventListener("pointerdown", function(){'
       + '  parent.postMessage({type:"iframe-pointerdown"}, "*");'
@@ -2047,7 +2060,7 @@
 
     previewFrame.srcdoc = html;
     /* Reposition width handles after iframe content loads */
-    previewFrame.onload = positionWidthHandles;
+    previewFrame.onload = function() { positionWidthHandles(); applyZoom(); };
     setTimeout(positionWidthHandles, 250);
   }
 
