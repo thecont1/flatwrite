@@ -1302,18 +1302,6 @@ body {
   left: calc(66.666%);
 }
 
-/* Hide Edit/View, show only Close (relabeled Read) in Read mode */
-.app-shell.mode-read .mode-switch {
-  grid-template-columns: 1fr;
-  margin-left: auto;
-}
-.app-shell.mode-read .mode-switch-label:not(.active) {
-  display: none;
-}
-.app-shell.mode-read .mode-switch-slider {
-  left: 3px;
-  width: calc(100% - 6px);
-}
 
 /* Export icon buttons */
 .export-label {
