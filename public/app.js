@@ -447,6 +447,7 @@
     { value: "Lora",             label: "Lora" },
     { value: "Merriweather",     label: "Merriweather" },
     { value: "Playfair Display", label: "Playfair Display" },
+    { value: "Comfortaa",        label: "Comfortaa" },
     { value: "Unbounded",        label: "Unbounded" }
   ];
 
@@ -469,6 +470,7 @@
     + "&family=Lora:wght@400;500;600;700"
     + "&family=Playfair+Display:wght@400;500;600;700;900"
     + "&family=JetBrains+Mono:wght@300;400;600;700"
+    + "&family=Comfortaa:wght@300;400;500;600;700"
     + "&display=swap";
 
   /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
@@ -1587,6 +1589,8 @@
     var hLeft = document.getElementById("width-handle-left");
     var hRight = document.getElementById("width-handle-right");
     if (!frame || !hLeft || !hRight) return;
+    /* Read mode is distraction-free — no handles */
+    if (mode === "read") return;
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
 
@@ -1950,9 +1954,10 @@
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
-        + '</style><style id="_fw_stripe"' + (mode === "read" ? ' disabled' : '') + '>html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
-        + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
         + '</style>'
+        + (mode !== "read" ? '<style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+          + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
+          + '</style>' : '')
         + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
@@ -2221,10 +2226,6 @@
       if (mode === "read") {
         btnRead.classList.add("active");
         modeSwitch.classList.add("read");
-        /* Hide stripe in Read mode */
-        if (previewFrame && previewFrame.contentWindow) {
-          previewFrame.contentWindow.postMessage({ type: "setStripe", visible: false }, "*");
-        }
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
         } else {
@@ -2234,10 +2235,6 @@
         btnPreview.classList.add("active");
         modeSwitch.classList.add("preview");
         if (prevMode === "read") {
-          /* Restore stripe when leaving Read mode */
-          if (previewFrame && previewFrame.contentWindow) {
-            previewFrame.contentWindow.postMessage({ type: "setStripe", visible: true }, "*");
-          }
           if (window.innerWidth < 760) {
             appShell.classList.remove("focus-mode");
           } else {
