@@ -1792,7 +1792,6 @@
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
       + ' .pagedjs_page { margin: 8px 0; }'
-      + ' .pagedjs_sheet { box-sizing: border-box; border: 1px dashed #bbb; }'
 
     var html;
     if (currentDocEngine === 'vivliostyle') {
@@ -1894,7 +1893,7 @@
         + docCss
         /* --- Page-boundary dashed borders on all four sides --- */
         + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; }'
-        + '.pagedjs_sheet { box-sizing: border-box !important; border: 1px dashed #bbb !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.5px solid #000 !important; }'
         /* Plain mode: constrain body width to contentWidth */
         + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; }'
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
