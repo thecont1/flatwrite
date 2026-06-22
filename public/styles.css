@@ -1526,6 +1526,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+  background: #fff;
 }
 
 /* Fade-in from top when entering Read/View mode */
