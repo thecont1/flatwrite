@@ -499,6 +499,23 @@
   var readZoomRestore = null;
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
+  var previewLoaderTimer = null;
+
+  function showPreviewLoader() {
+    if (!previewLoader) return;
+    previewLoader.classList.remove("hidden");
+    if (previewLoaderTimer) clearTimeout(previewLoaderTimer);
+    previewLoaderTimer = setTimeout(hidePreviewLoader, 8000);
+  }
+
+  function hidePreviewLoader() {
+    if (!previewLoader) return;
+    previewLoader.classList.add("hidden");
+    if (previewLoaderTimer) {
+      clearTimeout(previewLoaderTimer);
+      previewLoaderTimer = null;
+    }
+  }
 
   /* Document layout state */
   var pageSize     = "A4";
@@ -526,6 +543,7 @@
   var editorWrap        = document.getElementById("editor-wrap");
   var previewWrap       = document.getElementById("preview-wrap");
   var previewFrame      = document.getElementById("preview-frame");
+  var previewLoader     = document.getElementById("preview-loader");
   var btnEdit           = document.getElementById("btn-edit");
   var btnPreview        = document.getElementById("btn-preview");
   var btnExportMd       = document.getElementById("btn-export-md");
@@ -1367,6 +1385,11 @@
       }
       if (e.data && e.data.type === "vivl-ready") {
         positionWidthHandles();
+        hidePreviewLoader();
+      }
+      if (e.data && e.data.type === "paged-ready") {
+        positionWidthHandles();
+        hidePreviewLoader();
       }
       if (e.data && e.data.type === "zoomChanged") {
         positionWidthHandles();
@@ -1495,7 +1518,10 @@
     }
     updateDocControlStates();
     scheduleAutosave();
-    if (mode === "preview" || mode === "read") renderPreview();
+    if (mode === "preview" || mode === "read") {
+      if (engineKey !== "none") showPreviewLoader();
+      renderPreview();
+    }
   }
 
   /* Per-engine control states:
@@ -1765,7 +1791,7 @@
         + '</body></html>';
 
       previewFrame.srcdoc = html;
-      previewFrame.onload = function() { positionWidthHandles(); applyZoom(); };
+      previewFrame.onload = function() { hidePreviewLoader(); positionWidthHandles(); applyZoom(); };
       setTimeout(positionWidthHandles, 250);
       return;
     }
@@ -1784,6 +1810,11 @@
     var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
+
+    /* Show loader when a paged engine is about to render */
+    if (renderEngineKey !== "none" && (mode === "preview" || mode === "read")) {
+      showPreviewLoader();
+    }
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
@@ -2005,6 +2036,7 @@
       + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '      }'
+      + '      parent.postMessage({type:"paged-ready"}, "*");'
       + '    });'
       + '    return true;'
       + '  }'
@@ -2029,6 +2061,7 @@
       + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '    }'
+      + '    parent.postMessage({type:"paged-ready"}, "*");'
       + '  });'
       + '  var observer = new MutationObserver(function() {'
       + '    if (document.querySelector(".pagedjs_page")) { _fitPage(); _killBorders(); }'
@@ -2149,7 +2182,7 @@
 
     previewFrame.srcdoc = html;
     /* Reposition width handles after iframe content loads */
-    previewFrame.onload = function() { positionWidthHandles(); applyZoom(); };
+    previewFrame.onload = function() { hidePreviewLoader(); positionWidthHandles(); applyZoom(); };
     setTimeout(positionWidthHandles, 250);
   }
 

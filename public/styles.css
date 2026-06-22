@@ -1588,6 +1588,40 @@ body {
   animation: preview-enter 0.35s ease-out both;
 }
 
+/* Loading overlay while paged engines render */
+.preview-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.preview-loader:not(.hidden) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.preview-loader-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(0, 0, 0, 0.12);
+  border-top-color: var(--accent, #6e6e8e);
+  border-radius: 50%;
+  animation: preview-loader-spin 1s linear infinite;
+}
+
+@keyframes preview-loader-spin {
+  to { transform: rotate(360deg); }
+}
+
 .preview-frame {
   width: 100%;
   flex: 1;
