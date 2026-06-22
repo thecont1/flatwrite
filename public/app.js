@@ -2475,7 +2475,44 @@
       return;
     }
 
-    /* === Doc Surface: Paged.js auto-print document === */
+    /* === Doc Surface: print the exact rendered preview ===
+       When the preview has been rendered, reuse its srcdoc so the PDF engine,
+       pagination, scaling, and layout match what the user sees in view mode. */
+    var srcdoc = previewFrame.getAttribute("srcdoc");
+    if (srcdoc && (mode === "preview" || mode === "read")) {
+      var printScript = '<script>'
+        + '(function(){'
+        + '  function doPrint(){ window.print(); }'
+        + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
+        + '    var done=false; var p=function(){ if (done) return; done=true; setTimeout(doPrint, 200); };'
+        + '    window.PagedPolyfill.on("afterPreview", p);'
+        + '    window.PagedPolyfill.on("afterRenderation", p);'
+        + '    setTimeout(p, 5000);'
+        + '  } else if (document.getElementById("vivl-viewport")) {'
+        + '    var check=function(){'
+        + '      var pages=document.querySelectorAll("[data-vivliostyle-page-container]");'
+        + '      if (pages.length > 0) { doPrint(); }'
+        + '      else { setTimeout(check, 500); }'
+        + '    };'
+        + '    setTimeout(check, 1000);'
+        + '  } else {'
+        + '    window.addEventListener("load", function(){ setTimeout(doPrint, 500); });'
+        + '    if (document.readyState === "complete") { setTimeout(doPrint, 500); }'
+        + '  }'
+        + '})();'
+        + '</script>';
+      var printHtml = srcdoc.replace(/<\/body>/i, printScript + '</body>');
+      var iframeRect = previewFrame.getBoundingClientRect();
+      var width = Math.round(iframeRect.width);
+      var height = Math.round(iframeRect.height);
+      var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
+      var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      window.open(url, "_blank", features);
+      return;
+    }
+
+    /* === Doc Surface fallback: render from scratch for direct export === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
@@ -2486,8 +2523,8 @@
     var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
     var headWeight = Math.min(weight + 200, 900);
 
-    /* Engine script — Paged.js for proper @page pagination */
-    var engineScript = (engine && engine.script)
+    /* Engine script — Paged.js for proper @page pagination (skip ESM modules) */
+    var engineScript = (engine && engine.script && !engine.module)
       ? '  <script src="' + engine.script + '"><' + '/script>\n'
       : '';
 
