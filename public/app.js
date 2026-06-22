@@ -1958,7 +1958,7 @@
         + '.pagedjs_bleed, .pagedjs_bleed-top, .pagedjs_bleed-bottom, .pagedjs_bleed-left, .pagedjs_bleed-right { display: none !important; }'
         /* Plain mode: constrain body width to contentWidth */
         + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; background: #fff !important; }'
-        + 'body.engine-none main { padding: 0.5rem 1rem; }'
+        + 'body.engine-none main { padding: 1rem 1rem; }'
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
         + '</style>'
