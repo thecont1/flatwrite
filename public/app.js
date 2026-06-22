@@ -1612,12 +1612,8 @@
       hRight.style.right = edge + "px";
       hRight.style.left = "auto";
 
-      hLeft.style.display = "";
-      hRight.style.display = "";
-      hLeft.classList.add("width-handle-dotted");
-      hRight.classList.add("width-handle-dotted");
-      hLeft.dataset.mode = "dotted";
-      hRight.dataset.mode = "dotted";
+      hLeft.style.display = "none";
+      hRight.style.display = "none";
       return;
     } else {
       effectiveWidth = contentWidth;
