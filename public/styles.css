@@ -280,6 +280,11 @@ body {
   color: var(--accent);
 }
 
+.surface-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .surface-slider {
   position: absolute;
   top: 3px;
