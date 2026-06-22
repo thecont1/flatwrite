@@ -842,8 +842,6 @@ body {
 .font-dropdown-list {
   position: fixed;
   min-width: 180px;
-  max-height: 220px;
-  overflow-y: auto;
   border: 1px solid var(--btn-border);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
