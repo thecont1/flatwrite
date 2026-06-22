@@ -1364,25 +1364,28 @@ body {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, transform 0.1s ease;
   line-height: 1.4;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .md-btn:hover {
-  background: rgba(176, 106, 179, 0.12);
-  border-color: rgba(176, 106, 179, 0.25);
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .md-btn:active {
-  background: rgba(176, 106, 179, 0.2);
   transform: scale(0.95);
 }
 
 .md-btn svg {
   display: block;
   flex-shrink: 0;
+  height: 100%;
+  width: auto;
+  max-height: 36px;
 }
 
 .md-toolbar-sep {
@@ -1699,8 +1702,6 @@ body {
 }
 
 .mode-edit .md-toolbar .md-btn:hover {
-  background: color-mix(in srgb, var(--fw-accent, var(--accent)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--fw-accent, var(--accent)) 25%, transparent);
   color: var(--fw-accent, var(--accent));
 }
 
