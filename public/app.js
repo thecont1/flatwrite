@@ -496,6 +496,7 @@
   var lineStep = 0;
   var comfortFont = "Inter";
   var zoomStep = 100;
+  var readZoomRestore = null;
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
 
@@ -2153,6 +2154,20 @@
   function setMode(newMode) {
     var prevMode = mode;
     mode = newMode;
+
+    /* Read mode is always 100% zoom (WYSIWYG); restore previous zoom when leaving */
+    if (mode === "read") {
+      readZoomRestore = zoomStep;
+      zoomStep = 100;
+      zoomSlider.value = 100;
+      zoomValue.textContent = "100%";
+    } else if (prevMode === "read" && readZoomRestore !== null) {
+      zoomStep = readZoomRestore;
+      readZoomRestore = null;
+      zoomSlider.value = zoomStep;
+      zoomValue.textContent = zoomStep + "%";
+    }
+
     var modeSwitch = document.getElementById("mode-switch");
     var appShell = document.querySelector(".app-shell");
     var btnRead = document.getElementById("btn-read");
