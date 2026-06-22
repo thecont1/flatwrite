@@ -500,6 +500,7 @@
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
   var previewLoaderTimer = null;
+  var currentRenderId = 0;
 
   function showPreviewLoader() {
     if (!previewLoader) return;
@@ -515,6 +516,32 @@
       clearTimeout(previewLoaderTimer);
       previewLoaderTimer = null;
     }
+  }
+
+  function swapPreviewFrames() {
+    if (!previewFrame || !previewFrameNext) return;
+    var oldFrame = previewFrame;
+    var newFrame = previewFrameNext;
+
+    newFrame.classList.add("active");
+    oldFrame.classList.remove("active");
+
+    /* Swap ids so global references stay on the active iframe */
+    oldFrame.id = "preview-frame-next";
+    newFrame.id = "preview-frame";
+    previewFrame = newFrame;
+    previewFrameNext = oldFrame;
+
+    positionWidthHandles();
+    applyZoom();
+    hidePreviewLoader();
+  }
+
+  function onPreviewFrameReady(e) {
+    if (!e || !e.source) return;
+    if (e.source !== previewFrameNext.contentWindow) return;
+    if (e.data && e.data.renderId !== currentRenderId) return;
+    swapPreviewFrames();
   }
 
   /* Document layout state */
@@ -543,6 +570,7 @@
   var editorWrap        = document.getElementById("editor-wrap");
   var previewWrap       = document.getElementById("preview-wrap");
   var previewFrame      = document.getElementById("preview-frame");
+  var previewFrameNext  = document.getElementById("preview-frame-next");
   var previewLoader     = document.getElementById("preview-loader");
   var btnEdit           = document.getElementById("btn-edit");
   var btnPreview        = document.getElementById("btn-preview");
@@ -1379,7 +1407,7 @@
 
     /* postMessage listener — receives scroll position from sandboxed iframe */
     window.addEventListener("message", function (e) {
-      if (e.source !== previewFrame.contentWindow) return;
+      if (e.source !== previewFrame.contentWindow && e.source !== previewFrameNext.contentWindow) return;
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
       }
@@ -1388,11 +1416,11 @@
       }
       if (e.data && e.data.type === "vivl-ready") {
         positionWidthHandles();
-        hidePreviewLoader();
+        onPreviewFrameReady(e);
       }
       if (e.data && e.data.type === "paged-ready") {
         positionWidthHandles();
-        hidePreviewLoader();
+        onPreviewFrameReady(e);
       }
       if (e.data && e.data.type === "zoomChanged") {
         positionWidthHandles();
@@ -1521,10 +1549,7 @@
     }
     updateDocControlStates();
     scheduleAutosave();
-    if (mode === "preview" || mode === "read") {
-      if (engineKey !== "none") showPreviewLoader();
-      renderPreview();
-    }
+    if (mode === "preview" || mode === "read") renderPreview();
   }
 
   /* Per-engine control states:
@@ -1793,8 +1818,8 @@
         + '<' + '/script>'
         + '</body></html>';
 
-      previewFrame.srcdoc = html;
-      previewFrame.onload = function() { hidePreviewLoader(); positionWidthHandles(); applyZoom(); };
+      previewFrameNext.srcdoc = html;
+      previewFrameNext.onload = function() { swapPreviewFrames(); };
       setTimeout(positionWidthHandles, 250);
       return;
     }
@@ -1813,11 +1838,7 @@
     var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
-
-    /* Show loader when a paged engine is about to render */
-    if (renderEngineKey !== "none" && (mode === "preview" || mode === "read")) {
-      showPreviewLoader();
-    }
+    var renderId = ++currentRenderId;
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
@@ -1877,6 +1898,7 @@
         + 'const _pageH = ' + getPageHeightPx() + ';'
         + 'const _orientation = "' + orientation + '";'
         + 'const _scrollRatio = ' + scrollRatio + ';'
+        + 'const _renderId = ' + renderId + ';'
         + 'var _zoomFactor = 1;'
         + 'function _computeZoom() {'
         + '  var w = window.innerWidth;'
@@ -1922,7 +1944,7 @@
         + '  _vivlEnableScroll();'
         + '  var m = viewport.scrollHeight - viewport.clientHeight;'
         + '  if (m > 0) viewport.scrollTop = Math.round(_scrollRatio * m);'
-        + '  parent.postMessage({type:"vivl-ready"}, "*");'
+        + '  parent.postMessage({type:"vivl-ready", renderId: _renderId}, "*");'
         + '}'
         + 'viewer.addListener("loaded", _vivlNotify);'
         + 'viewer.loadDocument(docUrl);'
@@ -2008,6 +2030,7 @@
       + 'var _pageW = ' + getPageWidthPx() + ';'
       + 'var _pageH = ' + getPageHeightPx() + ';'
       + 'var _orientation = "' + orientation + '";'
+      + 'var _renderId = ' + renderId + ';'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'function _fitPage() {'
       + '  if (!_isPaged) return;'
@@ -2039,7 +2062,7 @@
       + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '      }'
-      + '      parent.postMessage({type:"paged-ready"}, "*");'
+      + '      parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
       + '    });'
       + '    return true;'
       + '  }'
@@ -2064,7 +2087,7 @@
       + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '    }'
-      + '    parent.postMessage({type:"paged-ready"}, "*");'
+      + '    parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
       + '  });'
       + '  var observer = new MutationObserver(function() {'
       + '    if (document.querySelector(".pagedjs_page")) { _fitPage(); _killBorders(); }'
@@ -2183,9 +2206,12 @@
       + '</body></html>';
     }
 
-    previewFrame.srcdoc = html;
+    previewFrameNext.srcdoc = html;
     /* Reposition width handles after iframe content loads */
-    previewFrame.onload = function() { hidePreviewLoader(); positionWidthHandles(); applyZoom(); };
+    previewFrameNext.onload = function() {
+      /* Plain mode renders immediately; paged engines wait for postMessage */
+      if (renderEngineKey === "none") swapPreviewFrames();
+    };
     setTimeout(positionWidthHandles, 250);
   }
 

@@ -1380,8 +1380,9 @@ body {
   transform: scale(0.95);
 }
 
-.md-btn-italic {
-  font-style: italic;
+.md-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .md-toolbar-sep {
@@ -1559,7 +1560,7 @@ body {
 
 .preview-wrap {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1623,9 +1624,10 @@ body {
 }
 
 .preview-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  flex: 1;
-  min-height: 120px;
+  height: 100%;
   background: transparent;
   border: 1px solid rgba(180, 160, 200, 0.3);
   border-top-left-radius: 12px;
@@ -1633,6 +1635,16 @@ body {
   border-bottom-left-radius: var(--radius-inner);
   border-bottom-right-radius: var(--radius-inner);
   border-bottom: none;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.25s ease;
+}
+
+.preview-frame.active {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 /* ==========================================================================
