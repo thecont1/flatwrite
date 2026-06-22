@@ -1015,8 +1015,8 @@ body {
 /* ---------- Width Handles (View mode) ---------- */
 .width-handle {
   position: absolute;
-  top: 5%;
-  bottom: 5%;
+  top: 0;
+  bottom: 0;
   width: 1px;
   cursor: col-resize;
   z-index: 10;
