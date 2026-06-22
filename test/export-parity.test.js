@@ -125,7 +125,7 @@ describe("Page sizes and orientation", () => {
 describe("renderPreview — Paged.js integration", () => {
   const body = fnBody("renderPreview");
   test("looks up engine from DOC_ENGINES", () => {
-    expect(body).toContain("DOC_ENGINES[currentDocEngine]");
+    expect(body).toContain("DOC_ENGINES[renderEngineKey]");
   });
   test("injects engine script tag", () => {
     expect(body).toContain("engineScript");

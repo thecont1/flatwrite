@@ -1760,7 +1760,9 @@
     }
 
     /* === Doc Surface: Paged.js preview === */
-    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
+    /* Read mode always renders as Plain — WYSIWYG, no pagination engine */
+    var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
+    var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
@@ -1947,14 +1949,14 @@
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
-        + '</style><style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+        + '</style><style id="_fw_stripe"' + (mode === "read" ? ' disabled' : '') + '>html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
         + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
         + '</style>'
-        + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'
+        + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
-      + 'var _isPaged = ' + (currentDocEngine !== 'none') + ';'
+      + 'var _isPaged = ' + (renderEngineKey !== 'none') + ';'
       + 'var _zoomFactor = 1;'
       + 'var _pageW = ' + getPageWidthPx() + ';'
       + 'var _pageH = ' + getPageHeightPx() + ';'
