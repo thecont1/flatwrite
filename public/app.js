@@ -1780,7 +1780,8 @@
       : '';
 
     /* Shared document CSS (without engine-specific page-boundary rules) */
-    var docCss = buildPageCSS()
+    /* Plain/Read: skip @page, columns and footer — none apply in a WYSIWYG flow */
+    var docCss = (renderEngineKey === "none" ? "" : buildPageCSS())
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
