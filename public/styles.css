@@ -2091,8 +2091,7 @@ body {
   display: none;
 }
 
-/* No stripe in Plain engine or Read mode — plain white background */
-.app-shell.engine-none .preview-wrap,
+/* No stripe in Read mode — plain white background */
 .app-shell.mode-read .preview-wrap {
   background: #fff;
 }
