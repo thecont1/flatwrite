@@ -1526,7 +1526,13 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: #fff;
+  background: repeating-linear-gradient(
+    45deg,
+    #f0f0f0 0px,
+    #f0f0f0 16px,
+    #ffffff 16px,
+    #ffffff 32px
+  );
 }
 
 /* Fade-in from top when entering Read/View mode */
@@ -1549,7 +1555,7 @@ body {
   width: 100%;
   flex: 1;
   min-height: 120px;
-  background: #fff;
+  background: transparent;
   border: 1px solid rgba(180, 160, 200, 0.3);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
