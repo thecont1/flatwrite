@@ -542,7 +542,7 @@ body {
   font-family: var(--font-body);
   font-size: 0.78rem;
   font-weight: 600;
-  padding: 7px 8px;
+  padding: 5px 6px;
   text-align: center;
   color: var(--text-muted);
   cursor: pointer;
@@ -550,10 +550,29 @@ body {
   background: none;
   transition: color 0.25s ease;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .engine-btn.active {
   color: var(--accent);
+}
+
+.engine-logo {
+  display: block;
+  height: 18px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  opacity: 0.3;
+  filter: saturate(0);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.engine-btn.active .engine-logo {
+  opacity: 1;
+  filter: none;
 }
 
 .engine-slider {
