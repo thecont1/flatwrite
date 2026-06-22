@@ -1888,7 +1888,7 @@
         + '<style>'
         + docCss
         /* --- Page-boundary dashed borders on all four sides --- */
-        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; }'
+        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; background: transparent !important; }'
         + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.8px solid #000 !important; outline: none !important; box-shadow: none !important; }'
         + '.pagedjs_pagebox { box-shadow: none !important; outline: none !important; border: none !important; }'
         + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; box-shadow: none !important; }'
@@ -1919,7 +1919,6 @@
       + '  var iframeH = window.innerHeight;'
       + '  var inset = 20;'
       + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH);'
-      + '  s = Math.min(s, 1);'
       + '  var scaledW = pageW * s;'
       + '  var marginLeft = Math.max(inset, (iframeW - scaledW) / 2);'
       + '  document.documentElement.style.overflow = "hidden auto";'
@@ -2001,7 +2000,7 @@
       + '  if (!s) {'
       + '    s = document.createElement("style");'
       + '    s.id = "_fw_kill_borders";'
-      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_sheet,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; } .pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { border: none !important; } .pagedjs_sheet { border: 0.8px solid #000 !important; box-sizing: border-box !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
+      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_sheet,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; } .pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0.8px solid #000 !important; box-sizing: border-box !important; background: #fff !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
       + '    document.head.appendChild(s);'
       + '  }'
       + '}'
