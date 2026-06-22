@@ -2648,9 +2648,6 @@
         + '  function doPrint(){'
         + '    document.body.style.transform = "";'
         + '    document.body.style.width = "";'
-        + '    document.body.style.marginLeft = "";'
-        + '    document.body.style.marginRight = "";'
-        + '    document.body.style.maxWidth = "";'
         + '    document.documentElement.style.overflow = "";'
         + '    document.body.style.overflow = "";'
         + '    var vp = document.getElementById("vivl-viewport");'
@@ -2680,6 +2677,8 @@
         + '})();'
         + '</script>';
       var printHtml = srcdoc.replace(/<\/body>/i, printScript + '</body>');
+      /* Add centering for paged pages in the new tab */
+      printHtml = printHtml.replace(/<\/head>/i, '<style>.pagedjs_pages { display: flex; flex-direction: column; align-items: center; } [data-vivliostyle-spread-container] { align-items: center !important; } html { display: flex; justify-content: center; } body { margin: 0 auto !important; }</style></head>');
       var iframeRect = previewFrame.getBoundingClientRect();
       var width = Math.round(iframeRect.width);
       var height = Math.round(iframeRect.height);
