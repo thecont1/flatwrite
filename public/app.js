@@ -1897,7 +1897,7 @@
         + 'body.engine-none main { padding: 0.5rem 1rem; }'
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
-        + 'html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+        + '</style><style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
         + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
         + '</style>'
         + '</head><body class="engine-' + currentDocEngine + '"><main>' + renderedHTML + '</main>'
@@ -1999,6 +1999,10 @@
       + '      document.body.style.marginLeft = "auto";'
       + '      document.body.style.marginRight = "auto";'
       + '    }'
+      + '  }'
+      + '  if (e.data && e.data.type === "setStripe") {'
+      + '    var el = document.getElementById("_fw_stripe");'
+      + '    if (el) el.disabled = !e.data.visible;'
       + '  }'
       + '});'
       + 'document.addEventListener("pointerdown", function(){'
@@ -2130,6 +2134,10 @@
         btnRead.textContent = "Close";
         btnRead.dataset.mode = prevMode;
         modeSwitch.classList.add("read");
+        /* Hide stripe in Read mode */
+        if (previewFrame && previewFrame.contentWindow) {
+          previewFrame.contentWindow.postMessage({ type: "setStripe", visible: false }, "*");
+        }
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
         } else {
@@ -2139,6 +2147,10 @@
         btnPreview.classList.add("active");
         modeSwitch.classList.add("preview");
         if (prevMode === "read") {
+          /* Restore stripe when leaving Read mode */
+          if (previewFrame && previewFrame.contentWindow) {
+            previewFrame.contentWindow.postMessage({ type: "setStripe", visible: true }, "*");
+          }
           if (window.innerWidth < 760) {
             appShell.classList.remove("focus-mode");
           } else {
@@ -2364,7 +2376,7 @@
     /* === Doc Surface: reuse the rendered preview for an exact Read-mode match === */
     var srcdoc = previewFrame.getAttribute("srcdoc");
     if (srcdoc && (mode === "preview" || mode === "read")) {
-      openInNewTab(srcdoc, "text/html;charset=utf-8");
+      openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
       return;
     }
 
@@ -2454,6 +2466,7 @@
        When the preview has been rendered, reuse its srcdoc so the PDF engine,
        pagination, scaling, and layout match what the user sees in view mode. */
     var srcdoc = previewFrame.getAttribute("srcdoc");
+    if (srcdoc) srcdoc = srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, "");
     if (srcdoc && (mode === "preview" || mode === "read")) {
       var printScript = '<script>'
         + '(function(){'
