@@ -2196,6 +2196,10 @@
           var text = editor.value || "";
           lastScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
         }
+      }
+      /* Read mode always renders as Plain; switching to/from Read requires a
+         fresh render so the right engine (Plain or selected doc engine) is shown. */
+      if (mode === "read" || prevMode === "read") {
         renderPreview();
       }
 
