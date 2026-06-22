@@ -1348,7 +1348,7 @@ body {
 .md-toolbar {
   display: inline-flex;
   flex-wrap: nowrap;
-  gap: 3px;
+  gap: 6px;
   padding: 5px var(--space-2);
   align-items: center;
   flex-shrink: 0;
@@ -1370,8 +1370,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 36px;
-  width: 36px;
+  height: 28px;
+  width: 28px;
+  position: relative;
 }
 
 .md-btn:hover {
@@ -1387,8 +1388,31 @@ body {
   flex-shrink: 0;
   width: 100%;
   height: 100%;
-  padding: 4px;
+  padding: 3px;
   box-sizing: border-box;
+}
+
+.md-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: var(--bg-primary, #fff);
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0s;
+  z-index: 100;
+}
+
+.md-btn:hover::after {
+  opacity: 1;
 }
 
 .md-toolbar-sep {
