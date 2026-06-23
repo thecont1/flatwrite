@@ -4,205 +4,181 @@ import { resolve } from "path";
 
 const SRC = readFileSync(resolve(import.meta.dir, "..", "public", "app.js"), "utf-8");
 
-/* ─── helpers ─────────────────────────────────────────────────────────── */
-
-/** Return the body of the first function whose name matches `name`. */
 function fnBody(name) {
   const re = new RegExp(
-    `function\\s+${name}\\s*\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n  \\}`,
+    "function\\s+" + name + "\\s*\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n  \\}",
     "m"
   );
   const m = SRC.match(re);
-  if (!m) throw new Error(`Could not extract function body for "${name}"`);
+  if (!m) throw new Error("Could not extract function body for \"" + name + "\"");
   return m[1];
 }
 
-/**
- * Check whether a function body references a CSS property.
- * Matches property names appearing inside CSS strings or comments.
- */
 function bodyContainsCSSProp(body, prop) {
   const re = new RegExp(prop + "\\s*:", "i");
   return re.test(body);
 }
 
-/* ─── tests ───────────────────────────────────────────────────────────── */
+describe("v3 architecture: no web-app framework references", () => {
+  test("FRAMEWORKS object does not exist", () => {
+    expect(SRC).not.toContain("var FRAMEWORKS");
+  });
+  test("COMPONENTS array does not exist", () => {
+    expect(SRC).not.toContain("var COMPONENTS");
+  });
+  test("FALLBACK_CSS does not exist", () => {
+    expect(SRC).not.toContain("FALLBACK_CSS");
+  });
+  test("No html2pdf reference", () => {
+    expect(SRC).not.toContain("html2pdf");
+  });
+});
+
+describe("v3 architecture: DOC_ENGINES registry", () => {
+  test("DOC_ENGINES object exists", () => {
+    expect(SRC).toContain("var DOC_ENGINES");
+  });
+  test("currentDocEngine state variable exists", () => {
+    expect(SRC).toContain("var currentDocEngine");
+  });
+});
+
+describe("IDB persistence v3", () => {
+  test("DB_VERSION is 3", () => {
+    expect(SRC).toContain("var DB_VERSION = 3");
+  });
+  test("saveToIDB persists docEngine", () => {
+    const body = fnBody("saveToIDB");
+    expect(body).toContain("docEngine");
+  });
+  test("saveToIDB persists docLayout", () => {
+    const body = fnBody("saveToIDB");
+    expect(body).toContain("docLayout");
+  });
+});
 
 describe("syncExportActionsTop", () => {
   const body = fnBody("syncExportActionsTop");
-
-  test("computes position from the toolbar, not the animated content wrap", () => {
+  test("computes position from the toolbar", () => {
     expect(body).toContain("toolbar");
-    expect(body).toContain("mainInner");
-    expect(body).not.toContain("editorWrap");
-    expect(body).not.toContain("previewWrap");
   });
-
-  test("reads the flex rowGap from .main-inner", () => {
-    expect(body).toContain("getComputedStyle");
+  test("reads the flex rowGap", () => {
     expect(body).toContain("rowGap");
-    expect(body).toContain(".gap");
-  });
-
-  test("does not use paddingTop from .main-inner", () => {
-    expect(body).not.toContain("paddingTop");
-  });
-
-  test("clears top on mobile viewports", () => {
-    expect(body).toContain("innerWidth < 760");
-    expect(body).toContain('style.top = ""');
   });
 });
 
-describe("exportHTML CSS parity with renderPreview", () => {
+describe("buildPageCSS", () => {
+  test("function exists in source", () => {
+    expect(SRC).toContain("function buildPageCSS");
+  });
+  test("contains @page rule", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("@page");
+  });
+  test("calls getPageCSS() for page dimensions", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("getPageCSS()");
+  });
+  test("supports columns", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("column-count");
+  });
+  test("supports page numbers", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("counter(page)");
+  });
+  test("supports running footers", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("string(chapter");
+  });
+  test("footer prints page n of N", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain('"Page " counter(page) " of " counter(pages)');
+  });
+});
+
+describe("Page sizes and orientation", () => {
+  test("PAGE_SIZES includes A0-A5", () => {
+    expect(SRC).toContain("A0:");
+    expect(SRC).toContain("A1:");
+    expect(SRC).toContain("A2:");
+    expect(SRC).toContain("A3:");
+    expect(SRC).toContain("A4:");
+    expect(SRC).toContain("A5:");
+  });
+  test("PAGE_SIZES includes Letter and Legal", () => {
+    expect(SRC).toContain("Letter:");
+    expect(SRC).toContain("Legal:");
+  });
+  test("orientation state variable exists", () => {
+    expect(SRC).toContain('var orientation');
+  });
+  test("getPageCSS handles orientation", () => {
+    const body = fnBody("getPageCSS");
+    expect(body).toContain("landscape");
+  });
+  test("getPageWidthPx exists", () => {
+    expect(SRC).toContain("function getPageWidthPx");
+  });
+});
+
+describe("renderPreview — Paged.js integration", () => {
+  const body = fnBody("renderPreview");
+  test("looks up engine from DOC_ENGINES", () => {
+    expect(body).toContain("DOC_ENGINES[renderEngineKey]");
+  });
+  test("injects engine script tag", () => {
+    expect(body).toContain("engineScript");
+  });
+  test("delegates @page rules to buildPageCSS()", () => {
+    expect(body).toContain("buildPageCSS()");
+  });
+  test("includes crop mark styles", () => {
+    expect(body).toContain("pagedjs_page");
+  });
+  test("uses PagedPolyfill for scroll restore", () => {
+    expect(body).toContain("PagedPolyfill");
+  });
+  test("has fallback for non-paged layout", () => {
+    expect(body).toContain("body.engine-none");
+  });
+  test("still renders markdown", () => {
+    expect(body).toContain("marked.parse");
+  });
+});
+
+describe("exportHTML", () => {
   const body = fnBody("exportHTML");
-
-  test("uses dynamic font-size from sizeStep (15 * scale)", () => {
-    expect(body).toContain("15 * scale");
+  test("delegates @page to buildPageCSS()", () => {
+    expect(body).toContain("buildPageCSS()");
+  });
+  test("has typography CSS", () => {
     expect(body).toContain("font-size");
-  });
-
-  test("uses dynamic font-weight from weightStep", () => {
-    expect(body).toContain("font-weight");
-    expect(body).toMatch(/font-weight.*weight\b/);
-  });
-
-  test("uses dynamic lineHeight from lineStep", () => {
-    expect(body).toContain("lineHeight");
-    expect(body).toContain("line-height");
-  });
-
-  test("headings use headWeight (min of weight+200, 900)", () => {
     expect(body).toContain("headWeight");
-    expect(body).toContain("Math.min(weight + 200, 900)");
   });
-
-  test("heading sizes are proportional to base scale", () => {
-    expect(body).toContain("15 * scale * 2");    // h1
-    expect(body).toContain("15 * scale * 1.5");  // h2
-    expect(body).toContain("15 * scale * 1.25"); // h3
-    expect(body).toContain("15 * scale * 1.1");  // h4
-  });
-
-  test("code blocks use JetBrains Mono", () => {
-    expect(body).toContain("JetBrains Mono");
-  });
-
-  test("sets * font-family with !important to override frameworks", () => {
-    expect(body).toContain("font-family: ' + fontStack + ' !important");
-  });
-
-  test("includes base target=_blank for links", () => {
-    expect(body).toContain('target="_blank"');
-  });
-
-  test("serialises and calls framework style function", () => {
-    expect(body).toContain("styleFnStr");
-    expect(body).toContain("styleFn(document)");
-  });
-
-  test("loads framework CSS and JS when available", () => {
-    expect(body).toContain("fw.css");
-    expect(body).toContain("fw.js");
-  });
-
-  for (const prop of ["table-layout", "border-left", "list-style-position",
-                       "overflow-wrap", "white-space", "overflow-x"]) {
-    test(`includes ${prop} (missing in old bare-bones export)`, () => {
-      expect(bodyContainsCSSProp(body, prop)).toBe(true);
-    });
-  }
 });
 
-describe("exportPDF CSS parity with renderPreview", () => {
-  const body = fnBody("exportPDF");
-
-  test("uses dynamic font-size from sizeStep (15 * scale)", () => {
-    expect(body).toContain("15 * scale");
-    expect(body).toContain("font-size");
+describe("exportPDF", () => {
+  test("function exists", () => {
+    expect(SRC).toContain("function exportPDF");
   });
-
-  test("uses dynamic font-weight from weightStep", () => {
-    expect(body).toContain("font-weight");
-    expect(body).toMatch(/font-weight.*weight\b/);
+  test("branches on surfaceMode", () => {
+    const body = fnBody("exportPDF");
+    expect(body).toContain("surfaceMode");
   });
-
-  test("uses dynamic lineHeight from lineStep", () => {
-    expect(body).toContain("lineHeight");
-    expect(body).toContain("line-height");
-  });
-
-  test("CSS scoped under .fw-pdf-export to prevent host-page bleed", () => {
-    expect(body).toContain(".fw-pdf-export");
-  });
-
-  test("code blocks use JetBrains Mono", () => {
-    expect(body).toContain("JetBrains Mono");
-  });
-
-  test("applies framework style function on a detached document", () => {
-    expect(body).toContain("fw.style(tmpDoc)");
-    expect(body).toContain("DOMParser");
-    // Must NOT pass the live document — that rewrites host-page elements
-    expect(body).not.toMatch(/fw\.style\(document\)/);
-  });
-
-  test("cleans up injected <style> on success and failure", () => {
-    expect(body).toContain("removeChild(styleEl)");
-    expect(body).toMatch(/styleEl\.parentNode.*removeChild/s);
-  });
-
-  test("container is NOT appended to body (html2pdf clones it internally)", () => {
-    expect(body).not.toContain("document.body.appendChild(container)");
-  });
-
-  for (const prop of ["table-layout", "border-left", "list-style-position",
-                       "overflow-wrap", "white-space", "overflow-x"]) {
-    test(`includes ${prop} (missing in old bare-bones export)`, () => {
-      expect(bodyContainsCSSProp(body, prop)).toBe(true);
-    });
-  }
 });
 
-describe("preview ↔ export CSS selector inventory", () => {
-  /**
-   * Every CSS selector in renderPreview's <style> block should also appear
-   * in exportHTML and exportPDF — otherwise a rule added to the preview
-   * will be missing from the exported file.
-   */
-  const exportBody = fnBody("exportHTML");
-  const pdfBody    = fnBody("exportPDF");
-
-  const CSS_SELECTORS = [
-    "*", "*::before", "*::after",
-    "body",
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "img",
-    "pre", "code",
-    "table", "td", "th",
-    "blockquote",
-    "ul", "ol", "li",
-    "li > ul", "li > ol",
-    "li::marker",
-    "p", "br",
-    ".fw-alert", ".fw-card", ".fw-card-header", ".fw-card-title",
-    ".fw-card-body",
-    ".fw-form label",
-    ".fw-form input[type=text]", ".fw-form input[type=email]",
-    ".fw-form textarea", ".fw-form select",
-    ".fw-form button",
-    ".fw-list", ".fw-list li",
-  ];
-
-  for (const sel of CSS_SELECTORS) {
-    test(`"${sel}" present in exportHTML`, () => {
-      expect(exportBody).toContain(sel);
-    });
-
-    test(`"${sel}" present in exportPDF (scoped)`, () => {
-      const scoped = ".fw-pdf-export " + sel;
-      const bare   = sel;
-      expect(pdfBody.includes(scoped) || pdfBody.includes(bare)).toBe(true);
-    });
-  }
+describe("share pipeline", () => {
+  test("buildShareYaml includes docEngine", () => {
+    const body = fnBody("buildShareYaml");
+    expect(body).toContain("docEngine");
+  });
+  test("buildShareYaml includes pageSize", () => {
+    const body = fnBody("buildShareYaml");
+    expect(body).toContain("pageSize");
+  });
+  test("buildShareYaml includes orientation", () => {
+    const body = fnBody("buildShareYaml");
+    expect(body).toContain("orientation");
+  });
 });

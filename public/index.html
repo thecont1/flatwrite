@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-framework="spectre">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>flatwrite.md — pretty damn good markdown</title>
-  <meta name="description" content="A minimalist markdown editor with live preview, multiple CSS frameworks, and one-click export to HTML, PDF, or shareable URL." />
+  <meta name="description" content="A minimalist markdown editor with live preview, paged document layout, and one-click export to HTML, PDF, or shareable URL." />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
   <link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png" />
@@ -100,20 +100,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-  <!-- PoshUI CSS — loaded async for toast feedback (FlatWrite CSS overrides it) -->
-  <link rel="preload" href="https://poshui-components.netlify.app/css/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-  <noscript><link rel="stylesheet" href="https://poshui-components.netlify.app/css/main.css" /></noscript>
-
-  <!-- Base app styles (always loaded, overrides PoshUI for the shell) -->
-  <link rel="stylesheet" href="styles.css" />
-
-  <!-- Framework CSS is NOT loaded globally — it only applies inside the
-       preview iframe and HTML exports, keeping the app shell independent. -->
+  <!-- Base app styles -->
+  <link rel="stylesheet" href="styles.css?v=91" />
 
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=91" defer></script>
 
   <!-- Google AdSense -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3564536130489009" crossorigin="anonymous"></script>
@@ -137,8 +130,6 @@
         <h1 class="app-title">FlatWrite</h1>
         <p class="tagline">Write once, style many worlds.</p>
 
-        <hr class="sidebar-divider" />
-
         <!-- Load section -->
         <div class="load-panel">
           <p class="sidebar-section-label">Load</p>
@@ -151,38 +142,113 @@
 
         <hr class="sidebar-divider" />
 
-        <!-- Framework selector -->
-        <div class="framework-selector">
-          <label for="framework-dropdown" class="sidebar-section-label">Framework</label>
-          <select id="framework-dropdown" class="framework-dropdown">
-            <option value="spectre">Spectre.css</option>
-            <option value="poshui">PoshUI</option>
-            <option value="oat">Oat</option>
-            <option value="pico">Pico CSS</option>
-            <option value="milligram">Milligram</option>
-            <option value="chota">Chota</option>
-            <option value="simple">Simple.css</option>
-          </select>
+        <!-- Surface mode toggle: Doc | App -->
+        <label class="sidebar-section-label">Surface</label>
+        <div class="surface-toggle" id="surface-toggle">
+          <button class="surface-btn active" data-surface="doc" type="button">Doc</button>
+          <button class="surface-btn" data-surface="app" type="button" disabled>App</button>
+          <span class="surface-slider" id="surface-slider"></span>
         </div>
 
         <hr class="sidebar-divider" />
 
-        <!-- UI Component snippets (dynamically enabled/disabled per framework) -->
-        <div class="components-panel">
-          <label for="components-grid" class="sidebar-section-label">Components</label>
-          <div class="components-grid" id="components-grid">
-            <!-- Populated dynamically by app.js based on selected framework -->
+        <!-- Engine selector with attached Document controls pane -->
+        <div class="engine-pane doc-only">
+          <label class="sidebar-section-label">Engine</label>
+          <div class="engine-toggle" id="engine-toggle">
+            <button class="engine-btn active" data-engine="none" type="button">Plain</button>
+            <button class="engine-btn" data-engine="pagedjs" type="button" title="Paged.js"><img src="assets/pagedjs-logo.svg" alt="Paged.js" class="engine-logo" /></button>
+            <button class="engine-btn" data-engine="vivliostyle" type="button" title="Vivliostyle"><img src="assets/vivliostyle-logo.svg" alt="Vivliostyle" class="engine-logo" /></button>
+            <span class="engine-slider" id="engine-slider"></span>
+          </div>
+          <div class="doc-controls" id="doc-controls">
+            <div class="doc-control-row">
+              <label for="page-size" class="doc-label">Page Size</label>
+              <select id="page-size" class="doc-select">
+                <option value="A0">A0</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="A3">A3</option>
+                <option value="A4" selected>A4</option>
+                <option value="A5">A5</option>
+                <option value="Letter">Letter</option>
+                <option value="Legal">Legal</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <span class="doc-label">Orientation</span>
+              <button class="doc-toggle" id="toggle-orient" type="button" data-state="portrait">Portrait</button>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-margins-lr" class="doc-label">Margins ←→</label>
+              <select id="page-margins-lr" class="doc-select">
+                <option value="narrow">Narrow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="wide">Wide</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-margins-tb" class="doc-label">Margins ↑↓</label>
+              <select id="page-margins-tb" class="doc-select">
+                <option value="narrow">Narrow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="wide">Wide</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <label for="page-columns" class="doc-label">Columns</label>
+              <select id="page-columns" class="doc-select">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+            <div class="doc-control-row">
+              <span class="doc-label">Footer</span>
+              <button class="doc-toggle" id="toggle-footer" type="button" data-state="off">Off</button>
+            </div>
           </div>
         </div>
 
         <hr class="sidebar-divider" />
 
+        <!-- App surface: Framework selector -->
+        <div class="framework-selector app-only">
+          <label class="sidebar-section-label">Framework</label>
+          <div class="fw-dropdown" id="fw-dropdown">
+            <button class="fw-dropdown-btn" id="fw-dropdown-btn" type="button">
+              <span id="fw-dropdown-label">Spectre</span>
+              <span class="fw-dropdown-arrow">&#x25BC;</span>
+            </button>
+          </div>
+          <select id="framework-dropdown" class="sr-only" aria-hidden="true" tabindex="-1"></select>
+        </div>
+
+        <!-- App surface: Component picker -->
+        <div class="components-panel app-only">
+          <label for="components-grid" class="sidebar-section-label">Components</label>
+          <div class="components-grid" id="components-grid"></div>
+        </div>
+
         <!-- UI Zoom -->
         <div class="zoom-selector">
-          <label for="zoom-slider" class="sidebar-section-label">UI Zoom</label>
+          <label for="zoom-slider" class="sidebar-section-label">Zoom</label>
           <div class="zoom-controls">
-            <input type="range" id="zoom-slider" class="zoom-slider" min="100" max="120" value="100" step="1" />
+            <input type="range" id="zoom-slider" class="zoom-slider" min="50" max="150" value="100" step="5" />
             <span class="zoom-value" id="zoom-value">100%</span>
+          </div>
+        </div>
+
+        <hr class="sidebar-divider" />
+
+        <!-- Share / Export (mobile only — relocated from bottom bar) -->
+        <div class="sidebar-share" id="sidebar-share">
+          <p class="sidebar-section-label">Share</p>
+          <div class="sidebar-share-buttons">
+            <button class="comp-btn share-btn" id="sidebar-export-md" type="button">Markdown</button>
+            <button class="comp-btn share-btn" id="sidebar-export-html" type="button">HTML</button>
+            <button class="comp-btn share-btn" id="sidebar-export-pdf" type="button">PDF</button>
+            <button class="comp-btn share-btn" id="sidebar-share-url" type="button">Share URL</button>
           </div>
         </div>
 
@@ -203,26 +269,26 @@
               <div class="toolbar-slides">
                 <!-- Markdown formatting toolbar (Edit mode) -->
                 <div class="toolbar-slide md-toolbar" id="md-toolbar">
-                  <button class="md-btn" data-md="h1" type="button" title="Heading 1">H1</button>
-                  <button class="md-btn" data-md="h2" type="button" title="Heading 2">H2</button>
-                  <button class="md-btn" data-md="h3" type="button" title="Heading 3">H3</button>
-                  <button class="md-btn" data-md="h4" type="button" title="Heading 4">H4</button>
+                  <button class="md-btn" data-md="h1" type="button" data-tip="Level 1 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/></svg></button>
+                  <button class="md-btn" data-md="h2" type="button" data-tip="Level 2 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg></button>
+                  <button class="md-btn" data-md="h3" type="button" data-tip="Level 3 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/></svg></button>
+                  <button class="md-btn" data-md="h4" type="button" data-tip="Level 4 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18V6"/><path d="M17 10v3a1 1 0 0 0 1 1h3"/><path d="M21 10v8"/><path d="M4 12h8"/><path d="M4 18V6"/></svg></button>
                   <span class="md-toolbar-sep"></span>
-                  <button class="md-btn" data-md="bold" type="button" title="Bold">B</button>
-                  <button class="md-btn md-btn-italic" data-md="italic" type="button" title="Italic">I</button>
-                  <button class="md-btn" data-md="strikethrough" type="button" title="Strikethrough">S̶</button>
+                  <button class="md-btn" data-md="bold" type="button" data-tip="Bold"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5h6a3.5 3.5 0 0 1 0 7h-6z"/><path d="M13 12h1a3.5 3.5 0 0 1 0 7h-7v-7"/></svg></button>
+                  <button class="md-btn" data-md="italic" type="button" data-tip="Italic"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M7.991 11.674 9.53 4.455c.123-.595.246-.71 1.347-.807l.11-.52H7.211l-.11.52c1.06.096 1.128.212 1.005.807L6.57 11.674c-.123.595-.246.71-1.346.806l-.11.52h3.774l.11-.52c-1.06-.095-1.129-.211-1.006-.806z"/></svg></button>
+                  <button class="md-btn" data-md="strikethrough" type="button" data-tip="Strikethrough"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 100 100"><path d="M77.5 49.719c-.035 0-.068.009-.103.01v-.01h-55v.01a2.995 2.995 0 0 0-2.897 2.99 2.996 2.996 0 0 0 2.897 2.99v.01h55v-.01c.035.001.068.01.103.01a3 3 0 1 0 0-6zM70.928 59.469h-7.14v.011c-.035-.002-.069-.011-.105-.011-.863 0-1.562.699-1.562 1.562 0 .126.019.247.047.365h-.018c.092.393.157.802.157 1.249 0 3.819-3.14 7.808-11.288 7.808-7.741 0-13.842-3.592-17.678-7.653a1.555 1.555 0 0 0-1.237-.617 1.56 1.56 0 0 0-1.275.664l-.001-.002-.01.015a.48.48 0 0 0-.019.029l-3.425 5.212.003.001a1.55 1.55 0 0 0-.398 1.033c0 .515.253.969.637 1.253 5.091 5.205 12.61 8.891 22.978 8.891 15.191 0 21.896-8.147 21.896-17.568 0-.172-.011-.335-.018-.501.007-.06.018-.118.018-.179 0-.863-.699-1.562-1.562-1.562zM31.868 45.677c.269.471.77.792 1.351.792h23.542a.502.502 0 0 0 0-1.004v-.008c-8.471-2.48-17.2-3.403-17.2-8.866 0-4.159 3.734-7.044 9.505-7.044 5.941 0 11.967 2.037 16.465 6.535l.006-.008c.272.231.62.375 1.005.375.491 0 .923-.231 1.21-.584l.002.003.028-.039c.028-.037.056-.074.081-.114l3.409-4.788-.003-.001a1.55 1.55 0 0 0 .398-1.033c0-.473-.215-.892-.547-1.178l.011-.015C65.956 23.606 58.742 20.72 50 20.72c-12.476 0-20.623 7.214-20.623 16.634 0 3.499.939 6.195 2.491 8.323z"/></svg></button>
                   <span class="md-toolbar-sep"></span>
-                  <button class="md-btn" data-md="blockquote" type="button" title="Blockquote">❝</button>
-                  <button class="md-btn" data-md="inlinecode" type="button" title="Inline Code">&lt;/&gt;</button>
-                  <button class="md-btn" data-md="codeblock" type="button" title="Code Block">```</button>
+                  <button class="md-btn" data-md="blockquote" type="button" data-tip="Quote"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M3.516 7a3.5 3.5 0 1 1-3.5 3.5L0 10a7 7 0 0 1 7-7v2a4.97 4.97 0 0 0-3.536 1.464 5.01 5.01 0 0 0-.497.578c.179-.028.362-.043.548-.043zm9 0a3.5 3.5 0 1 1-3.5 3.5L9 10a7 7 0 0 1 7-7v2a4.97 4.97 0 0 0-3.536 1.464 5.01 5.01 0 0 0-.497.578c.179-.028.362-.043.549-.043z"/></svg></button>
+                  <button class="md-btn" data-md="inlinecode" type="button" data-tip="Inline Code"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.447 3.026a.75.75 0 0 1 .527.921l-4.5 16.5a.75.75 0 0 1-1.448-.394l4.5-16.5a.75.75 0 0 1 .921-.527ZM16.72 6.22a.75.75 0 0 1 1.06 0l5.25 5.25a.75.75 0 0 1 0 1.06l-5.25 5.25a.75.75 0 1 1-1.06-1.06L21.44 12l-4.72-4.72a.75.75 0 0 1 0-1.06Zm-9.44 0a.75.75 0 0 1 0 1.06L2.56 12l4.72 4.72a.75.75 0 0 1-1.06 1.06L.97 12.53a.75.75 0 0 1 0-1.06l5.25-5.25a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd"/></svg></button>
+                  <button class="md-btn" data-md="codeblock" type="button" data-tip="Code Block"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h.01"/><path d="M12 12h.01"/><path d="M9 12h.01"/><path d="M6 19a2 2 0 0 1 -2 -2v-4l-1 -1l1 -1v-4a2 2 0 0 1 2 -2"/><path d="M18 19a2 2 0 0 0 2 -2v-4l1 -1l-1 -1v-4a2 2 0 0 0 -2 -2"/></svg></button>
                   <span class="md-toolbar-sep"></span>
-                  <button class="md-btn" data-md="ul" type="button" title="Bullet List">•&nbsp;List</button>
-                  <button class="md-btn" data-md="ol" type="button" title="Numbered List">1.&nbsp;List</button>
-                  <button class="md-btn" data-md="task" type="button" title="Task List">☑ Task</button>
+                  <button class="md-btn" data-md="ul" type="button" data-tip="Bullets"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l11 0"/><path d="M9 12l11 0"/><path d="M9 18l11 0"/><path d="M5 6l0 .01"/><path d="M5 12l0 .01"/><path d="M5 18l0 .01"/></svg></button>
+                  <button class="md-btn" data-md="ol" type="button" data-tip="Numbered"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M5 11.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5"/><path d="M1.713 11.865v-.474H2c.217 0 .363-.137.363-.317 0-.185-.158-.31-.361-.31-.223 0-.367.152-.373.31h-.59c.016-.467.373-.787.986-.787.588-.002.954.291.957.703a.595.595 0 0 1-.492.594v.033a.615.615 0 0 1 .569.631c.003.533-.502.8-1.051.8-.656 0-1-.37-1.008-.794h.582c.008.178.186.306.422.309.254 0 .424-.145.422-.35-.002-.195-.155-.348-.414-.348h-.3zm-.004-4.699h-.604v-.035c0-.408.295-.844.958-.844.583 0 .96.326.96.756 0 .389-.257.617-.476.848l-.537.572v.03h1.054V9H1.143v-.395l.957-.99c.138-.142.293-.304.293-.508 0-.18-.147-.32-.342-.32a.33.33 0 0 0-.342.338zM2.564 5h-.635V2.924h-.031l-.598.42v-.567l.629-.443h.635z"/></svg></button>
+                  <button class="md-btn" data-md="task" type="button" data-tip="Tasks"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M2 2.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5V3a.5.5 0 0 0-.5-.5zM3 3H2v1h1z"/><path d="M5 3.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5M5.5 7a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1zm0 4a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1z"/><path fill-rule="evenodd" d="M1.5 7a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H2a.5.5 0 0 1-.5-.5zM2 7h1v1H2zm0 3.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm1 .5H2v1h1z"/></svg></button>
                   <span class="md-toolbar-sep"></span>
-                  <button class="md-btn" data-md="link" type="button" title="Link">🔗</button>
-                  <button class="md-btn" data-md="image" type="button" title="Image">🖼️</button>
-                  <button class="md-btn" data-md="hr" type="button" title="Horizontal Rule">—</button>
+                  <button class="md-btn" data-md="link" type="button" data-tip="Link">🔗</button>
+                  <button class="md-btn" data-md="image" type="button" data-tip="Image">🖼️</button>
+                  <button class="md-btn" data-md="hr" type="button" data-tip="Rule">—</button>
                 </div>
                 <!-- Typography controls (View mode) -->
                 <div class="toolbar-slide typo-controls">
@@ -269,12 +335,16 @@
             ></textarea>
           </div>
 
-          <!-- Preview pane (hidden by default) — uses iframe to sandbox framework CSS -->
+          <!-- Preview pane (hidden by default) — uses iframe for sandboxed rendering -->
           <div class="preview-wrap hidden" id="preview-wrap">
             <div class="width-handle width-handle-left" id="width-handle-left" title="Drag to resize"></div>
-            <iframe id="preview-frame" class="preview-frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+            <iframe id="preview-frame" class="preview-frame active" title="Preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+            <iframe id="preview-frame-next" class="preview-frame" title="Preview staging" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
             <div class="width-handle width-handle-right" id="width-handle-right" title="Drag to resize"></div>
             <div class="width-drag-overlay hidden" id="width-drag-overlay"></div>
+            <div class="preview-loader hidden" id="preview-loader" aria-hidden="true">
+              <div class="preview-loader-spinner"></div>
+            </div>
           </div>
 
         </div>
@@ -287,7 +357,7 @@
           <button class="export-icon" id="btn-export-html" type="button" title="Open as .html" aria-label="Export HTML">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M14 4.5V11h-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5zm-9.736 7.35v3.999h-.791v-1.714H1.79v1.714H1V11.85h.791v1.626h1.682V11.85h.79Zm2.251.662v3.337h-.794v-3.337H4.588v-.662h3.064v.662zm2.176 3.337v-2.66h.038l.952 2.159h.516l.946-2.16h.038v2.661h.715V11.85h-.8l-1.14 2.596H9.93L8.79 11.85h-.805v3.999zm4.71-.674h1.696v.674H12.61V11.85h.79v3.325Z"/></svg>
           </button>
-          <button class="export-icon" id="btn-export-pdf" type="button" title="Open as .pdf" aria-label="Export PDF">
+          <button class="export-icon" id="btn-export-pdf" type="button" title="Save as PDF from print dialog" aria-label="Export PDF">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M14 4.5V14a2 2 0 0 1-2 2h-1v-1h1a1 1 0 0 0 1-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5zM1.6 11.85H0v3.999h.791v-1.342h.803q.43 0 .732-.173.305-.175.463-.474a1.4 1.4 0 0 0 .161-.677q0-.375-.158-.677a1.2 1.2 0 0 0-.46-.477q-.3-.18-.732-.179m.545 1.333a.8.8 0 0 1-.085.38.57.57 0 0 1-.238.241.8.8 0 0 1-.375.082H.788V12.48h.66q.327 0 .512.181.185.183.185.522m1.217-1.333v3.999h1.46q.602 0 .998-.237a1.45 1.45 0 0 0 .595-.689q.196-.45.196-1.084 0-.63-.196-1.075a1.43 1.43 0 0 0-.589-.68q-.396-.234-1.005-.234zm.791.645h.563q.371 0 .609.152a.9.9 0 0 1 .354.454q.118.302.118.753a2.3 2.3 0 0 1-.068.592 1.1 1.1 0 0 1-.196.422.8.8 0 0 1-.334.252 1.3 1.3 0 0 1-.483.082h-.563zm3.743 1.763v1.591h-.79V11.85h2.548v.653H7.896v1.117h1.606v.638z"/></svg>
           </button>
           <button class="export-icon" id="btn-share" type="button" title="Share as URL" aria-label="Share as URL">
@@ -306,17 +376,29 @@
 
   </div>
 
+  <!-- Load from URL modal (replaces component modal) -->
+  <div class="load-modal-overlay hidden" id="load-modal-overlay">
+    <div class="load-modal" id="load-modal">
+      <div class="load-modal-header">
+        <h3 class="load-modal-title" id="load-modal-title">Load from URL</h3>
+        <button class="load-modal-close" id="load-modal-close" type="button" title="Close">&times;</button>
+      </div>
+      <div class="load-modal-body" id="load-modal-body"></div>
+      <div class="load-modal-footer">
+        <button class="btn btn-mode" id="load-modal-cancel" type="button">Cancel</button>
+        <button class="btn btn-export" id="load-modal-insert" type="button">Fetch</button>
+      </div>
+    </div>
+  </div>
 
-  <!-- ===== COMPONENT MODAL ===== -->
-  <div class="comp-modal-overlay hidden" id="comp-modal-overlay">
+  <!-- Component insert modal (App surface) -->
+  <div class="comp-modal-overlay hidden app-only" id="comp-modal-overlay">
     <div class="comp-modal" id="comp-modal">
       <div class="comp-modal-header">
         <h3 class="comp-modal-title" id="comp-modal-title">Insert Component</h3>
         <button class="comp-modal-close" id="comp-modal-close" type="button" title="Close">&times;</button>
       </div>
-      <div class="comp-modal-body" id="comp-modal-body">
-        <!-- Dynamically populated form fields -->
-      </div>
+      <div class="comp-modal-body" id="comp-modal-body"></div>
       <div class="comp-modal-footer">
         <button class="btn btn-mode" id="comp-modal-cancel" type="button">Cancel</button>
         <button class="btn btn-export" id="comp-modal-insert" type="button">Insert</button>

@@ -7,15 +7,33 @@
      ========================================================================== */
 
   var DB_NAME    = "flatwrite";
-  var DB_VERSION = 1;
+  var DB_VERSION = 3;
 
   function idbOpen() {
     return new Promise(function (resolve, reject) {
       var req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = function (e) {
         var db = e.target.result;
+        var tx = e.target.transaction;
         if (!db.objectStoreNames.contains("activeDocument")) db.createObjectStore("activeDocument");
         if (!db.objectStoreNames.contains("preferences"))   db.createObjectStore("preferences");
+        /* Migration: rename "framework" key to "docEngine" in preferences */
+        try {
+          var getReq = tx.objectStore("preferences").get("current");
+          getReq.onsuccess = function() {
+            var rec = getReq.result;
+            if (!rec) return;
+            if (rec.framework && !rec.docEngine) {
+              rec.docEngine = rec.framework;
+              delete rec.framework;
+            }
+            /* Reset columns to 1 after layout control refactor */
+            if (rec.docLayout && rec.docLayout.columns) {
+              rec.docLayout.columns = 1;
+            }
+            tx.objectStore("preferences").put(rec, "current");
+          };
+        } catch (ex) { /* migration is best-effort */ }
       };
       req.onsuccess = function (e) { resolve(e.target.result); };
       req.onerror   = function (e) { reject(e.target.error); };
@@ -57,7 +75,11 @@
     var record = {
       markdown:   editor.value,
       mode:       mode,
-      framework:  currentFramework,
+      docEngine:  currentDocEngine,
+      surfaceMode: surfaceMode,
+      appFramework: currentAppFramework,
+      docLayout:  { pageSize: pageSize, orientation: orientation, marginsLR: pageMarginsLR, marginsTB: pageMarginsTB, columns: pageColumns,
+                    footer: showFooter },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
       updated:    new Date().toISOString()
@@ -85,7 +107,14 @@
   function buildShareYaml() {
     var lines = [
       "---",
-      "framework: " + currentFramework,
+      "docEngine: " + currentDocEngine,
+      "surfaceMode: " + surfaceMode,
+      "appFramework: " + currentAppFramework,
+      "pageSize: " + pageSize,
+      "orientation: " + orientation,
+      "marginsLR: " + pageMarginsLR,
+      "marginsTB: " + pageMarginsTB,
+      "footer: " + showFooter,
       "font: " + comfortFont,
       "size: " + sizeStep,
       "weight: " + weightStep,
@@ -116,331 +145,297 @@
   }
 
   /* ==========================================================================
-     Framework registry
-     Each framework: label, css/js URLs, category, style function.
-     style(doc) applies framework-specific classes to DOM elements in preview.
+     Document Engine registry
+     Each engine: label, script URL (optional), category.
      ========================================================================== */
 
-  var FRAMEWORKS = {
+  var DOC_ENGINES = {
+    pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media" },
+    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true },
+    none: { label: "Plain CSS", script: null, category: "unstyled" }
+  };
+
+  /* ==========================================================================
+     App Frameworks registry (for App surface mode)
+     Each framework: label, css URLs (array), js URL (optional), category, style function.
+     ========================================================================== */
+
+  var APP_FRAMEWORKS = {
     spectre: {
-      label: "Spectre.css",
-      css: "https://unpkg.com/spectre.css/dist/spectre.min.css",
+      label: "Spectre",
+      css: ["https://unpkg.com/spectre.css/dist/spectre.min.css", "https://unpkg.com/spectre.css/dist/spectre-icons.min.css"],
       js: null,
-      category: "component-rich",
-      style: function (doc) {
-        doc.querySelectorAll("button").forEach(function (b) { b.className = "btn btn-primary"; });
-        doc.querySelectorAll(".fw-form").forEach(function (f) { f.classList.add("form-group"); });
-        doc.querySelectorAll(".fw-form label").forEach(function (l) { l.classList.add("form-label"); });
-        doc.querySelectorAll(".fw-form input[type=text], .fw-form input[type=email], .fw-form textarea").forEach(function (el) { el.classList.add("form-input"); });
-        doc.querySelectorAll(".fw-form select").forEach(function (s) { s.classList.add("form-select"); });
-        doc.querySelectorAll(".fw-card").forEach(function (c) { c.classList.add("card"); });
-        doc.querySelectorAll(".fw-card-header").forEach(function (h) { h.classList.add("card-header"); });
-        doc.querySelectorAll(".fw-card-title").forEach(function (t) { t.classList.add("card-title", "h5"); });
-        doc.querySelectorAll(".fw-card-body").forEach(function (b) { b.classList.add("card-body"); });
-        doc.querySelectorAll(".fw-alert").forEach(function (a) { a.classList.add("toast"); });
-        doc.querySelectorAll(".fw-alert-success").forEach(function (a) { a.classList.add("toast-success"); });
-        doc.querySelectorAll(".fw-alert-warning").forEach(function (a) { a.classList.add("toast-warning"); });
-        doc.querySelectorAll(".fw-alert-error").forEach(function (a) { a.classList.add("toast-error"); });
-        doc.querySelectorAll(".fw-chip").forEach(function (c) { c.classList.add("chip"); });
-        doc.querySelectorAll(".fw-avatar img").forEach(function (i) { i.parentElement.classList.add("avatar"); });
-        doc.querySelectorAll(".fw-hero").forEach(function (h) { h.classList.add("hero", "hero-lg", "bg-gray"); });
-      }
+      category: "grid",
+      style: function (css) { return css + "body { max-width: 1100px; margin: 0 auto; padding: 20px; }"; }
     },
     poshui: {
-      label: "PoshUI",
-      css: "https://poshui-components.netlify.app/css/main.css",
-      js: "https://poshui-components.netlify.app/js/main.js",
-      category: "component-rich",
-      style: function (doc) {
-        doc.querySelectorAll("button").forEach(function (b) { b.className = "btn btn-primary-bg"; });
-        doc.querySelectorAll(".fw-form label").forEach(function (l) { l.classList.add("form-label"); });
-        doc.querySelectorAll(".fw-form input[type=text], .fw-form input[type=email], .fw-form textarea").forEach(function (el) { el.classList.add("form-control"); });
-        doc.querySelectorAll(".fw-form select").forEach(function (s) { s.classList.add("form-control"); });
-        doc.querySelectorAll(".fw-card").forEach(function (c) { c.classList.add("card"); });
-        doc.querySelectorAll(".fw-card-header").forEach(function (h) { h.classList.add("card-header"); });
-        doc.querySelectorAll(".fw-card-body").forEach(function (b) { b.classList.add("card-body"); });
-        doc.querySelectorAll(".fw-alert").forEach(function (a) { a.classList.add("alert"); });
-        doc.querySelectorAll(".fw-alert-success").forEach(function (a) { a.classList.add("alert-success"); });
-        doc.querySelectorAll(".fw-alert-warning").forEach(function (a) { a.classList.add("alert-warning"); });
-        doc.querySelectorAll(".fw-alert-error").forEach(function (a) { a.classList.add("alert-danger"); });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.classList.add("badge", "badge-primary-bg"); });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.classList.add("badge", "badge-secondary-bg"); });
-        doc.querySelectorAll(".fw-avatar img").forEach(function (i) { i.parentElement.classList.add("avatar"); });
-        doc.querySelectorAll(".fw-list").forEach(function (l) { l.classList.add("list", "list-style-disc"); });
-      }
-    },
-    oat: {
-      label: "Oat",
-      css: "https://unpkg.com/@knadh/oat/oat.min.css",
-      js: "https://unpkg.com/@knadh/oat/oat.min.js",
-      category: "semantic-first",
-      style: function (doc) {
-        doc.querySelectorAll(".fw-card").forEach(function (c) { c.classList.add("card"); });
-        doc.querySelectorAll(".fw-card-header").forEach(function (h) {
-          var el = doc.createElement("header");
-          el.innerHTML = h.innerHTML;
-          h.parentNode.replaceChild(el, h);
-        });
-        doc.querySelectorAll(".fw-alert").forEach(function (a) { a.setAttribute("role", "alert"); });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.classList.add("badge"); });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.classList.add("badge", "secondary"); });
-        doc.querySelectorAll(".fw-tabs button").forEach(function (b, i) { if (i === 0) b.classList.add("active"); });
-      }
+      label: "Poshui",
+      css: ["https://unpkg.com/poshui/dist/poshui.min.css"],
+      js: null,
+      category: "minimal",
+      style: function (css) { return css + "body { max-width: 960px; margin: 0 auto; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }"; }
     },
     pico: {
-      label: "Pico CSS",
-      css: "https://unpkg.com/@picocss/pico/css/pico.min.css",
+      label: "Pico",
+      css: ["https://unpkg.com/@picocss/pico@latest/css/pico.min.css"],
       js: null,
-      category: "semantic-first",
-      style: function (doc) {
-        doc.querySelectorAll(".fw-alert").forEach(function (a) { a.setAttribute("role", "alert"); });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.classList.add("badge"); });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.classList.add("badge", "secondary"); });
-        doc.querySelectorAll(".fw-chip").forEach(function (c) { c.style.display = "inline-block"; c.style.padding = "0.2em 0.6em"; c.style.borderRadius = "1em"; c.style.fontSize = "0.9em"; c.style.background = "var(--pico-primary-background)"; c.style.color = "var(--pico-primary-inverse)"; });
-        doc.querySelectorAll(".fw-hero").forEach(function (h) { h.style.padding = "2rem 1rem"; h.style.textAlign = "center"; h.style.background = "#f5f5f5"; h.style.borderRadius = "0.5rem"; h.style.margin = "1rem 0"; });
-      }
+      category: "semantic",
+      style: function (css) { return css + "body { max-width: 900px; margin: 0 auto; padding: 20px; }"; }
     },
     milligram: {
       label: "Milligram",
-      css: "https://unpkg.com/milligram/dist/milligram.min.css",
+      css: ["https://unpkg.com/milligram@1.4.1/dist/milligram.min.css"],
       js: null,
-      category: "class-based",
-      style: function (doc) {
-        doc.querySelectorAll("button").forEach(function (b) { b.classList.add("button"); });
-        doc.querySelectorAll(".fw-card").forEach(function (c) { c.style.padding = "1.5rem"; c.style.borderRadius = "0.4rem"; c.style.border = "1px solid #e0e0e0"; });
-        doc.querySelectorAll(".fw-chip").forEach(function (c) { c.style.display = "inline-block"; c.style.padding = "0.2rem 0.8rem"; c.style.borderRadius = "4px"; c.style.background = "#f4f4f4"; c.style.margin = "0.2rem"; });
-        doc.querySelectorAll(".fw-hero").forEach(function (h) { h.style.padding = "2rem 1rem"; h.style.textAlign = "center"; h.style.background = "#f5f5f5"; h.style.borderRadius = "0.5rem"; h.style.margin = "1rem 0"; });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.style.background = "#9b4dca"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.style.background = "#606c76"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-      }
+      category: "minimal",
+      style: function (css) { return css + "body { max-width: 800px; margin: 0 auto; padding: 20px; }"; }
     },
     chota: {
       label: "Chota",
-      css: "https://unpkg.com/chota/dist/chota.min.css",
+      css: ["https://unpkg.com/chota@1.0.4/dist/chota.min.css"],
       js: null,
-      category: "class-based",
-      style: function (doc) {
-        doc.querySelectorAll("button").forEach(function (b) { b.classList.add("btn", "primary"); });
-        doc.querySelectorAll(".fw-form input[type=text], .fw-form input[type=email], .fw-form textarea").forEach(function (el) { el.classList.add("input"); });
-        doc.querySelectorAll(".fw-form select").forEach(function (s) { s.classList.add("input"); });
-        doc.querySelectorAll(".fw-card").forEach(function (c) { c.classList.add("card"); });
-        doc.querySelectorAll(".fw-chip").forEach(function (c) { c.style.display = "inline-block"; c.style.padding = "0.2em 0.6em"; c.style.borderRadius = "4px"; c.style.background = "#eee"; c.style.margin = "0.2rem"; });
-        doc.querySelectorAll(".fw-hero").forEach(function (h) { h.style.padding = "2rem 1rem"; h.style.textAlign = "center"; h.style.background = "#f5f5f5"; h.style.borderRadius = "0.5rem"; h.style.margin = "1rem 0"; });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.style.background = "#14854f"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.style.background = "#333"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-      }
-    },
-    simple: {
-      label: "Simple.css",
-      css: "https://unpkg.com/simpledotcss/simple.min.css",
-      js: null,
-      category: "semantic-first",
-      style: function (doc) {
-        doc.querySelectorAll(".fw-alert").forEach(function (a) { a.setAttribute("role", "alert"); a.style.borderLeft = "3px solid #666"; });
-        doc.querySelectorAll(".fw-chip").forEach(function (c) { c.style.display = "inline-block"; c.style.padding = "0.2em 0.6em"; c.style.borderRadius = "1em"; c.style.background = "#eee"; c.style.margin = "0.2rem"; });
-        doc.querySelectorAll(".fw-hero").forEach(function (h) { h.style.padding = "2rem 1rem"; h.style.textAlign = "center"; h.style.background = "#f5f5f5"; h.style.borderRadius = "0.5rem"; h.style.margin = "1rem 0"; });
-        doc.querySelectorAll(".fw-badge-primary").forEach(function (b) { b.style.background = "#5a3e7a"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-        doc.querySelectorAll(".fw-badge-secondary").forEach(function (b) { b.style.background = "#666"; b.style.color = "#fff"; b.style.padding = "0.2em 0.6em"; b.style.borderRadius = "4px"; });
-      }
+      category: "grid",
+      style: function (css) { return css + "body { max-width: 1000px; margin: 0 auto; padding: 20px; }"; }
     }
   };
 
   /* ==========================================================================
-     Component catalogue — all 15 original components
-     Each component: id, emoji, label, support map, per-framework snippets.
-     support[frameworkKey] = true if component should be clickable.
+     App Components registry (for App surface mode)
+     Each component: id, label, support map, snippets per framework.
      ========================================================================== */
 
-  var COMPONENTS = [
+  var APP_COMPONENTS = [
     {
-      id: "accordion", emoji: "\u23f1", label: "Accordion",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: false, chota: false, simple: true },
+      id: "card", label: "Card",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
-        oat: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
-        spectre: '<div class="accordion">\n  <input type="checkbox" id="acc-1" hidden />\n  <label class="accordion-header" for="acc-1">\n    <i class="icon icon-arrow-right mr-1"></i> Click to expand\n  </label>\n  <div class="accordion-body">\n    <p>Hidden content goes here.</p>\n  </div>\n</div>',
-        pico: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
-        milligram: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
-        chota: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>',
-        simple: '<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content goes here.</p>\n</details>'
+        spectre: '<div class="card"><div class="card-body">Card content</div></div>',
+        poshui: '<div class="card">Card content</div>',
+        pico: '<article class="card"><div class="card-body">Card content</div></article>',
+        milligram: '<div class="card"><p>Card content</p></div>',
+        chota: '<div class="card"><p>Card content</p></div>'
       }
     },
     {
-      id: "alert", emoji: "\u26a0", label: "Alert",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "button", label: "Button",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<div class="fw-alert fw-alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        oat: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        spectre: '<div class="fw-alert fw-alert-warning">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        pico: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        milligram: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        chota: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>',
-        simple: '<div class="fw-alert fw-alert-warning" role="alert">\n  <strong>Warning:</strong> This is an alert.\n</div>'
+        spectre: '<button class="btn btn-primary">Primary</button>',
+        poshui: '<button class="button primary">Primary</button>',
+        pico: '<button class="secondary">Secondary</button>',
+        milligram: '<button class="button button-primary">Primary</button>',
+        chota: '<button class="button primary">Primary</button>'
       }
     },
     {
-      id: "avatar", emoji: "\ud83d\udc64", label: "Avatar",
-      support: { spectre: true, poshui: true, oat: false, pico: false, milligram: false, chota: false, simple: false },
+      id: "table", label: "Table",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<div class="fw-avatar" style="display:inline-block; margin:0.5rem 0">\n  <img src="https://i.pravatar.cc/150" alt="avatar" width="60" height="60" style="border-radius:50%" />\n</div>',
-        oat: '',
-        spectre: '<div class="fw-avatar">\n  <img src="https://i.pravatar.cc/150" alt="avatar" width="60" height="60" style="border-radius:50%" />\n</div>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        spectre: '<table class="table"><thead><tr><th>#</th><th>Name</th></tr></thead><tbody><tr><td>1</td><td>Item</td></tr></tbody></table>',
+        poshui: '<table class="table"><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>',
+        pico: '<table><thead><tr><th>#</th><th>Name</th></tr></thead><tbody><tr><td>1</td><td>Item</td></tr></tbody></table>',
+        milligram: '<table><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>',
+        chota: '<table><tr><th>#</th><th>Name</th></tr><tr><td>1</td><td>Item</td></tr></table>'
       }
     },
     {
-      id: "badge", emoji: "\ud83c\udff7", label: "Badge",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "list", label: "List",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
-        oat: '<span class="fw-badge-primary">Default</span> <span class="fw-badge-secondary">Secondary</span>',
-        spectre: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
-        pico: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
-        milligram: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
-        chota: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>',
-        simple: '<span class="fw-badge-primary">Primary</span> <span class="fw-badge-secondary">Secondary</span>'
+        spectre: '<ul class="breadcrumb"><li><a href="#">Home</a></li><li><a href="#">Library</a></li></ul>',
+        poshui: '<ul class="list"><li>Item 1</li><li>Item 2</li></ul>',
+        pico: '<ul><li>Item 1</li><li>Item 2</li></ul>',
+        milligram: '<ul><li>Item 1</li><li>Item 2</li></ul>',
+        chota: '<ul><li>Item 1</li><li>Item 2</li></ul>'
       }
     },
     {
-      id: "button", emoji: "\ud83d\udd33", label: "Button",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "image", label: "Image",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<button class="btn btn-primary-bg">Primary</button>\n<button class="btn btn-secondary-bg">Secondary</button>',
-        oat: '<button>Default</button>\n<button class="primary">Primary</button>',
-        spectre: '<button class="btn btn-primary">Primary</button>\n<button class="btn">Default</button>',
-        pico: '<button>Default</button>\n<button class="secondary">Secondary</button>',
-        milligram: '<button class="button button-primary">Primary</button>\n<button class="button button-clear">Clear</button>',
-        chota: '<button class="btn primary">Primary</button>\n<button>Default</button>',
-        simple: '<button>Default</button>\n<button>Confirm</button>'
+        spectre: '<img src="https://via.placeholder.com/600x400" alt="Placeholder" class="img-responsive">',
+        poshui: '<img src="https://via.placeholder.com/600x400" alt="Placeholder" class="image">',
+        pico: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">',
+        milligram: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">',
+        chota: '<img src="https://via.placeholder.com/600x400" alt="Placeholder">'
       }
     },
     {
-      id: "card", emoji: "\ud83c\udccf", label: "Card",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "alert", label: "Alert",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">Card Title</div>\n  </div>\n  <div class="fw-card-body">\n    <p>Card content goes here.</p>\n  </div>\n</div>',
-        oat: '<article class="card">\n  <header>\n    <h3>Card Title</h3>\n  </header>\n  <p>Card content goes here.</p>\n</article>',
-        spectre: '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">Card Title</div>\n  </div>\n  <div class="fw-card-body">Card content goes here.</div>\n</div>',
-        pico: '<div class="fw-card" style="border:1px solid var(--pico-card-border-color, #ddd); border-radius:6px; padding:1.5rem; margin:1rem 0">\n  <h4>Card Title</h4>\n  <p>Card content goes here.</p>\n</div>',
-        milligram: '<div class="fw-card">\n  <h4>Card Title</h4>\n  <p>Card content goes here.</p>\n</div>',
-        chota: '<div class="card">\n  <h4>Card Title</h4>\n  <p>Card content goes here.</p>\n</div>',
-        simple: '<div class="fw-card" style="border:1px solid #ddd; border-radius:6px; padding:1.5rem; margin:1rem 0">\n  <h4>Card Title</h4>\n  <p>Card content goes here.</p>\n</div>'
+        spectre: '<div class="alert alert-primary">Alert message</div>',
+        poshui: '<div class="alert">Alert message</div>',
+        pico: '<div class="alert alert-primary" role="alert">Alert message</div>',
+        milligram: '<p class="alert alert-warning">Alert message</p>',
+        chota: '<div class="notification"><p>Alert message</p></div>'
       }
     },
     {
-      id: "chip", emoji: "\ud83c\udfc5", label: "Chip",
-      support: { spectre: true, poshui: false, oat: false, pico: true, milligram: true, chota: true, simple: true },
+      id: "button-group", label: "Button Group",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '',
-        oat: '',
-        spectre: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
-        pico: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
-        milligram: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
-        chota: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>',
-        simple: '<span class="fw-chip">Tag One</span>\n<span class="fw-chip">Tag Two</span>\n<span class="fw-chip">Tag Three</span>'
+        spectre: '<div class="btn-group"><button class="btn">Left</button><button class="btn">Right</button></div>',
+        poshui: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>',
+        pico: '<div class="button-group"><button>Left</button><button>Right</button></div>',
+        milligram: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>',
+        chota: '<div class="button-group"><button class="button">Left</button><button class="button">Right</button></div>'
       }
     },
     {
-      id: "grid", emoji: "\ud83d\udcd0", label: "Grid",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "nav", label: "Nav",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<div class="grid grid-cols-2">\n  <div><p>Column 1</p></div>\n  <div><p>Column 2</p></div>\n</div>',
-        oat: '<div class="container">\n  <div class="row">\n    <div class="col-6">Column 1</div>\n    <div class="col-6">Column 2</div>\n  </div>\n</div>',
-        spectre: '<div class="columns">\n  <div class="column col-6">Column 1</div>\n  <div class="column col-6">Column 2</div>\n</div>',
-        pico: '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">\n  <div><p>Column 1</p></div>\n  <div><p>Column 2</p></div>\n</div>',
-        milligram: '<div class="row">\n  <div class="column">Column 1</div>\n  <div class="column">Column 2</div>\n</div>',
-        chota: '<div class="row">\n  <div class="col">Column 1</div>\n  <div class="col">Column 2</div>\n</div>',
-        simple: '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem">\n  <div><p>Column 1</p></div>\n  <div><p>Column 2</p></div>\n</div>'
+        spectre: '<ul class="nav"><li class="nav-item"><a class="nav-link" href="#">Home</a></li></ul>',
+        poshui: '<nav class="navbar"><a href="#" class="navbar-item">Home</a></nav>',
+        pico: '<nav><ul><li><a href="#">Home</a></li></ul></nav>',
+        milligram: '<nav><ul><li><a href="#">Home</a></li></ul></nav>',
+        chota: '<nav><a href="#" class="nav-link">Home</a></nav>'
       }
     },
     {
-      id: "hero", emoji: "\ud83e\uddb9", label: "Hero",
-      support: { spectre: true, poshui: false, oat: false, pico: true, milligram: false, chota: false, simple: true },
+      id: "badge", label: "Badge",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '',
-        oat: '',
-        spectre: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>',
-        pico: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>',
-        milligram: '',
-        chota: '',
-        simple: '<div class="fw-hero">\n  <h1>Hero Title</h1>\n  <p>This is a hero subtitle or description.</p>\n</div>'
+        spectre: '<span class="badge badge-primary">New</span>',
+        poshui: '<span class="badge primary">New</span>',
+        pico: '<span class="badge primary">New</span>',
+        milligram: '<span class="badge badge-pill badge-primary">New</span>',
+        chota: '<span class="badge primary">New</span>'
       }
     },
     {
-      id: "image", emoji: "\ud83d\uddbc", label: "Image",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "input", label: "Input",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
-        oat: '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />',
-        spectre: '<img class="img-responsive" src="https://picsum.photos/600/300" alt="Sample image" />',
-        pico: '<img src="https://picsum.photos/600/300" alt="Sample image" width="100%" />',
-        milligram: '<img src="https://picsum.photos/600/300" alt="Sample image" width="100%" />',
-        chota: '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />',
-        simple: '<img src="https://picsum.photos/600/300" alt="Sample image" style="max-width:100%" />'
+        spectre: '<input type="text" class="form-input" placeholder="Enter text...">',
+        poshui: '<input type="text" class="input" placeholder="Enter text...">',
+        pico: '<input type="text" placeholder="Enter text...">',
+        milligram: '<input type="text" class="input" placeholder="Enter text...">',
+        chota: '<input type="text" class="input" placeholder="Enter text...">'
       }
     },
     {
-      id: "list", emoji: "\ud83d\udccb", label: "List",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "modal", label: "Modal",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<ul class="fw-list">\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        oat: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        spectre: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        pico: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        milligram: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        chota: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>',
-        simple: '<ul>\n  <li>First item</li>\n  <li>Second item</li>\n  <li>Third item</li>\n</ul>'
+        spectre: '<a href="#" class="btn btn-link" role="button">Launch</a><div class="modal"><div class="modal-content"><a href="#" class="btn btn-close">&times;</a><div class="modal-body">Content</div></div></div>',
+        poshui: '<button class="button" onclick="document.getElementById(\'modal\').classList.toggle(\'active\')">Launch</button><div id="modal" class="modal">Content</div>',
+        pico: '<dialog role="dialog" aria-modal="true" class="modal"><form method="dialog"><button>Close</button></form><p>Content</p></dialog>',
+        milligram: '<p><button class="button" onclick="document.getElementById(\'modal\').style.display=\'block\'">Launch</button></p><div id="modal" class="modal" style="display:none"><div class="modal-content">Content</div></div>',
+        chota: '<div class="modal"><div class="modal-content">Content</div></div>'
       }
     },
     {
-      id: "panel", emoji: "\ud83d\udce6", label: "Panel",
-      support: { spectre: true, poshui: false, oat: false, pico: false, milligram: false, chota: false, simple: false },
+      id: "accordion", label: "Accordion",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '',
-        oat: '',
-        spectre: '<div class="panel">\n  <div class="panel-header">\n    <div class="panel-title">Panel Title</div>\n  </div>\n  <div class="panel-body">\n    <p>Panel content goes here.</p>\n  </div>\n</div>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        spectre: '<details class="accordion"><summary class="accordion-header">Title</summary><div class="accordion-body">Content</div></details>',
+        poshui: '<details class="details"><summary class="details-summary">Title</summary><div class="details-content">Content</div></details>',
+        pico: '<details><summary>Title</summary><p>Content</p></details>',
+        milligram: '<details><summary>Title</summary><p>Content</p></details>',
+        chota: '<details class="details"><summary>Title</summary><div class="details-content">Content</div></details>'
       }
     },
     {
-      id: "table", emoji: "\ud83d\udcca", label: "Table",
-      support: { spectre: true, poshui: true, oat: true, pico: true, milligram: true, chota: true, simple: true },
+      id: "toast", label: "Toast",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        oat: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        spectre: '<table class="table table-striped table-hover">\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        pico: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        milligram: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        chota: '<table class="table">\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>',
-        simple: '<table>\n  <thead>\n    <tr><th>Col 1</th><th>Col 2</th><th>Col 3</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>\n  </tbody>\n</table>'
+        spectre: '<div class="alert alert-success">Toast message</div>',
+        poshui: '<div class="alert success">Toast message</div>',
+        pico: '<div class="alert alert-success" role="alert">Toast message</div>',
+        milligram: '<p class="toast">Toast message</p>',
+        chota: '<div class="notification success">Toast message</div>'
       }
     },
     {
-      id: "tabs", emoji: "\ud83d\udd00", label: "Tabs",
-      support: { spectre: true, poshui: false, oat: true, pico: false, milligram: false, chota: false, simple: false },
+      id: "progress", label: "Progress",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
       snippets: {
-        poshui: '',
-        oat: '<ot-tabs>\n  <div role="tablist">\n    <button role="tab">Tab 1</button>\n    <button role="tab">Tab 2</button>\n  </div>\n  <div role="tabpanel"><p>Tab 1 content</p></div>\n  <div role="tabpanel"><p>Tab 2 content</p></div>\n</ot-tabs>',
-        spectre: '<ul class="tab">\n  <li class="tab-item active"><a href="#">Tab 1</a></li>\n  <li class="tab-item"><a href="#">Tab 2</a></li>\n  <li class="tab-item"><a href="#">Tab 3</a></li>\n</ul>',
-        pico: '',
-        milligram: '',
-        chota: '',
-        simple: ''
+        spectre: '<div class="progress"><div class="progress-value" style="width: 50%"></div></div>',
+        poshui: '<div class="progress"><div class="progress-inner" style="width: 50%"></div></div>',
+        pico: '<progress value="50" max="100"></progress>',
+        milligram: '<progress value="50" max="100"></progress>',
+        chota: '<div class="progress"><div class="progress-inner" style="width: 50%"></div></div>'
+      }
+    },
+    {
+      id: "tab", label: "Tab",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="tabs"><ul class="tab-item active"><li class="tab-active"><a href="#">Home</a></li></ul></div>',
+        poshui: '<div class="tabs"><div class="tab-item active">Home</div></div>',
+        pico: '<div class="tabs" role="tablist"><button role="tab" aria-selected="true">Home</button></div>',
+        milligram: '<div class="tabs"><ul><li class="tab-active"><a href="#">Home</a></li></ul></div>',
+        chota: '<div class="tabs"><div class="tab-item active">Home</div></div>'
+      }
+    },
+    {
+      id: "tooltip", label: "Tooltip",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<span class="tooltipped" data-tooltip="Help text">Hover me</span>',
+        poshui: '<span class="tooltip" data-tooltip="Help text">Hover me</span>',
+        pico: '<span data-tooltip="Help text">Hover me</span>',
+        milligram: '<span class="tooltip" data-tooltip="Help text">Hover me</span>',
+        chota: '<span class="tooltip" data-tooltip="Help text">Hover me</span>'
+      }
+    },
+    {
+      id: "navbar", label: "Navbar",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<nav class="navbar"><a class="navbar-brand" href="#">Brand</a><ul class="nav"><li class="nav-item"><a class="nav-link" href="#">Home</a></li></ul></nav>',
+        poshui: '<nav class="navbar"><a href="#" class="navbar-brand">Brand</a><div class="navbar-item"><a href="#" class="navbar-link">Home</a></div></nav>',
+        pico: '<nav><a href="#">Brand</a><ul><li><a href="#">Home</a></li></ul></nav>',
+        milligram: '<nav class="navbar"><div class="container"><a class="navbar-title">Brand</a><ul><li><a href="#">Home</a></li></ul></div></nav>',
+        chota: '<nav class="navbar"><a href="#" class="nav-brand">Brand</a><div class="nav-links"><a href="#" class="nav-link">Home</a></div></nav>'
+      }
+    },
+    {
+      id: "footer", label: "Footer",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        poshui: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        pico: '<footer><p>&copy; 2026 My Site</p></footer>',
+        milligram: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>',
+        chota: '<footer class="footer"><p>&copy; 2026 My Site</p></footer>'
+      }
+    },
+    {
+      id: "hero-wide", label: "Hero",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="hero"><div class="hero-body"><h1 class="hero-title">Welcome</h1><p class="hero-subtitle">Subtitle here</p></div></div>',
+        poshui: '<div class="hero"><h1>Welcome</h1><p>Subtitle here</p></div>',
+        pico: '<section aria-label="Hero section"><h1>Welcome</h1><p>Subtitle here</p></section>',
+        milligram: '<section class="hero"><h1>Welcome</h1><p class="hero-subtitle">Subtitle here</p></section>',
+        chota: '<div class="hero"><h1>Welcome</h1><p>Subtitle here</p></div>'
+      }
+    },
+    {
+      id: "two-col", label: "2-Col Layout",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="columns"><div class="column col-6">Left</div><div class="column col-6">Right</div></div>',
+        poshui: '<div class="row"><div class="col"><p>Left</p></div><div class="col"><p>Right</p></div></div>',
+        pico: '<div class="grid"><div class="grid-item">Left</div><div class="grid-item">Right</div></div>',
+        milligram: '<div class="row"><div class="column">Left</div><div class="column">Right</div></div>',
+        chota: '<div class="grid"><div class="grid-col">Left</div><div class="grid-col">Right</div></div>'
+      }
+    },
+    {
+      id: "three-col", label: "3-Col Layout",
+      support: { spectre: true, poshui: true, pico: true, milligram: true, chota: true },
+      snippets: {
+        spectre: '<div class="columns"><div class="column col-4">Left</div><div class="column col-4">Center</div><div class="column col-4">Right</div></div>',
+        poshui: '<div class="row"><div class="col"><p>Left</p></div><div class="col"><p>Center</p></div><div class="col"><p>Right</p></div></div>',
+        pico: '<div class="grid"><div class="grid-item">Left</div><div class="grid-item">Center</div><div class="grid-item">Right</div></div>',
+        milligram: '<div class="row"><div class="column">Left</div><div class="column">Center</div><div class="column">Right</div></div>',
+        chota: '<div class="grid"><div class="grid-col">Left</div><div class="grid-col">Center</div><div class="grid-col">Right</div></div>'
       }
     }
   ];
-
-  /* ==========================================================================
-     Modal components — components that get a configuration form
-     ========================================================================== */
-
-  var MODAL_COMPONENTS = ["table", "card", "list", "image"];
 
   /* ==========================================================================
      Typography presets
@@ -452,28 +447,30 @@
     { value: "Lora",             label: "Lora" },
     { value: "Merriweather",     label: "Merriweather" },
     { value: "Playfair Display", label: "Playfair Display" },
+    { value: "Comfortaa",        label: "Comfortaa" },
     { value: "Unbounded",        label: "Unbounded" }
   ];
 
-  var SIZE_SCALE = { "-3": 0.76, "-2": 0.84, "-1": 0.92, "0": 1, "1": 1.1, "2": 1.2, "3": 1.32, "4": 1.46 };
-  var SIZE_MIN = -3;
-  var SIZE_MAX = 4;
+  var SIZE_SCALE = { "-5": 0.62, "-4": 0.68, "-3": 0.76, "-2": 0.84, "-1": 0.92, "0": 1, "1": 1.1, "2": 1.2, "3": 1.32, "4": 1.46, "5": 1.62, "6": 1.8 };
+  var SIZE_MIN = -5;
+  var SIZE_MAX = 6;
 
-  var WEIGHT_MAP = { "-1": 300, "0": 400, "1": 600, "2": 700 };
-  var WEIGHT_MIN = -1;
+  var WEIGHT_MAP = { "-3": 100, "-2": 200, "-1": 300, "0": 400, "1": 600, "2": 700 };
+  var WEIGHT_MIN = -3;
   var WEIGHT_MAX = 2;
 
   var LINE_SCALE = { "-2": 1.3, "-1": 1.5, "0": 1.75, "1": 2.0, "2": 2.3, "3": 2.6 };
   var LINE_MIN = -2;
   var LINE_MAX = 3;
 
-  var FONTS_URL = "https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700"
-    + "&family=Lato:wght@300;400;700"
-    + "&family=Inter:wght@300;400;600;700"
-    + "&family=Merriweather:wght@300;400;700"
-    + "&family=JetBrains+Mono:wght@300;400;600;700"
-    + "&family=Playfair+Display:wght@400;600;700"
+  var FONTS_URL = "https://fonts.googleapis.com/css2?family=Unbounded:wght@200;300;400;500;600;700;800;900"
+    + "&family=Lato:wght@100;300;400;700;900"
+    + "&family=Inter:wght@100;200;300;400;500;600;700"
+    + "&family=Merriweather:wght@300;400;700;900"
     + "&family=Lora:wght@400;500;600;700"
+    + "&family=Playfair+Display:wght@400;500;600;700;900"
+    + "&family=JetBrains+Mono:wght@300;400;600;700"
+    + "&family=Comfortaa:wght@300;400;500;600;700"
     + "&display=swap";
 
   /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
@@ -491,32 +488,96 @@
      ========================================================================== */
 
   var mode = "edit";
-  var currentFramework = "spectre";
+  var surfaceMode = "doc";  /* "doc" | "app" */
+  var currentDocEngine = "none";
+  var currentAppFramework = "spectre";
   var sizeStep = 0;
   var weightStep = 0;
   var lineStep = 0;
   var comfortFont = "Inter";
   var zoomStep = 100;
-  var activeModalComponent = null;
+  var readZoomRestore = null;
   var lastScrollRatio = 0;
   var lastEditorScrollTop = 0;
+  var previewLoaderTimer = null;
+  var currentRenderId = 0;
 
+  function showPreviewLoader() {
+    if (!previewLoader) return;
+    previewLoader.classList.remove("hidden");
+    if (previewLoaderTimer) clearTimeout(previewLoaderTimer);
+    previewLoaderTimer = setTimeout(hidePreviewLoader, 8000);
+  }
+
+  function hidePreviewLoader() {
+    if (!previewLoader) return;
+    previewLoader.classList.add("hidden");
+    if (previewLoaderTimer) {
+      clearTimeout(previewLoaderTimer);
+      previewLoaderTimer = null;
+    }
+  }
+
+  function swapPreviewFrames() {
+    if (!previewFrame || !previewFrameNext) return;
+    var oldFrame = previewFrame;
+    var newFrame = previewFrameNext;
+
+    newFrame.classList.add("active");
+    oldFrame.classList.remove("active");
+
+    /* Swap ids so global references stay on the active iframe */
+    oldFrame.id = "preview-frame-next";
+    newFrame.id = "preview-frame";
+    previewFrame = newFrame;
+    previewFrameNext = oldFrame;
+
+    positionWidthHandles();
+    applyZoom();
+    hidePreviewLoader();
+  }
+
+  function onPreviewFrameReady(e) {
+    if (!e || !e.source) return;
+    if (e.source !== previewFrameNext.contentWindow) return;
+    if (e.data && e.data.renderId !== currentRenderId) return;
+    swapPreviewFrames();
+  }
+
+  /* Document layout state */
+  var pageSize     = "A4";
+  var orientation  = "portrait";
+  var pageMarginsLR = "normal";
+  var pageMarginsTB = "normal";
+  var pageColumns  = 1;
+  var showFooter   = false;
   /* ==========================================================================
      DOM references
      ========================================================================== */
 
-  var frameworkDropdown = document.getElementById("framework-dropdown");
+  /* Engine selector DOM refs */
+  var engineToggle      = document.getElementById("engine-toggle");
+  var engineSlider      = document.getElementById("engine-slider");
+
+  /* Document controls DOM refs */
+  var pageSizeSel       = document.getElementById("page-size");
+  var pageMarginsLRSel  = document.getElementById("page-margins-lr");
+  var pageMarginsTBSel  = document.getElementById("page-margins-tb");
+  var pageColumnsSel    = document.getElementById("page-columns");
+  var toggleFooterBtn   = document.getElementById("toggle-footer");
+
   var editor            = document.getElementById("editor");
   var editorWrap        = document.getElementById("editor-wrap");
   var previewWrap       = document.getElementById("preview-wrap");
   var previewFrame      = document.getElementById("preview-frame");
+  var previewFrameNext  = document.getElementById("preview-frame-next");
+  var previewLoader     = document.getElementById("preview-loader");
   var btnEdit           = document.getElementById("btn-edit");
   var btnPreview        = document.getElementById("btn-preview");
   var btnExportMd       = document.getElementById("btn-export-md");
   var btnExportHtml     = document.getElementById("btn-export-html");
   var btnExportPdf      = document.getElementById("btn-export-pdf");
   var mdToolbar         = document.getElementById("md-toolbar");
-  var componentsGrid    = document.getElementById("components-grid");
   var fontPicker        = document.getElementById("font-dropdown-btn");
   var fontPickerList    = null;
   var fontPickerLabel   = document.getElementById("font-dropdown-label");
@@ -529,12 +590,6 @@
   var lineUpBtn         = document.getElementById("line-up");
   var zoomSlider        = document.getElementById("zoom-slider");
   var zoomValue         = document.getElementById("zoom-value");
-  var modalOverlay      = document.getElementById("comp-modal-overlay");
-  var modalTitle        = document.getElementById("comp-modal-title");
-  var modalBody         = document.getElementById("comp-modal-body");
-  var modalInsertBtn    = document.getElementById("comp-modal-insert");
-  var modalCancelBtn    = document.getElementById("comp-modal-cancel");
-  var modalCloseBtn     = document.getElementById("comp-modal-close");
   var btnShare          = document.getElementById("btn-share");
   var exportActions     = document.getElementById("export-actions");
   var mainPanelWrapper  = document.querySelector(".main-panel-wrapper");
@@ -613,7 +668,7 @@
     });
 
     /* HTML img/video/source: <tag src="..."> and <tag src='...'> */
-    md = md.replace(/(<(?:img|video|source)\s[^>]*?)src=(["'])([^"']+)\2/gi,
+    md = md.replace(/(<(?:img|video|source)\s[^>]*?)src=([\"'])([^\"']+)\2/gi,
       function (match, prefix, quote, src) {
         var r = resolveAsset(src);
         return r ? prefix + "src=" + quote + r + quote : match;
@@ -661,7 +716,12 @@
     function finishInit() {
       initialEditorContent = editor.value;
       buildFontDropdown();
+      buildAppFrameworkDropdown();
       renderComponentGrid();
+      setDocEngine(currentDocEngine);
+      setSurfaceMode(surfaceMode);
+      syncDocControlsUI();
+      updateDocControlStates();
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
@@ -716,10 +776,20 @@
         /* Apply preferences from YAML front-matter if present */
         if (parsed.frontmatter) {
           var fm = parsed.frontmatter;
-          if (fm.framework && FRAMEWORKS[fm.framework]) {
-            currentFramework = fm.framework;
-            frameworkDropdown.value = currentFramework;
+          if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
+            currentDocEngine = fm.docEngine;
           }
+          if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") {
+            surfaceMode = fm.surfaceMode;
+          }
+          if (fm.appFramework && APP_FRAMEWORKS[fm.appFramework]) {
+            currentAppFramework = fm.appFramework;
+          }
+          if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
+          if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
+          if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
+          if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
+          if (fm.footer === "true" || fm.footer === "on") showFooter = true;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
             fontPickerLabel.textContent = comfortFont;
@@ -728,11 +798,12 @@
           if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
           if (fm.line !== undefined)   lineStep   = clampInt(fm.line,   LINE_MIN,   LINE_MAX,   lineStep);
           if (fm.width !== undefined)  contentWidth = clampInt(fm.width, 400, 1400, contentWidth);
-          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 100, 120, zoomStep);
+          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 50, 150, zoomStep);
           zoomSlider.value = zoomStep;
           zoomValue.textContent = zoomStep + "%";
           applyZoom();
           applyContentWidth();
+          setDocEngine(currentDocEngine);
         }
 
         editor.setSelectionRange(0, 0);
@@ -807,11 +878,16 @@
         mode = record.mode;
       }
 
-      if (record.framework && FRAMEWORKS[record.framework]) {
-        currentFramework = record.framework;
+      if (record.surfaceMode === "doc" || record.surfaceMode === "app") {
+        surfaceMode = record.surfaceMode;
       }
-      frameworkDropdown.value = currentFramework;
-
+      if (record.appFramework && APP_FRAMEWORKS[record.appFramework]) {
+        currentAppFramework = record.appFramework;
+      }
+      if (record.docEngine && DOC_ENGINES[record.docEngine]) {
+        currentDocEngine = record.docEngine;
+      }
+            
       var t = record.typography || {};
       if (t.family && COMFORT_FONTS.some(function (f) { return f.value === t.family; })) {
         comfortFont = t.family;
@@ -822,13 +898,24 @@
       if (t.lineStep !== undefined)   lineStep   = clampInt(t.lineStep,   LINE_MIN,   LINE_MAX,   lineStep);
 
       var l = record.layout || {};
-      if (l.zoomStep !== undefined)     zoomStep     = clampInt(l.zoomStep, 100, 120, zoomStep);
+      if (l.zoomStep !== undefined)     zoomStep     = clampInt(l.zoomStep, 50, 150, zoomStep);
       if (l.contentWidth !== undefined) contentWidth = clampInt(l.contentWidth, 400, 1400, contentWidth);
 
       zoomSlider.value = zoomStep;
       zoomValue.textContent = zoomStep + "%";
       applyZoom();
       applyContentWidth();
+      setDocEngine(currentDocEngine);
+
+      var dl = record.docLayout || {};
+      if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
+      if (dl.orientation === "portrait" || dl.orientation === "landscape") orientation = dl.orientation;
+      if (dl.marginsLR && MARGIN_MAP[dl.marginsLR]) pageMarginsLR = dl.marginsLR;
+      if (dl.marginsTB && MARGIN_MAP[dl.marginsTB]) pageMarginsTB = dl.marginsTB;
+      if (dl.margins && MARGIN_MAP[dl.margins]) { pageMarginsLR = dl.margins; pageMarginsTB = dl.margins; }
+      if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
+      if (dl.footer)    showFooter   = true;
+      syncDocControlsUI();
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -857,6 +944,8 @@
       btnShare.disabled = len >= SHARE_CHAR_LIMIT;
       btnShare.title = len >= SHARE_CHAR_LIMIT ? "Document too large to share" : "Share as URL";
     }
+    var sbUrl = document.getElementById("sidebar-share-url");
+    if (sbUrl) sbUrl.disabled = len >= SHARE_CHAR_LIMIT;
   }
 
   /* ==========================================================================
@@ -871,7 +960,7 @@
     }
 
     btnShare.disabled = true;
-    showToast("Creating share link\u2026");
+    showToast("Creating share link…");
     try {
       var res = await fetch("/api/share", {
         method: "POST",
@@ -891,7 +980,7 @@
 
       var shareUrl = window.location.origin + window.location.pathname + "?s=" + data.key;
       await navigator.clipboard.writeText(shareUrl);
-      showToast("Link copied \u2014 available for up to 7 days");
+      showToast("Link copied — available for up to 7 days");
     } catch (e) {
       showToast("Could not create a share link. Please try again.");
     } finally {
@@ -958,8 +1047,10 @@
         if (!confirm("This will clear your current document and reset all settings. Continue?")) return;
         editor.value = "";
         initialEditorContent = "";
-        currentFramework = "spectre";
-        frameworkDropdown.value = "spectre";
+        currentDocEngine = "none";
+        setDocEngine(currentDocEngine);
+        pageSize = "A4";
+        orientation = "portrait";
         sizeStep = 0;
         weightStep = 0;
         lineStep = 0;
@@ -971,21 +1062,15 @@
         applyZoom();
         contentWidth = 780;
         applyContentWidth();
+        showFooter = false;
+        syncDocControlsUI();
         suppressAutosave = false;
         mode = "edit";
         setMode("edit");
-        renderComponentGrid();
         scheduleAutosave();
         showToast("Document cleared");
       });
     }
-
-    frameworkDropdown.addEventListener("change", function () {
-      currentFramework = frameworkDropdown.value;
-      scheduleAutosave();
-      renderComponentGrid();
-      if (mode === "preview") renderPreview();
-    });
 
     document.getElementById("mode-switch").addEventListener("click", function (e) {
       var label = e.target.closest(".mode-switch-label");
@@ -997,7 +1082,7 @@
 
     /* Sidebar Load events */
     btnLoadUrl.addEventListener("click", function () {
-      openComponentModal("load-url", null);
+      loadFromUrlModal();
     });
 
     btnLoadLocal.addEventListener("click", function () {
@@ -1012,31 +1097,42 @@
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
-      var dragging = false, startX, startWidth;
+      var dragging = false, startX, startEdge, wrap;
+
       handle.addEventListener("mousedown", function (e) {
+        if (handle.dataset.mode === "dotted") return;
+
         e.preventDefault();
         e.stopPropagation();
         dragging = true;
         startX = e.clientX;
-        startWidth = contentWidth;
+        wrap = handle.parentElement;
+        startEdge = (wrap.clientWidth - contentWidth) / 2;
         handle.classList.add("dragging");
         widthDragOverlay.classList.remove("hidden");
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
       });
+
       window.addEventListener("mousemove", function (e) {
         if (!dragging) return;
         e.preventDefault();
         var delta = e.clientX - startX;
-        var newWidth;
+
+        /* Free drag — derive contentWidth from cursor position */
+        var wrapW = wrap.clientWidth;
+        var newEdge;
         if (side === "right") {
-          newWidth = Math.max(400, Math.min(1400, startWidth + delta * 2));
+          newEdge = startEdge - delta;
         } else {
-          newWidth = Math.max(400, Math.min(1400, startWidth - delta * 2));
+          newEdge = startEdge + delta;
         }
+        newEdge = Math.max(0, newEdge);
+        var newWidth = Math.max(400, Math.min(1400, wrapW - 2 * newEdge));
         contentWidth = newWidth;
         applyContentWidth();
       });
+
       window.addEventListener("mouseup", function () {
         if (!dragging) return;
         dragging = false;
@@ -1071,16 +1167,140 @@
       requestAnimationFrame(checkToolbarOverflow);
     }
 
+    /* Surface mode toggle (Doc | App) */
+    var surfaceToggle = document.getElementById("surface-toggle");
+    if (surfaceToggle) {
+      surfaceToggle.addEventListener("click", function (e) {
+        var btn = e.target.closest(".surface-btn");
+        if (!btn || btn.classList.contains("active")) return;
+        setSurfaceMode(btn.dataset.surface);
+      });
+    }
+
+    /* App framework dropdown */
+    var fwDropdownBtn = document.getElementById("fw-dropdown-btn");
+    var fwDropdownList = document.getElementById("fw-dropdown-list");
+    var fwDropdownLabel = document.getElementById("fw-dropdown-label");
+    if (fwDropdownBtn && fwDropdownList) {
+      fwDropdownBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var isOpen = !fwDropdownList.classList.contains("hidden");
+        fwDropdownList.classList.add("hidden");
+        if (!isOpen) {
+          var rect = fwDropdownBtn.getBoundingClientRect();
+          fwDropdownList.style.left = rect.left + "px";
+          fwDropdownList.style.top = (rect.bottom + 4) + "px";
+          fwDropdownList.style.width = rect.width + "px";
+          fwDropdownList.classList.remove("hidden");
+        }
+      });
+      fwDropdownList.addEventListener("click", function (e) {
+        var item = e.target.closest(".fw-dropdown-item");
+        if (!item) return;
+        currentAppFramework = item.dataset.fw;
+        if (fwDropdownLabel) fwDropdownLabel.textContent = APP_FRAMEWORKS[currentAppFramework] ? APP_FRAMEWORKS[currentAppFramework].label : currentAppFramework;
+        fwDropdownList.querySelectorAll(".fw-dropdown-item").forEach(function (el) {
+          el.classList.toggle("selected", el.dataset.fw === currentAppFramework);
+        });
+        fwDropdownList.classList.add("hidden");
+        scheduleAutosave();
+        if (mode === "preview") renderPreview();
+      });
+      document.addEventListener("pointerdown", function (e) {
+        if (!fwDropdownList.classList.contains("hidden")) {
+          if (!fwDropdownList.contains(e.target) && !fwDropdownBtn.contains(e.target)) {
+            fwDropdownList.classList.add("hidden");
+          }
+        }
+      });
+    }
+
+    /* Component grid */
+    var compGrid = document.getElementById("components-grid");
+    if (compGrid) {
+      compGrid.addEventListener("click", function (e) {
+        var btn = e.target.closest("[data-component]");
+        if (!btn || btn.disabled) return;
+        insertComponent(btn.dataset.component);
+      });
+    }
+
+    /* Engine toggle */
+    if (engineToggle) {
+      engineToggle.addEventListener("click", function (e) {
+        var btn = e.target.closest(".engine-btn");
+        if (!btn || btn.classList.contains("active")) return;
+        setDocEngine(btn.dataset.engine);
+      });
+    }
+
+    /* Document controls */
+    if (pageSizeSel) {
+      pageSizeSel.addEventListener("change", function () {
+        pageSize = this.value;
+        scheduleAutosave();
+        positionWidthHandles();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageMarginsLRSel) {
+      pageMarginsLRSel.addEventListener("change", function () {
+        pageMarginsLR = this.value;
+        scheduleAutosave();
+        positionWidthHandles();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageMarginsTBSel) {
+      pageMarginsTBSel.addEventListener("change", function () {
+        pageMarginsTB = this.value;
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (pageColumnsSel) {
+      pageColumnsSel.addEventListener("change", function () {
+        pageColumns = parseInt(this.value, 10) || 1;
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    if (toggleFooterBtn) {
+      toggleFooterBtn.addEventListener("click", function () {
+        showFooter = !showFooter;
+        this.dataset.state = showFooter ? "on" : "off";
+        this.textContent = showFooter ? "On" : "Off";
+        scheduleAutosave();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+    /* Orientation toggle */
+    var orientBtn = document.getElementById("toggle-orient");
+    if (orientBtn) {
+      orientBtn.addEventListener("click", function () {
+        orientation = orientation === "portrait" ? "landscape" : "portrait";
+        this.dataset.state = orientation;
+        this.textContent = orientation === "portrait" ? "Portrait" : "Landscape";
+        scheduleAutosave();
+        positionWidthHandles();
+        if (mode === "preview" || mode === "read") renderPreview();
+      });
+    }
+
     btnExportMd.addEventListener("click", exportMarkdown);
     btnExportHtml.addEventListener("click", exportHTML);
     btnExportPdf.addEventListener("click", exportPDF);
     btnShare.addEventListener("click", shareDocument);
 
-    componentsGrid.addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-component]");
-      if (!btn || btn.disabled) return;
-      insertComponent(btn.dataset.component);
-    });
+    /* Sidebar share buttons (mobile) */
+    var sbMd   = document.getElementById("sidebar-export-md");
+    var sbHtml = document.getElementById("sidebar-export-html");
+    var sbPdf  = document.getElementById("sidebar-export-pdf");
+    var sbUrl  = document.getElementById("sidebar-share-url");
+    if (sbMd)   sbMd.addEventListener("click", exportMarkdown);
+    if (sbHtml) sbHtml.addEventListener("click", exportHTML);
+    if (sbPdf)  sbPdf.addEventListener("click", exportPDF);
+    if (sbUrl)  sbUrl.addEventListener("click", shareDocument);
 
     editor.addEventListener("input", function () {
       suppressAutosave = false;
@@ -1124,13 +1344,16 @@
       }
     }
 
-    document.addEventListener("pointerdown", function (e) {
+    function maybeCloseFontDropdown(e) {
       if (!fontPickerList) return;
       if (fontPickerList.classList.contains("hidden")) return;
       if (fontPickerList.contains(e.target)) return;
       if (fontPicker.contains(e.target)) return;
       fontPickerList.classList.add("hidden");
-    });
+    }
+
+    document.addEventListener("pointerdown", maybeCloseFontDropdown);
+    document.addEventListener("click", maybeCloseFontDropdown);
 
     fontPickerList.addEventListener("click", function (e) {
       var item = e.target.closest(".font-dropdown-item");
@@ -1176,21 +1399,16 @@
       if (btn) applyMarkdownFormat(btn.dataset.md);
     });
 
-    modalInsertBtn.addEventListener("click", handleModalInsert);
-    modalCancelBtn.addEventListener("click", closeComponentModal);
-    modalCloseBtn.addEventListener("click", closeComponentModal);
-
-    initModalDrag();
-
     window.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && !modalOverlay.classList.contains("hidden")) {
+      if (e.key === "Escape") {
         e.preventDefault();
-        closeComponentModal();
-        return;
-      }
-      if (e.key === "Escape" && mode === "read") {
-        e.preventDefault();
-        setMode("preview");
+        if (mode === "read") {
+          /* Read → View > Plain */
+          setMode("preview");
+          setDocEngine("none");
+        } else if (mode === "preview") {
+          setMode("edit");
+        }
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
@@ -1201,12 +1419,23 @@
 
     /* postMessage listener — receives scroll position from sandboxed iframe */
     window.addEventListener("message", function (e) {
-      if (e.source !== previewFrame.contentWindow) return;
+      if (e.source !== previewFrame.contentWindow && e.source !== previewFrameNext.contentWindow) return;
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
       }
       if (e.data && e.data.type === "iframe-pointerdown") {
         closeFontDropdown();
+      }
+      if (e.data && e.data.type === "vivl-ready") {
+        positionWidthHandles();
+        onPreviewFrameReady(e);
+      }
+      if (e.data && e.data.type === "paged-ready") {
+        positionWidthHandles();
+        onPreviewFrameReady(e);
+      }
+      if (e.data && e.data.type === "zoomChanged") {
+        positionWidthHandles();
       }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
@@ -1256,34 +1485,15 @@
     });
   }
 
-  function initModalDrag() {
-    var modal = document.getElementById("comp-modal");
-    var header = document.getElementById("comp-modal-title").parentElement;
-    var isDragging = false, startX, startY, startLeft, startTop;
-
-    header.addEventListener("mousedown", function (e) {
-      if (e.target.closest(".comp-modal-close")) return;
-      isDragging = true;
-      var rect = modalOverlay.getBoundingClientRect();
-      startX = e.clientX; startY = e.clientY;
-      startLeft = rect.left; startTop = rect.top;
-      e.preventDefault();
-    });
-    window.addEventListener("mousemove", function (e) {
-      if (!isDragging) return;
-      modalOverlay.style.left = (startLeft + e.clientX - startX) + "px";
-      modalOverlay.style.top = (startTop + e.clientY - startY) + "px";
-      modalOverlay.style.right = "auto";
-    });
-    window.addEventListener("mouseup", function () { isDragging = false; });
-  }
-
   /* ==========================================================================
      UI Zoom
      ========================================================================== */
 
   function applyZoom() {
-    document.querySelector(".app-shell").style.zoom = zoomStep / 100;
+    var frame = document.getElementById("preview-frame");
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.postMessage({ type: "setZoom", zoom: zoomStep / 100 }, "*");
+    }
   }
 
   function applyContentWidth() {
@@ -1294,63 +1504,228 @@
     positionWidthHandles();
   }
 
+  /* ==========================================================================
+     Surface mode toggle (Doc | App)
+     ========================================================================== */
+
+  function setSurfaceMode(sm) {
+    if (sm !== "doc" && sm !== "app") sm = "doc";
+    surfaceMode = sm;
+    var appShell = document.querySelector(".app-shell");
+    if (appShell) {
+      appShell.classList.remove("surface-doc", "surface-app");
+      appShell.classList.add("surface-" + sm);
+    }
+    var toggle = document.getElementById("surface-toggle");
+    if (toggle) {
+      toggle.className = "surface-toggle " + sm;
+      var btns = toggle.querySelectorAll(".surface-btn");
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle("active", btns[i].dataset.surface === sm);
+      }
+    }
+    scheduleAutosave();
+    if (mode === "preview" || mode === "read") renderPreview();
+  }
+
+  /* ==========================================================================
+     Document engine selector
+     ========================================================================== */
+
+  function setDocEngine(engineKey) {
+    if (!DOC_ENGINES[engineKey]) engineKey = "none";
+    currentDocEngine = engineKey;
+    /* Update toggle UI */
+    if (engineToggle) {
+      engineToggle.className = "engine-toggle " + engineKey;
+      var btns = engineToggle.querySelectorAll(".engine-btn");
+      btns.forEach(function (btn) {
+        btn.classList.toggle("active", btn.dataset.engine === engineKey);
+      });
+    }
+    /* Update app-shell engine class */
+    var appShell = document.querySelector(".app-shell");
+    if (appShell) {
+      appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
+      appShell.classList.add("engine-" + engineKey);
+    }
+    /* Disable PDF export in Plain mode — use a paged engine for PDF */
+    var btnPdf = document.getElementById("btn-export-pdf");
+    if (btnPdf) btnPdf.disabled = (engineKey === "none");
+    var sbPdf = document.getElementById("sidebar-export-pdf");
+    if (sbPdf) sbPdf.disabled = (engineKey === "none");
+    /* Reset zoom to 100% in Plain mode — zoom is WYSIWYG-irrelevant there */
+    if (engineKey === "none" && zoomStep !== 100) {
+      zoomStep = 100;
+      zoomSlider.value = 100;
+      zoomValue.textContent = "100%";
+      applyZoom();
+    }
+    updateDocControlStates();
+    scheduleAutosave();
+    if (mode === "preview" || mode === "read") renderPreview();
+  }
+
+  /* Per-engine control states:
+     Plain       → all disabled
+     Paged.js    → all enabled
+     Vivliostyle → all enabled */
+  var DOC_CONTROL_IDS = ["page-size", "toggle-orient", "page-margins-lr", "page-margins-tb", "page-columns", "toggle-footer"];
+  var PAGEDJS_DISABLED = {};
+
+  function updateDocControlStates() {
+    var allDisabled = (currentDocEngine === "none");
+    for (var i = 0; i < DOC_CONTROL_IDS.length; i++) {
+      var id = DOC_CONTROL_IDS[i];
+      var el = document.getElementById(id);
+      if (!el) continue;
+      var row = el.closest(".doc-control-row");
+      var disabled = allDisabled || PAGEDJS_DISABLED[id] || false;
+      el.disabled = disabled;
+      if (row) row.classList.toggle("doc-control-disabled", disabled);
+    }
+  }
+
+  /* ==========================================================================
+     buildPageCSS — assemble @page + layout rules from current controls
+     ========================================================================== */
+
+  var PAGE_SIZES = {
+    A0: [841, 1189], A1: [594, 841], A2: [420, 594], A3: [297, 420],
+    A4: [210, 297], A5: [148, 210],
+    Letter: [215.9, 279.4], Legal: [215.9, 355.6]
+  };
+  var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
+  var MARGIN_MAP = { narrow: "10mm", normal: "20mm", wide: "30mm" };
+
+  function getPageCSS() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var w = orientation === "landscape" ? dims[1] : dims[0];
+    var h = orientation === "landscape" ? dims[0] : dims[1];
+    return w + "mm " + h + "mm";
+  }
+
+  function getPageWidthPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var wMm = orientation === "landscape" ? dims[1] : dims[0];
+    return Math.round(wMm * 3.78);
+  }
+
+  function getPageHeightPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var hMm = orientation === "landscape" ? dims[0] : dims[1];
+    return Math.round(hMm * 3.78);
+  }
+
+  function getContentWidthPx() {
+    var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var wMm = orientation === "landscape" ? dims[1] : dims[0];
+    var lrMm = parseFloat(MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal);
+    return Math.round((wMm - lrMm * 2) * 3.78);
+  }
+
+  function buildPageCSS() {
+    var size = getPageCSS();
+    var lrMm = MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal;
+    var tbMm = MARGIN_MAP[pageMarginsTB] || MARGIN_MAP.normal;
+    var css = '@page { size: ' + size + '; margin: ' + tbMm + ' ' + lrMm + '; }';
+    if (pageColumns > 1) {
+      var marginMm = parseFloat(lrMm);
+      var gap = (marginMm / 2) + 'mm';
+      css += ' main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; }';
+    }
+    /* Always capture the L1 heading so it can be used by the footer */
+    css += 'h1 { string-set: chapter content(); }';
+    if (showFooter) {
+      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; }';
+      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; } }';
+    }
+    return css;
+  }
+
+  function syncDocControlsUI() {
+    if (pageSizeSel)     pageSizeSel.value = pageSize;
+    var orientBtn = document.getElementById("toggle-orient");
+    if (orientBtn) {
+      orientBtn.dataset.state = orientation;
+      orientBtn.textContent = orientation === "portrait" ? "Portrait" : "Landscape";
+    }
+    if (pageMarginsLRSel) pageMarginsLRSel.value = pageMarginsLR;
+    if (pageMarginsTBSel) pageMarginsTBSel.value = pageMarginsTB;
+    if (pageColumnsSel)  pageColumnsSel.value = String(pageColumns);
+    if (toggleFooterBtn) {
+      toggleFooterBtn.dataset.state = showFooter ? "on" : "off";
+      toggleFooterBtn.textContent = showFooter ? "On" : "Off";
+    }
+  }
+
   function positionWidthHandles() {
     var frame = document.getElementById("preview-frame");
     var hLeft = document.getElementById("width-handle-left");
     var hRight = document.getElementById("width-handle-right");
     if (!frame || !hLeft || !hRight) return;
+    /* Read mode is distraction-free — no handles */
+    if (mode === "read") return;
     var wrap = frame.parentElement;
     var wrapW = wrap.clientWidth;
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var effectiveWidth = contentWidth;
+
+    /* Determine effective width based on engine (Read mode always renders as Plain) */
+    var effectiveEngineKey = (mode === "read") ? "none" : currentDocEngine;
+    var engine = DOC_ENGINES[effectiveEngineKey] || DOC_ENGINES.none;
+    var effectiveWidth;
+    var isDotted = false;
+
+    if (surfaceMode === "doc" && effectiveEngineKey !== "none") {
+      /* Paged.js & Vivliostyle: non-interactive dashed lines at the actual rendered page edges */
+      var edge = 0;
+      try {
+        var iframeDoc = frame.contentDocument;
+        var pageEl = effectiveEngineKey === "vivliostyle"
+          ? iframeDoc.querySelector("[data-vivliostyle-page-container]")
+          : iframeDoc.querySelector(".pagedjs_page");
+        if (pageEl) {
+          var frameRect = frame.getBoundingClientRect();
+          var pageRect = pageEl.getBoundingClientRect();
+          var scaledW = pageRect.width;
+          edge = Math.max(0, (wrapW - scaledW) / 2);
+        }
+      } catch (e) {
+        edge = 0;
+      }
+      if (edge === 0) {
+        var pageW = getPageWidthPx();
+        var pageH = getPageHeightPx();
+        var iframeW = wrapW;
+        var iframeH = frame.clientHeight || 600;
+        var s = Math.min(iframeW / pageW, iframeH / pageH);
+        if (orientation === "landscape") s *= 0.92;
+        edge = Math.max(0, (wrapW - pageW * s) / 2);
+      }
+
+      hLeft.style.left = edge + "px";
+      hLeft.style.right = "auto";
+      hRight.style.right = edge + "px";
+      hRight.style.left = "auto";
+
+      hLeft.style.display = "none";
+      hRight.style.display = "none";
+      return;
+    } else {
+      effectiveWidth = contentWidth * (zoomStep / 100);
+    }
+
     var edge = Math.max(0, (wrapW - effectiveWidth) / 2);
     hLeft.style.left = edge + "px";
     hLeft.style.right = "auto";
     hRight.style.right = edge + "px";
     hRight.style.left = "auto";
-  }
 
-  /* ==========================================================================
-     Component grid — shows all 15, greys out unsupported for current framework
-     ========================================================================== */
-
-  function buildFontDropdown() {
-    if (!fontPickerList) {
-      fontPickerList = document.createElement("div");
-      fontPickerList.className = "font-dropdown-list hidden";
-      document.body.appendChild(fontPickerList);
-    }
-    fontPickerList.innerHTML = "";
-    COMFORT_FONTS.forEach(function (f) {
-      var item = document.createElement("button");
-      item.type = "button";
-      item.className = "font-dropdown-item" + (f.value === comfortFont ? " selected" : "");
-      item.dataset.font = f.value;
-      item.textContent = f.label;
-      item.style.fontFamily = '"' + f.value + '", system-ui, sans-serif';
-      fontPickerList.appendChild(item);
-    });
-  }
-
-  function renderComponentGrid() {
-    componentsGrid.innerHTML = "";
-    COMPONENTS.forEach(function (comp) {
-      var btn = document.createElement("button");
-      btn.className = "comp-btn";
-      btn.type = "button";
-      btn.dataset.component = comp.id;
-      btn.title = comp.label;
-      btn.textContent = comp.label;
-
-      var supported = comp.support[currentFramework];
-      if (!supported) {
-        btn.disabled = true;
-        btn.classList.add("comp-btn-disabled");
-        btn.title = comp.label + " (not supported by " + FRAMEWORKS[currentFramework].label + ")";
-      }
-
-      componentsGrid.appendChild(btn);
-    });
+    hLeft.style.display = "";
+    hRight.style.display = "";
+    hLeft.classList.remove("width-handle-dotted");
+    hRight.classList.remove("width-handle-dotted");
+    hLeft.dataset.mode = "free";
+    hRight.dataset.mode = "free";
   }
 
   /* ==========================================================================
@@ -1363,38 +1738,140 @@
   }
 
   function renderPreview() {
-    var fw = FRAMEWORKS[currentFramework];
+    /* === App Surface: Framework CSS preview === */
+    if (surfaceMode === "app") {
+      var fw = APP_FRAMEWORKS[currentAppFramework];
+      var contentForRender = stripYamlFrontMatter(editor.value || "");
+      var rawHTML = marked.parse(contentForRender);
+      var renderedHTML = sanitizeHTML(rawHTML);
+      var scale = SIZE_SCALE[String(sizeStep)] || 1;
+      var weight = WEIGHT_MAP[String(weightStep)] || 400;
+      var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+      var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+      var headWeight = Math.min(weight + 200, 900);
+      var scrollRatio = lastScrollRatio;
+
+      /* Load framework CSS */
+      var fwCssLinks = "";
+      if (fw && fw.css) {
+        var cssArr = typeof fw.css === "string" ? [fw.css] : fw.css;
+        for (var ci = 0; ci < cssArr.length; ci++) {
+          fwCssLinks += '<link rel="stylesheet" href="' + cssArr[ci] + '">';
+        }
+      }
+      var fwJsTag = (fw && fw.js) ? '<script src="' + fw.js + '" defer><' + '/script>' : "";
+
+      /* Build framework style CSS */
+      var fwStyle = "";
+      if (fw && typeof fw.style === "function") {
+        fwStyle = fw.style("");
+      }
+
+      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + fwCssLinks
+        + fwJsTag
+        + '<style>'
+        + fwStyle
+        + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
+        + 'body { font-size: ' + (15 * scale) + 'px !important;'
+        + ' font-weight: ' + weight + ' !important;'
+        + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
+        + ' max-width: ' + contentWidth + 'px; margin: 2rem auto; padding: 0 1.5rem;'
+        + ' overflow-x: hidden; }'
+        + 'html::-webkit-scrollbar { display: none; }'
+        + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
+        + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; }'
+        + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
+        + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
+        + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
+        + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
+        + 'img { max-width: 100%; height: auto; display: block; }'
+        + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
+        + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
+        + 'table { table-layout: fixed; width: 100%; overflow: hidden; }'
+        + 'td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+        + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
+        + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
+        + 'li { margin: 0.15em 0; display: list-item; }'
+        + 'p { margin: 0.4em 0; }'
+        + '</style>'
+        + '</head><body><main>' + renderedHTML + '</main>'
+        + '<script>'
+        + 'var _scrollRatio = ' + scrollRatio + ';'
+        + 'var _max = document.documentElement.scrollHeight - window.innerHeight;'
+        + 'if (_max > 0) window.scrollTo(0, Math.round(_scrollRatio * _max));'
+        + 'var _scrollTimer;'
+        + 'window.addEventListener("scroll", function(){'
+        + '  clearTimeout(_scrollTimer);'
+        + '  _scrollTimer = setTimeout(function(){'
+        + '    var m = document.documentElement.scrollHeight - window.innerHeight;'
+        + '    var r = m > 0 ? window.scrollY / m : 0;'
+        + '    parent.postMessage({type:"scroll",ratio:r}, "*");'
+        + '  }, 150);'
+        + '});'
+        + 'window.addEventListener("message", function(e){'
+        + '  if (e.data && e.data.type === "setScroll") {'
+        + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
+        + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
+        + '  }'
+        + '  if (e.data && e.data.type === "setContentWidth") {'
+        + '    document.body.style.maxWidth = e.data.width + "px";'
+        + '    document.body.style.marginLeft = "auto";'
+        + '    document.body.style.marginRight = "auto";'
+        + '  }'
+        + '});'
+        + 'document.addEventListener("pointerdown", function(){'
+        + '  parent.postMessage({type:"iframe-pointerdown"}, "*");'
+        + '});'
+        + 'document.addEventListener("dblclick", function(e) {'
+        + '  var sel = window.getSelection();'
+        + '  if (!sel || sel.rangeCount === 0) return;'
+        + '  var word = sel.toString().trim();'
+        + '  if (!word) return;'
+        + '  parent.postMessage({type:"dblclick", word:word, ctx:""}, "*");'
+        + '});'
+        + '<' + '/script>'
+        + '</body></html>';
+
+      previewFrameNext.srcdoc = html;
+      previewFrameNext.onload = function() { swapPreviewFrames(); };
+      setTimeout(positionWidthHandles, 250);
+      return;
+    }
+
+    /* === Doc Surface: Paged.js preview === */
+    /* Read mode always renders as Plain — WYSIWYG, no pagination engine */
+    var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
+    var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack = '"' + comfortFont + '", system-ui, sans-serif';
-
-    /* Serialize the framework style function so the sandboxed iframe can
-       apply framework-specific classes without parent↔iframe DOM access. */
-    var styleFnStr = (fw && typeof fw.style === "function")
-      ? fw.style.toString()
-      : "function(doc){}";
+    var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
+    var renderId = ++currentRenderId;
 
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-      + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-      + '<base target="_blank" rel="noopener noreferrer">'
-      + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-      + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-      + '<link href="' + FONTS_URL + '" rel="stylesheet">'
-      + (fw.css ? '<link rel="stylesheet" href="' + fw.css + '">' : '')
-      + '<style>'
+    /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
+    var engineScript = (engine && engine.script && !engine.module)
+      ? '<script src="' + engine.script + '" defer><' + '/script>'
+      : '';
+
+    /* Shared document CSS (without engine-specific page-boundary rules) */
+    /* Plain/Read: skip @page, columns and footer — none apply in a WYSIWYG flow */
+    var docCss = (renderEngineKey === "none" ? "" : buildPageCSS())
       + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
       + 'body { font-size: ' + (15 * scale) + 'px !important;'
       + ' font-weight: ' + weight + ' !important;'
       + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' max-width: ' + contentWidth + 'px; margin: 3rem auto; padding: 0 1.5rem;'
-      + ' overflow-x: hidden; }'
-      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + Math.min(weight + 200, 900) + ' !important; overflow-wrap: break-word; word-break: break-word; }'
+      + ' margin: 0; overflow-x: hidden; }'
+      + 'html { height: 100%; }'
+      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
       + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
       + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
       + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
@@ -1411,30 +1888,245 @@
       + 'li::marker { display: inline; }'
       + 'p { margin: 0.4em 0; }'
       + 'br { margin: 0.3em 0; }'
-      + '.fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }'
-      + '.fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }'
-      + '.fw-card-header { padding: 1rem 1.2rem 0.4rem; }'
-      + '.fw-card-title { font-weight: 700; font-size: 1.1em; }'
-      + '.fw-card-body { padding: 0.4rem 1.2rem 1rem; }'
-      + '.fw-form label { display: block; margin: 0.8rem 0 0.3rem; font-weight: 600; }'
-      + '.fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display: block; width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; }'
-      + '.fw-form button { margin-top: 1rem; }'
-      + '.fw-list { margin-left: 1.5rem; }'
-      + '.fw-list li { margin-bottom: 0.3rem; }'
-      + '</style>'
-      + (fw.js ? '<script src="' + fw.js + '" defer><' + '/script>' : '')
-      + '</head><body><main>' + renderedHTML + '</main>'
-      + '<script>'
-      /* --- In-iframe runtime: framework classes, scroll, messaging --- */
-      + '(function(){'
-      /* Apply framework-specific classes */
-      + 'var styleFn = (' + styleFnStr + ');'
-      + 'if (typeof styleFn === "function") styleFn(document);'
-      /* Restore scroll from parent */
+      + ' .pagedjs_page { margin: 8px 0; }'
+
+    var html;
+    if (renderEngineKey === 'vivliostyle') {
+      /* Vivliostyle: CoreViewer loads a blob document and paginates it */
+      var vivlDocHTML = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<style>' + docCss + '</style>'
+        + '</head><body><main>' + renderedHTML + '</main></body></html>';
+      html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}html{background:repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px)!important;background-attachment:fixed!important;}body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + '</head><body><div id="vivl-viewport"></div>'
+        + '<script type="module">'
+        + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
+        + 'const CoreViewer = Vivliostyle.CoreViewer;'
+        + 'const docHTML = ' + JSON.stringify(vivlDocHTML) + ';'
+        + 'const blob = new Blob([docHTML], { type: "text/html" });'
+        + 'const docUrl = URL.createObjectURL(blob);'
+        + 'const _pageW = ' + getPageWidthPx() + ';'
+        + 'const _pageH = ' + getPageHeightPx() + ';'
+        + 'const _orientation = "' + orientation + '";'
+        + 'const _scrollRatio = ' + scrollRatio + ';'
+        + 'const _renderId = ' + renderId + ';'
+        + 'var _zoomFactor = 1;'
+        + 'function _computeZoom() {'
+        + '  var w = window.innerWidth;'
+        + '  var h = window.innerHeight;'
+        + '  var inset = 20;'
+        + '  var s = Math.min((w - inset * 2) / _pageW, (h - inset * 2) / _pageH) * _zoomFactor;'
+        + '  return s;'
+        + '}'
+        + 'const viewer = new CoreViewer({'
+        + '  viewportElement: document.getElementById("vivl-viewport"),'
+        + '  userAgentRootURL: "https://unpkg.com/@vivliostyle/core@2.43.3/",'
+        + '  window: window'
+        + '});'
+        + 'viewer.setOptions({ renderAllPages: true, pageViewMode: "autoSpread", zoom: 1, fitToScreen: false, autoResize: false, allowScripts: false });'
+        + 'const viewport = document.getElementById("vivl-viewport");'
+        + 'function _vivlEnableScroll() {'
+        + '  var style = document.getElementById("vivl-scroll-style");'
+        + '  if (!style) {'
+        + '    style = document.createElement("style");'
+        + '    style.id = "vivl-scroll-style";'
+        + '    style.textContent = "html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; } body, #vivl-viewport { background: transparent !important; } [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: hidden !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: 100% !important; align-items: center !important; zoom: 1 !important; transform: none !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: 100% !important; background: transparent !important; }";'
+        + '    document.head.appendChild(style);'
+        + '  }'
+        + '  var scale = _computeZoom();'
+        + '  var cw = Math.round(_pageW * scale);'
+        + '  var ch = Math.round(_pageH * scale);'
+        + '  var pageMargin = Math.round(8 * scale);'
+        + '  var pages = document.querySelectorAll("[data-vivliostyle-page-container]");'
+        + '  for (var i = 0; i < pages.length; i++) {'
+        + '    var child = pages[i].firstElementChild;'
+        + '    if (!child) continue;'
+        + '    pages[i].style.zoom = 1;'
+        + '    pages[i].style.width = cw + "px";'
+        + '    pages[i].style.height = ch + "px";'
+        + '    child.style.width = _pageW + "px";'
+        + '    child.style.height = _pageH + "px";'
+        + '    child.style.maxWidth = _pageW + "px";'
+        + '    child.style.maxHeight = _pageH + "px";'
+        + '    child.style.transform = "scale(" + scale + ")";'
+        + '    child.style.transformOrigin = "top left";'
+        + '    var bottomMargin = (i === pages.length - 1) ? pageMargin : 0;'
+        + '    pages[i].style.setProperty("margin", pageMargin + "px auto " + bottomMargin + "px", "important");'
+        + '  }'
+        + '}'
+        + 'function _vivlNotify() {'
+        + '  _vivlEnableScroll();'
+        + '  var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '  if (m > 0) viewport.scrollTop = Math.round(_scrollRatio * m);'
+        + '  parent.postMessage({type:"vivl-ready", renderId: _renderId}, "*");'
+        + '}'
+        + 'viewer.addListener("loaded", _vivlNotify);'
+        + 'viewer.loadDocument(docUrl);'
+        + 'setTimeout(_vivlNotify, 3000);'
+        + 'window.addEventListener("resize", function() { viewer.setOptions({ zoom: 1 }); _vivlEnableScroll(); });'
+        + 'viewport.addEventListener("scroll", function() {'
+        + '  var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '  var r = m > 0 ? viewport.scrollTop / m : 0;'
+        + '  parent.postMessage({type:"scroll", ratio:r}, "*");'
+        + '});'
+        + 'window.addEventListener("message", function(e) {'
+        + '  if (e.data && e.data.type === "setScroll") {'
+        + '    var m = viewport.scrollHeight - viewport.clientHeight;'
+        + '    if (m > 0) viewport.scrollTop = Math.round(e.data.ratio * m);'
+        + '  }'
+        + '  if (e.data && e.data.type === "setZoom") {'
+        + '    _zoomFactor = e.data.zoom || 1;'
+        + '    _vivlEnableScroll();'
+        + '    _updateVivlPanCursor();'
+        + '  }'
+        + '});'
+        + 'function _updateVivlPanCursor() {'
+        + '  var ox = viewport.scrollWidth > viewport.clientWidth;'
+        + '  var oy = viewport.scrollHeight > viewport.clientHeight;'
+        + '  viewport.style.cursor = (ox || oy) ? "grab" : "";'
+        + '}'
+        + 'var _vpan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };'
+        + 'viewport.addEventListener("pointerdown", function(e) {'
+        + '  var ox = viewport.scrollWidth > viewport.clientWidth;'
+        + '  var oy = viewport.scrollHeight > viewport.clientHeight;'
+        + '  if (!ox && !oy) return;'
+        + '  _vpan.active = true;'
+        + '  _vpan.x = e.clientX; _vpan.y = e.clientY;'
+        + '  _vpan.sx = viewport.scrollLeft; _vpan.sy = viewport.scrollTop;'
+        + '  viewport.style.cursor = "grabbing";'
+        + '  viewport.style.userSelect = "none";'
+        + '  e.preventDefault();'
+        + '}, { passive: false });'
+        + 'document.addEventListener("pointermove", function(e) {'
+        + '  if (!_vpan.active) return;'
+        + '  viewport.scrollLeft = _vpan.sx - (e.clientX - _vpan.x);'
+        + '  viewport.scrollTop  = _vpan.sy - (e.clientY - _vpan.y);'
+        + '});'
+        + 'document.addEventListener("pointerup", function() {'
+        + '  if (!_vpan.active) return;'
+        + '  _vpan.active = false;'
+        + '  viewport.style.userSelect = "";'
+        + '  _updateVivlPanCursor();'
+        + '});'
+        + '</script>'
+        + '</body></html>';
+    } else {
+      html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        + '<base target="_blank" rel="noopener noreferrer">'
+        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + engineScript
+        + '<style>'
+        + docCss
+        + 'html::-webkit-scrollbar { display: none; }'
+        + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
+        /* --- Page-boundary dashed borders on all four sides --- */
+        + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; background: transparent !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.8px solid #000 !important; outline: none !important; box-shadow: none !important; }'
+        + '.pagedjs_pagebox { box-shadow: none !important; outline: none !important; border: none !important; }'
+        + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; box-shadow: none !important; }'
+        + '.pagedjs_bleed, .pagedjs_bleed-top, .pagedjs_bleed-bottom, .pagedjs_bleed-left, .pagedjs_bleed-right { display: none !important; }'
+        /* Plain mode: constrain body width to contentWidth */
+        + 'body.engine-none { max-width: ' + contentWidth + 'px; margin: 0 auto; background: #fff !important; }'
+        + 'body.engine-none main { padding: 2rem 1rem; }'
+        /* Paged modes: body fills the iframe viewport */
+        + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
+        + '</style>'
+        + (mode !== "read" ? '<style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; }'
+          + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
+          + '</style>' : '')
+        + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
+        + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
-      + 'var _max = document.documentElement.scrollHeight - window.innerHeight;'
-      + 'if (_max > 0) window.scrollTo(0, Math.round(_scrollRatio * _max));'
-      /* Report scroll changes to parent (debounced) */
+      + 'var _pagedReady = false;'
+      + 'var _isPaged = ' + (renderEngineKey !== 'none') + ';'
+      + 'var _zoomFactor = 1;'
+      + 'var _pageW = ' + getPageWidthPx() + ';'
+      + 'var _pageH = ' + getPageHeightPx() + ';'
+      + 'var _orientation = "' + orientation + '";'
+      + 'var _renderId = ' + renderId + ';'
+      /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
+      + 'function _fitPage() {'
+      + '  if (!_isPaged) return;'
+      + '  var page = document.querySelector(".pagedjs_page");'
+      + '  var pageW = page ? page.offsetWidth : _pageW;'
+      + '  var pageH = page ? page.offsetHeight : _pageH;'
+      + '  var iframeW = window.innerWidth;'
+      + '  var iframeH = window.innerHeight;'
+      + '  var inset = 20;'
+      + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH) * _zoomFactor;'
+      + '  var scaledW = pageW * s;'
+      + '  var marginLeft = Math.max(inset, (iframeW - scaledW) / 2);'
+      + '  document.documentElement.style.overflow = "auto";'
+      + '  document.body.style.maxWidth = "none";'
+      + '  document.body.style.width = pageW + "px";'
+      + '  document.body.style.transform = "scale(" + s + ")";'
+      + '  document.body.style.transformOrigin = "top left";'
+      + '  document.body.style.marginLeft = marginLeft + "px";'
+      + '  document.body.style.marginRight = "0";'
+      + '  window.scrollTo(0, 0);'
+      + '  _updatePanCursor();'
+      + '}'
+      + 'function _registerPagedHook() {'
+      + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
+      + '    window.PagedPolyfill.on("afterPreview", function() {'
+      + '      _fitPage();'
+      + '      _killBorders();'
+      + '      if (!_pagedReady) { _pagedReady = true;'
+      + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '      }'
+      + '      parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
+      + '    });'
+      + '    return true;'
+      + '  }'
+      + '  return false;'
+      + '}'
+      + 'function _initFit() {'
+      + '  if (!_isPaged) {'
+      + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '    return;'
+      + '  }'
+      + '  if (!_registerPagedHook()) {'
+      + '    var tries = 0;'
+      + '    var interval = setInterval(function() {'
+      + '      tries++;'
+      + '      if (_registerPagedHook() || tries > 50) { clearInterval(interval); _fitPage(); }'
+      + '    }, 100);'
+      + '  }'
+      + '  window.addEventListener("load", function() {'
+      + '    _fitPage();'
+      + '    if (!_pagedReady) { _pagedReady = true;'
+      + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '    }'
+      + '    parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
+      + '  });'
+      + '  var observer = new MutationObserver(function() {'
+      + '    if (document.querySelector(".pagedjs_page")) { _fitPage(); _killBorders(); }'
+      + '  });'
+      + '  observer.observe(document.body, { childList: true, subtree: true });'
+      + '  _fitPage();'
+      + '}'
+      + 'function _killBorders() {'
+      + '  var s = document.getElementById("_fw_kill_borders");'
+      + '  if (!s) {'
+      + '    s = document.createElement("style");'
+      + '    s.id = "_fw_kill_borders";'
+      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_sheet,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; } .pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0.8px solid #000 !important; box-sizing: border-box !important; background: #fff !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
+      + '    document.head.appendChild(s);'
+      + '  }'
+      + '}'
+      + 'document.addEventListener("DOMContentLoaded", _initFit);'
       + 'var _scrollTimer;'
       + 'window.addEventListener("scroll", function(){'
       + '  clearTimeout(_scrollTimer);'
@@ -1444,32 +2136,64 @@
       + '    parent.postMessage({type:"scroll",ratio:r}, "*");'
       + '  }, 150);'
       + '});'
-      /* Receive scroll commands from parent */
       + 'window.addEventListener("message", function(e){'
       + '  if (e.data && e.data.type === "setScroll") {'
       + '    var mx = document.documentElement.scrollHeight - window.innerHeight;'
       + '    if (mx > 0) window.scrollTo(0, Math.round(e.data.ratio * mx));'
       + '  }'
       + '  if (e.data && e.data.type === "setContentWidth") {'
-      + '    document.body.style.maxWidth = e.data.width + "px";'
+      + '    if (document.body.classList.contains("engine-none")) {'
+      + '      document.body.style.maxWidth = e.data.width + "px";'
+      + '      document.body.style.marginLeft = "auto";'
+      + '      document.body.style.marginRight = "auto";'
+      + '    }'
       + '  }'
+      + '  if (e.data && e.data.type === "setStripe") {'
+      + '    var el = document.getElementById("_fw_stripe");'
+      + '    if (el) el.disabled = !e.data.visible;'
+      + '  }'
+      + '  if (e.data && e.data.type === "setZoom") {'
+      + '    _zoomFactor = e.data.zoom || 1;'
+      + '    if (_isPaged) {'
+      + '      _fitPage();'
+      + '    } else {'
+      + '      document.body.style.zoom = _zoomFactor;'
+      + '      parent.postMessage({type:"zoomChanged"}, "*");'
+      + '    }'
+      + '    _updatePanCursor();'
+      + '  }'
+      + '});'
+      + 'function _updatePanCursor() {'
+      + '  var overflowsX = document.documentElement.scrollWidth > document.documentElement.clientWidth;'
+      + '  var overflowsY = document.documentElement.scrollHeight > document.documentElement.clientHeight;'
+      + '  document.documentElement.style.cursor = (overflowsX || overflowsY) ? "grab" : "";'
+      + '}'
+      + 'var _pan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };'
+      + 'document.addEventListener("pointerdown", function(e) {'
+      + '  var overflowsX = document.documentElement.scrollWidth > document.documentElement.clientWidth;'
+      + '  var overflowsY = document.documentElement.scrollHeight > document.documentElement.clientHeight;'
+      + '  if (!overflowsX && !overflowsY) return;'
+      + '  _pan.active = true;'
+      + '  _pan.x = e.clientX; _pan.y = e.clientY;'
+      + '  _pan.sx = window.scrollX; _pan.sy = window.scrollY;'
+      + '  document.documentElement.style.cursor = "grabbing";'
+      + '  document.documentElement.style.userSelect = "none";'
+      + '  e.preventDefault();'
+      + '}, { passive: false });'
+      + 'document.addEventListener("pointermove", function(e) {'
+      + '  if (!_pan.active) return;'
+      + '  window.scrollTo(_pan.sx - (e.clientX - _pan.x), _pan.sy - (e.clientY - _pan.y));'
+      + '});'
+      + 'document.addEventListener("pointerup", function() {'
+      + '  if (!_pan.active) return;'
+      + '  _pan.active = false;'
+      + '  document.documentElement.style.cursor = "grab";'
+      + '  document.documentElement.style.userSelect = "";'
+      + '  _updatePanCursor();'
       + '});'
       + 'document.addEventListener("pointerdown", function(){'
       + '  parent.postMessage({type:"iframe-pointerdown"}, "*");'
       + '});'
-      + '})();'
-      + '<' + '/script>'
-      + '<script>'
-      /* Component interaction stubs */
-      + 'document.addEventListener("click", function(e) {'
-      + '  var btn = e.target.closest("button");'
-      + '  if (!btn || btn.closest("form")) return;'
-      + '  e.preventDefault();'
-      + '});'
-      + 'document.addEventListener("submit", function(e) {'
-      + '  e.preventDefault();'
-      + '});'
-      /* Double-click → tell parent to switch to Edit mode at clicked word */
       + 'document.addEventListener("dblclick", function(e) {'
       + '  var sel = window.getSelection();'
       + '  if (!sel || sel.rangeCount === 0) return;'
@@ -1502,10 +2226,14 @@
       + '});'
       + '<' + '/script>'
       + '</body></html>';
+    }
 
-    previewFrame.srcdoc = html;
+    previewFrameNext.srcdoc = html;
     /* Reposition width handles after iframe content loads */
-    previewFrame.onload = positionWidthHandles;
+    previewFrameNext.onload = function() {
+      /* Plain mode renders immediately; paged engines wait for postMessage */
+      if (renderEngineKey === "none") swapPreviewFrames();
+    };
     setTimeout(positionWidthHandles, 250);
   }
 
@@ -1516,6 +2244,20 @@
   function setMode(newMode) {
     var prevMode = mode;
     mode = newMode;
+
+    /* Read mode is always 100% zoom (WYSIWYG); restore previous zoom when leaving */
+    if (mode === "read") {
+      readZoomRestore = zoomStep;
+      zoomStep = 100;
+      zoomSlider.value = 100;
+      zoomValue.textContent = "100%";
+    } else if (prevMode === "read" && readZoomRestore !== null) {
+      zoomStep = readZoomRestore;
+      readZoomRestore = null;
+      zoomSlider.value = zoomStep;
+      zoomValue.textContent = zoomStep + "%";
+    }
+
     var modeSwitch = document.getElementById("mode-switch");
     var appShell = document.querySelector(".app-shell");
     var btnRead = document.getElementById("btn-read");
@@ -1530,9 +2272,6 @@
     btnRead.classList.remove("active");
     modeSwitch.classList.remove("preview", "read");
 
-    /* Reset Read button label */
-    btnRead.textContent = "Read";
-    btnRead.dataset.mode = "read";
 
     if (mode === "edit") {
       if (prevMode !== "edit") savePreviewScroll();
@@ -1562,13 +2301,17 @@
           var text = editor.value || "";
           lastScrollRatio = text.length > 0 ? (editor.selectionStart / text.length) : 0;
         }
+      }
+      previewWrap.classList.remove("hidden");
+
+      /* Render whenever the preview becomes visible (edit -> preview/read, or
+         read <-> preview) so the content is current. Render after the wrap is
+         visible so the iframe can measure its viewport correctly. */
+      if (mode !== "edit") {
         renderPreview();
       }
 
-      previewWrap.classList.remove("hidden");
-
-      /* Re-apply scroll after the iframe is visible; the initial render while
-         hidden can mis-measure window.innerHeight, causing a jump to the end. */
+      /* Re-apply scroll after the iframe is visible. */
       requestAnimationFrame(function () {
         setTimeout(function () {
           if (previewFrame.contentWindow) {
@@ -1591,9 +2334,6 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
-        /* Relabel Read → Close, exit back to whatever mode we came from */
-        btnRead.textContent = "Close";
-        btnRead.dataset.mode = prevMode;
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
@@ -1662,7 +2402,6 @@
     floater.classList.remove("settled");
     floater.classList.add("sliding");
     floater.style.left = dst.left + "px";
-
     appShell.classList.remove("focus-mode");
 
     setTimeout(function () {
@@ -1673,270 +2412,6 @@
         if (floater.parentNode) floater.remove();
       }, 300);
     }, 700);
-  }
-
-  /* ==========================================================================
-     Component insertion
-     ========================================================================== */
-
-  function insertComponent(componentId) {
-    var comp = COMPONENTS.find(function (c) { return c.id === componentId; });
-    if (!comp) return;
-    if (!comp.support[currentFramework]) return;
-
-    // Route modal-enabled components through the form
-    if (MODAL_COMPONENTS.indexOf(componentId) !== -1) {
-      openComponentModal(componentId, comp);
-      return;
-    }
-
-    // Direct insertion from framework-specific snippet
-    var snippet = comp.snippets[currentFramework];
-    if (!snippet) return;
-    if (mode !== "edit") setMode("edit");
-    editorInsertBlock(snippet);
-  }
-
-  /* ==========================================================================
-     Component modal
-     ========================================================================== */
-
-  function openComponentModal(componentId, comp) {
-    activeModalComponent = componentId;
-    if (comp) {
-      modalTitle.textContent = "Insert " + comp.label;
-    } else if (componentId === "load-url") {
-      modalTitle.textContent = "Load from URL";
-    }
-    modalBody.innerHTML = "";
-
-    switch (componentId) {
-      case "table": buildTableForm(); break;
-      case "card":  buildCardForm();  break;
-      case "list":  buildListForm();  break;
-      case "image": buildImageForm(); break;
-      case "load-url": buildLoadUrlForm(); break;
-    }
-
-    modalOverlay.style.left = "";
-    modalOverlay.style.top = "";
-    modalOverlay.style.right = "";
-    modalOverlay.classList.remove("hidden");
-    var firstInput = modalBody.querySelector("input, textarea, select");
-    if (firstInput) setTimeout(function () { firstInput.focus(); }, 80);
-  }
-
-  function closeComponentModal() {
-    modalOverlay.classList.add("hidden");
-    activeModalComponent = null;
-    modalBody.innerHTML = "";
-  }
-
-  function handleModalInsert() {
-    if (activeModalComponent === "load-url") {
-      handleLoadUrlModalInsert();
-      return;
-    }
-    var snippet = "";
-    switch (activeModalComponent) {
-      case "table": snippet = generateTableSnippet(); break;
-      case "card":  snippet = generateCardSnippet();  break;
-      case "list":  snippet = generateListSnippet();  break;
-      case "image": snippet = generateImageSnippet(); break;
-    }
-    if (snippet) {
-      if (mode !== "edit") setMode("edit");
-      editorInsertBlock(snippet);
-      showToast("Inserted <strong>" + activeModalComponent + "</strong> component");
-    }
-    closeComponentModal();
-  }
-
-  /* TABLE form & generator */
-
-  function buildTableForm() {
-    modalBody.innerHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-      + '<div><label for="tbl-cols">Columns</label><input type="number" id="tbl-cols" value="3" min="1" max="10" /></div>'
-      + '<div><label for="tbl-rows">Rows</label><input type="number" id="tbl-rows" value="3" min="1" max="20" /></div>'
-      + '</div>'
-      + '<label for="tbl-headers">Column headers (comma-separated)</label>'
-      + '<input type="text" id="tbl-headers" placeholder="Name, Age, City" />'
-      + '<p style="font-size:0.78rem;color:#888;font-style:italic">Leave blank for generic headers</p>';
-  }
-
-  function generateTableSnippet() {
-    var cols = Math.max(1, Math.min(10, parseInt(document.getElementById("tbl-cols").value, 10) || 3));
-    var rows = Math.max(1, Math.min(20, parseInt(document.getElementById("tbl-rows").value, 10) || 3));
-    var headersRaw = document.getElementById("tbl-headers").value.trim();
-    var headers = headersRaw ? headersRaw.split(",").map(function (h) { return h.trim(); }) : [];
-    while (headers.length < cols) headers.push("Column " + (headers.length + 1));
-    headers = headers.slice(0, cols);
-
-    var headerRow = "| " + headers.join(" | ") + " |";
-    var sepRow = "| " + headers.map(function () { return "---"; }).join(" | ") + " |";
-    var bodyRows = [];
-    for (var r = 0; r < rows; r++) {
-      var cells = [];
-      for (var c = 0; c < cols; c++) cells.push(" ");
-      bodyRows.push("| " + cells.join(" | ") + " |");
-    }
-    return headerRow + "\n" + sepRow + "\n" + bodyRows.join("\n");
-  }
-
-  /* CARD form & generator */
-
-  function buildCardForm() {
-    modalBody.innerHTML =
-      '<label for="card-title">Card title</label>'
-      + '<input type="text" id="card-title" placeholder="My Card" />'
-      + '<label for="card-subtitle">Subtitle (optional)</label>'
-      + '<input type="text" id="card-subtitle" placeholder="A short subtitle" />'
-      + '<label for="card-body">Card content</label>'
-      + '<textarea id="card-body" rows="3" placeholder="Write your card content here..."></textarea>';
-  }
-
-  function generateCardSnippet() {
-    var title = document.getElementById("card-title").value.trim() || "Card Title";
-    var subtitle = document.getElementById("card-subtitle").value.trim();
-    var body = document.getElementById("card-body").value.trim() || "Card content goes here.";
-    var fw = currentFramework;
-
-    if (fw === "poshui") {
-      return '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">' + title + '</div>'
-        + (subtitle ? '\n    <p>' + subtitle + '</p>' : '')
-        + '\n  </div>\n  <div class="fw-card-body">\n    <p>' + body + '</p>\n  </div>\n</div>';
-    } else if (fw === "oat") {
-      return '<article class="card">\n  <header>\n    <h3>' + title + '</h3>'
-        + (subtitle ? '\n    <p>' + subtitle + '</p>' : '')
-        + '\n  </header>\n  <p>' + body + '</p>\n</article>';
-    } else {
-      return '<div class="fw-card">\n  <div class="fw-card-header">\n    <div class="fw-card-title">' + title + '</div>'
-        + (subtitle ? '\n    <p>' + subtitle + '</p>' : '')
-        + '\n  </div>\n  <div class="fw-card-body">\n    <p>' + body + '</p>\n  </div>\n</div>';
-    }
-  }
-
-  /* LIST form & generator */
-
-  function buildListForm() {
-    modalBody.innerHTML =
-      '<label for="list-type">List type</label>'
-      + '<select id="list-type">'
-      + '  <option value="ul">Bullet list</option>'
-      + '  <option value="ol">Numbered list</option>'
-      + '  <option value="task">Task list</option>'
-      + '</select>'
-      + '<label for="list-items">Items (one per line)</label>'
-      + '<textarea id="list-items" rows="5" placeholder="First item\nSecond item\nThird item"></textarea>'
-      + '<p style="font-size:0.78rem;color:#888;font-style:italic">Each line becomes a list item</p>';
-  }
-
-  function generateListSnippet() {
-    var type = document.getElementById("list-type").value;
-    var raw = document.getElementById("list-items").value.trim();
-    var items = raw ? raw.split("\n").filter(function (l) { return l.trim(); }) : ["Item 1", "Item 2", "Item 3"];
-
-    if (type === "ul") {
-      return items.map(function (item) { return "- " + item.trim(); }).join("\n");
-    } else if (type === "ol") {
-      return items.map(function (item, i) { return (i + 1) + ". " + item.trim(); }).join("\n");
-    } else {
-      return items.map(function (item) { return "- [ ] " + item.trim(); }).join("\n");
-    }
-  }
-
-  /* IMAGE form & generator */
-
-  function buildImageForm() {
-    modalBody.innerHTML =
-      '<label for="img-url">Image URL</label>'
-      + '<input type="url" id="img-url" placeholder="https://example.com/photo.jpg" />'
-      + '<label for="img-alt">Alt text (description)</label>'
-      + '<input type="text" id="img-alt" placeholder="A beautiful sunset" />'
-      + '<label for="img-caption">Caption (optional)</label>'
-      + '<input type="text" id="img-caption" placeholder="Photo by Jane Doe" />'
-      + '<p style="font-size:0.78rem;color:#888;font-style:italic">Caption appears below the image as italic text</p>';
-  }
-
-  function generateImageSnippet() {
-    var url = document.getElementById("img-url").value.trim() || "https://picsum.photos/600/300";
-    var alt = document.getElementById("img-alt").value.trim() || "Image";
-    var caption = document.getElementById("img-caption").value.trim();
-    var fw = currentFramework;
-
-    var imgTag;
-    if (fw === "spectre" || fw === "poshui") {
-      imgTag = '<img class="img-responsive" src="' + url + '" alt="' + alt + '" />';
-    } else {
-      imgTag = '<img src="' + url + '" alt="' + alt + '" style="max-width:100%" />';
-    }
-
-    var md = imgTag;
-    if (caption) md += "\n\n*" + caption + "*";
-    return md;
-  }
-
-  /* LOAD URL form & handler */
-
-  function buildLoadUrlForm() {
-    modalBody.innerHTML =
-      '<label for="load-url-modal-input">Markdown URL</label>'
-      + '<input type="url" id="load-url-modal-input" placeholder="https://github.com/user/repo/blob/main/README.md" />'
-      + '<p class="modal-hint">GitHub blob URLs are auto-converted to raw URLs.</p>'
-      + '<div class="load-modal-error hidden" id="load-modal-error" role="alert" style="color:#c0392b;font-size:0.78rem;margin-top:4px"></div>';
-  }
-
-  async function handleLoadUrlModalInsert() {
-    var input = document.getElementById("load-url-modal-input");
-    var errorEl = document.getElementById("load-modal-error");
-    var url = (input ? input.value.trim() : "");
-
-    if (errorEl) { errorEl.textContent = ""; errorEl.classList.add("hidden"); }
-
-    if (!url) {
-      if (errorEl) { errorEl.textContent = "Please enter a URL."; errorEl.classList.remove("hidden"); }
-      return;
-    }
-
-    var rewritten = rewriteGitHubUrl(url);
-    var insertBtn = document.getElementById("comp-modal-insert");
-    if (insertBtn) { insertBtn.disabled = true; insertBtn.textContent = "Fetching\u2026"; }
-
-    try {
-      var res = await fetch(rewritten);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      var text = await res.text();
-      if (githubBaseUrl) text = rewriteRelativeUrls(text);
-      if (isEditorDirty()) {
-        var ok = confirm("Replace current content with loaded markdown?");
-        if (!ok) return;
-      }
-      setEditorContent(text);
-      closeComponentModal();
-      setMode("preview");
-      showToast("Loaded markdown from URL");
-    } catch (e) {
-      try {
-        var proxy = "https://corsproxy.io/?" + encodeURIComponent(rewritten);
-        var res2 = await fetch(proxy);
-        if (!res2.ok) throw new Error("HTTP " + res2.status);
-        var text2 = await res2.text();
-        if (githubBaseUrl) text2 = rewriteRelativeUrls(text2);
-        if (isEditorDirty()) {
-          var ok2 = confirm("Replace current content with loaded markdown?");
-          if (!ok2) return;
-        }
-        setEditorContent(text2);
-        closeComponentModal();
-        setMode("preview");
-        showToast("Loaded markdown from URL");
-      } catch (e2) {
-        if (errorEl) { errorEl.textContent = "Could not fetch URL. Check the link and try again."; errorEl.classList.remove("hidden"); }
-      }
-    } finally {
-      if (insertBtn) { insertBtn.disabled = false; insertBtn.textContent = "Insert"; }
-    }
   }
 
   /* ==========================================================================
@@ -2033,24 +2508,87 @@
   }
 
   function exportHTML() {
+    /* === App Surface: Framework CSS export === */
+    if (surfaceMode === "app") {
+      var fw = APP_FRAMEWORKS[currentAppFramework];
+      var contentForRender = stripYamlFrontMatter(editor.value || "");
+      var rawHTML = marked.parse(contentForRender);
+      var renderedHTML = sanitizeHTML(rawHTML);
+      var scale = SIZE_SCALE[String(sizeStep)] || 1;
+      var weight = WEIGHT_MAP[String(weightStep)] || 400;
+      var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+      var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+      var headWeight = Math.min(weight + 200, 900);
+
+      var fwCssLinks = "";
+      if (fw && fw.css) {
+        var cssArr = typeof fw.css === "string" ? [fw.css] : fw.css;
+        for (var ci = 0; ci < cssArr.length; ci++) {
+          fwCssLinks += '  <link rel="stylesheet" href="' + cssArr[ci] + '">\n';
+        }
+      }
+      var fwJsTag = (fw && fw.js) ? '  <script src="' + fw.js + '" defer><' + '/script>\n' : "";
+
+      var fwStyle = "";
+      if (fw && typeof fw.style === "function") {
+        fwStyle = fw.style("");
+      }
+
+      var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+        + '  <meta charset="UTF-8">\n'
+        + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        + '  <title>FlatWrite Export</title>\n'
+        + '  <base target="_blank" rel="noopener noreferrer">\n'
+        + fwCssLinks + fwJsTag
+        + '  <style>\n'
+        + '    ' + fwStyle + '\n'
+        + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
+        + '    body { font-size: ' + (15 * scale) + 'px !important;\n'
+        + '      font-weight: ' + weight + ' !important; line-height: ' + lineHeight + ' !important;\n'
+        + '      color: #2d2a3e; max-width: ' + contentWidth + 'px;\n'
+        + '      margin: 2rem auto; padding: 0 1.5rem; overflow-x: hidden; }\n'
+        + '    h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; }\n'
+        + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
+        + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; }\n'
+        + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; }\n'
+        + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
+        + '    img { max-width: 100%; height: auto; }\n'
+        + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
+        + '    pre { overflow-x: auto; white-space: pre-wrap; }\n'
+        + '    table { table-layout: fixed; width: 100%; }\n'
+        + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
+        + '  </style>\n'
+        + '</head>\n<body>\n  <main>\n'
+        + renderedHTML
+        + '\n  </main>\n</body>\n</html>';
+
+      openInNewTab(html, "text/html;charset=utf-8");
+      return;
+    }
+
+    /* === Doc Surface: reuse the rendered preview for an exact Read-mode match === */
+    var srcdoc = previewFrame.getAttribute("srcdoc");
+    if (srcdoc && (mode === "preview" || mode === "read")) {
+      openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
+      return;
+    }
+
+    /* === Doc Surface fallback: build a self-paginating HTML from scratch === */
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = marked.parse(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
-    var fw = FRAMEWORKS[currentFramework];
-
-    /* ── Compute the same scaling values the preview uses ─────────────── */
-    var scale    = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight   = WEIGHT_MAP[String(weightStep)] || 400;
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = '"' + comfortFont + '", system-ui, sans-serif';
+    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
     var headWeight = Math.min(weight + 200, 900);
 
-    /* ── Serialize the framework style function for the browser ───────── */
-    var styleFnStr = (fw && typeof fw.style === "function")
-      ? fw.style.toString()
-      : "function(doc){}";
+    /* Engine script tag — self-paginating HTML export (skip ESM modules) */
+    var engineScript = (engine && engine.script && !engine.module)
+      ? '  <script src="' + engine.script + '" defer><' + '/script>\n'
+      : '';
 
-    /* ── Build the standalone HTML document ───────────────────────────── */
     var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
       + '  <meta charset="UTF-8">\n'
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
@@ -2059,21 +2597,22 @@
       + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
       + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
       + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
-      + (fw.css ? '  <link rel="stylesheet" href="' + fw.css + '">\n' : '')
+      + engineScript
       + '  <style>\n'
-      /* ── Global reset + body ─────────────────────────────────────────── */
+      /* --- @page rules from document controls --- */
+      + '    ' + buildPageCSS() + '\n'
+      /* --- Typography --- */
       + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
       + '    body {\n'
       + '      font-size: ' + (15 * scale) + 'px !important;\n'
       + '      font-weight: ' + weight + ' !important;\n'
       + '      line-height: ' + lineHeight + ' !important;\n'
       + '      color: #2d2a3e;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 3rem auto;\n'
-      + '      padding: 0 1.5rem;\n'
+      + '      margin: 0;\n'
       + '      overflow-x: hidden;\n'
       + '    }\n'
-      /* ── Headings ────────────────────────────────────────────────────── */
+      /* Fallback layout when no paged-media engine is active */
+      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
       + '    h1, h2, h3, h4, h5, h6 {\n'
       + '      font-weight: ' + headWeight + ' !important;\n'
       + '      overflow-wrap: break-word;\n'
@@ -2083,15 +2622,11 @@
       + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
       + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
       + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
-      /* ── Media ───────────────────────────────────────────────────────── */
       + '    img { max-width: 100%; height: auto; display: block; }\n'
-      /* ── Code ────────────────────────────────────────────────────────── */
       + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
       + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      /* ── Tables ──────────────────────────────────────────────────────── */
       + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
       + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      /* ── Prose ───────────────────────────────────────────────────────── */
       + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
       + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
       + '    li { margin: 0.15em 0; display: list-item; }\n'
@@ -2099,140 +2634,261 @@
       + '    li::marker { display: inline; }\n'
       + '    p { margin: 0.4em 0; }\n'
       + '    br { margin: 0.3em 0; }\n'
-      /* ── FlatWrite component classes ─────────────────────────────────── */
-      + '    .fw-alert { padding: 0.8rem 1rem; border-radius: 4px; margin: 0.6rem 0; }\n'
-      + '    .fw-card { border: 1px solid #ddd; border-radius: 4px; margin: 1rem 0; }\n'
-      + '    .fw-card-header { padding: 1rem 1.2rem 0.4rem; }\n'
-      + '    .fw-card-title { font-weight: 700; font-size: 1.1em; }\n'
-      + '    .fw-card-body { padding: 0.4rem 1.2rem 1rem; }\n'
-      + '    .fw-form label { display: block; margin: 0.8rem 0 0.3rem; font-weight: 600; }\n'
-      + '    .fw-form input[type=text], .fw-form input[type=email], .fw-form textarea, .fw-form select { display: block; width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; }\n'
-      + '    .fw-form button { margin-top: 1rem; }\n'
-      + '    .fw-list { margin-left: 1.5rem; }\n'
-      + '    .fw-list li { margin-bottom: 0.3rem; }\n'
       + '  </style>\n'
-      + (fw.js ? '  <script src="' + fw.js + '" defer><' + '/script>\n' : '')
       + '</head>\n<body>\n  <main>\n'
       + renderedHTML
       + '\n  </main>\n'
-      /* ── Framework class wiring (same as the preview iframe) ──────────── */
+      + '</body>\n</html>';
+
+    openInNewTab(html, "text/html;charset=utf-8");
+  }
+
+  function exportPDF() {
+    /* === App Surface: Simple print === */
+    if (surfaceMode === "app") {
+      /* In App mode, just trigger the browser print dialog */
+      if (mode === "preview" || mode === "read") {
+        previewFrame.contentWindow.print();
+      } else {
+        window.print();
+      }
+      return;
+    }
+
+    /* === Doc Surface: print the exact rendered preview ===
+       When the preview has been rendered, reuse its srcdoc so the PDF engine,
+       pagination, scaling, and layout match what the user sees in view mode. */
+    var srcdoc = previewFrame.getAttribute("srcdoc");
+    if (srcdoc) srcdoc = srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, "");
+    if (srcdoc && (mode === "preview" || mode === "read")) {
+      var printScript = '<script>'
+        + '(function(){'
+        + '  function doPrint(){'
+        + '    document.body.style.transform = "";'
+        + '    document.body.style.width = "";'
+        + '    document.documentElement.style.overflow = "";'
+        + '    document.body.style.overflow = "";'
+        + '    var vp = document.getElementById("vivl-viewport");'
+        + '    if (vp) { vp.style.overflow = ""; vp.style.height = ""; vp.style.width = ""; }'
+        + '    var s = document.createElement("style");'
+        + '    s.media = "print";'
+        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { margin: 0 !important; } .pagedjs_sheet { border: none !important; } }";'
+        + '    document.head.appendChild(s);'
+        + '    window.print();'
+        + '  }'
+        + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
+        + '    var done=false; var p=function(){ if (done) return; done=true; setTimeout(doPrint, 200); };'
+        + '    window.PagedPolyfill.on("afterPreview", p);'
+        + '    window.PagedPolyfill.on("afterRenderation", p);'
+        + '    setTimeout(p, 5000);'
+        + '  } else if (document.getElementById("vivl-viewport")) {'
+        + '    var check=function(){'
+        + '      var pages=document.querySelectorAll("[data-vivliostyle-page-container]");'
+        + '      if (pages.length > 0) { doPrint(); }'
+        + '      else { setTimeout(check, 500); }'
+        + '    };'
+        + '    setTimeout(check, 1000);'
+        + '  } else {'
+        + '    window.addEventListener("load", function(){ setTimeout(doPrint, 500); });'
+        + '    if (document.readyState === "complete") { setTimeout(doPrint, 500); }'
+        + '  }'
+        + '})();'
+        + '</script>';
+      var printHtml = srcdoc.replace(/<\/body>/i, printScript + '</body>');
+      /* Add centering for paged pages in the new tab */
+      printHtml = printHtml.replace(/<\/head>/i, '<style>.pagedjs_pages { display: flex; flex-direction: column; align-items: center; } [data-vivliostyle-spread-container] { align-items: center !important; } html { display: flex; justify-content: center; } body { margin: 0 auto !important; }</style></head>');
+      var iframeRect = previewFrame.getBoundingClientRect();
+      var width = Math.round(iframeRect.width);
+      var height = Math.round(iframeRect.height);
+      var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
+      var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      window.open(url, "_blank", features);
+      return;
+    }
+
+    /* === Doc Surface fallback: render from scratch for direct export === */
+    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
+    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var rawHTML = marked.parse(contentForRender);
+    var renderedHTML = sanitizeHTML(rawHTML);
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
+
+    /* Engine script — Paged.js for proper @page pagination (skip ESM modules) */
+    var engineScript = (engine && engine.script && !engine.module)
+      ? '  <script src="' + engine.script + '"><' + '/script>\n'
+      : '';
+
+    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+      + '  <meta charset="UTF-8">\n'
+      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+      + '  <title>FlatWrite PDF</title>\n'
+      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
+      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + engineScript
+      + '  <style>\n'
+      + '    ' + buildPageCSS() + '\n'
+      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
+      + '    body {\n'
+      + '      font-size: ' + (15 * scale) + 'px !important;\n'
+      + '      font-weight: ' + weight + ' !important;\n'
+      + '      line-height: ' + lineHeight + ' !important;\n'
+      + '      color: #2d2a3e;\n'
+      + '      max-width: ' + contentWidth + 'px;\n'
+      + '      margin: 0 auto;\n'
+      + '      overflow-x: hidden;\n'
+      + '    }\n'
+      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
+      + '    h1, h2, h3, h4, h5, h6 {\n'
+      + '      font-weight: ' + headWeight + ' !important;\n'
+      + '      overflow-wrap: break-word; word-break: break-word;\n'
+      + '    }\n'
+      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
+      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
+      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
+      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
+      + '    img { max-width: 100%; height: auto; display: block; }\n'
+      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
+      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
+      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
+      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
+      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
+      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
+      + '    li { margin: 0.15em 0; display: list-item; }\n'
+      + '    li > ul, li > ol { margin: 0.15em 0; }\n'
+      + '    li::marker { display: inline; }\n'
+      + '    p { margin: 0.4em 0; }\n'
+      + '    br { margin: 0.3em 0; }\n'
+      + '  </style>\n'
+      + '</head>\n<body>\n  <main>\n'
+      + renderedHTML
+      + '\n  </main>\n'
+      /* Auto-print after Paged.js renders */
       + '  <script>\n'
-      + '    (function(){\n'
-      + '      var styleFn = (' + styleFnStr + ');\n'
-      + '      if (typeof styleFn === "function") styleFn(document);\n'
-      + '    })();\n'
+      + '    document.addEventListener("DOMContentLoaded", function() {\n'
+      + '      if (typeof window.PagedPolyfill !== "undefined") {\n'
+      + '        window.PagedPolyfill.on("afterRenderation", function() {\n'
+      + '          setTimeout(function() { window.print(); }, 200);\n'
+      + '        });\n'
+      + '      } else {\n'
+      + '        setTimeout(function() { window.print(); }, 500);\n'
+      + '      }\n'
+      + '    });\n'
       + '  <' + '/script>\n'
       + '</body>\n</html>';
 
     openInNewTab(html, "text/html;charset=utf-8");
   }
 
-  function loadScript(url) {
-    return new Promise(function (resolve, reject) {
-      var s = document.createElement("script");
-      s.src = url;
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
+  /* ==========================================================================
+     Font dropdown builder
+     ========================================================================== */
+
+  function buildFontDropdown() {
+    if (!fontPickerList) {
+      fontPickerList = document.createElement("div");
+      fontPickerList.className = "font-dropdown-list hidden";
+      document.body.appendChild(fontPickerList);
+    }
+    fontPickerList.innerHTML = "";
+    COMFORT_FONTS.forEach(function (f) {
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "font-dropdown-item" + (f.value === comfortFont ? " selected" : "");
+      item.dataset.font = f.value;
+      item.textContent = f.label;
+      item.style.fontFamily = '"' + f.value + '", system-ui, sans-serif';
+      fontPickerList.appendChild(item);
     });
   }
 
-  var html2pdfUrl = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js";
+  /* ==========================================================================
+     App framework dropdown and component picker
+     ========================================================================== */
 
-  function exportPDF() {
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = marked.parse(contentForRender);
-    var renderedHTML = sanitizeHTML(rawHTML);
-    var fw = FRAMEWORKS[currentFramework];
-
-    /* ── Apply framework style function on a detached document ───────────── */
-    /* Passing the live `document` would let frameworks rewrite host-page
-       elements (e.g. Spectre turns every <button> into .btn.btn-primary).
-       A detached document created via DOMParser keeps the blast radius
-       contained to the export markup. */
-    if (fw && typeof fw.style === "function") {
-      var parser = new DOMParser();
-      var tmpDoc = parser.parseFromString(
-        "<html><body>" + renderedHTML + "</body></html>", "text/html"
-      );
-      fw.style(tmpDoc);
-      renderedHTML = tmpDoc.body.innerHTML;
+  function buildAppFrameworkDropdown() {
+    var list = document.getElementById("fw-dropdown-list");
+    if (!list) {
+      list = document.createElement("div");
+      list.id = "fw-dropdown-list";
+      list.className = "fw-dropdown-list hidden";
+      document.body.appendChild(list);
     }
+    list.innerHTML = "";
+    var keys = Object.keys(APP_FRAMEWORKS);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var fw = APP_FRAMEWORKS[key];
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "fw-dropdown-item" + (key === currentAppFramework ? " selected" : "");
+      item.dataset.fw = key;
+      item.textContent = fw.label;
+      list.appendChild(item);
+    }
+    var label = document.getElementById("fw-dropdown-label");
+    if (label) label.textContent = APP_FRAMEWORKS[currentAppFramework] ? APP_FRAMEWORKS[currentAppFramework].label : currentAppFramework;
+  }
 
-    /* ── Same scaling values as renderPreview() ──────────────────────────── */
-    var scale      = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight     = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = '"' + comfortFont + '", system-ui, sans-serif';
-    var headWeight = Math.min(weight + 200, 900);
+  function renderComponentGrid() {
+    var grid = document.getElementById("components-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    for (var i = 0; i < APP_COMPONENTS.length; i++) {
+      var comp = APP_COMPONENTS[i];
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comp-btn";
+      btn.dataset.component = comp.id;
+      btn.title = comp.label;
+      btn.textContent = comp.label;
+      grid.appendChild(btn);
+    }
+  }
 
-    /* ── Inject scoped <style> so rules don't bleed into the host page ──── */
-    var styleEl = document.createElement("style");
-    styleEl.setAttribute("data-fw-pdf", "1");
-    var S = ".fw-pdf-export";                       /* scope prefix */
-    styleEl.textContent =
-        S + ' { font-size:' + (15 * scale) + 'px; font-weight:' + weight
-        + '; line-height:' + lineHeight + '; color:#2d2a3e; max-width:'
-        + contentWidth + 'px; margin:0 auto; padding:0 1.5rem; }'
-      + S + ',' + S + ' *,' + S + ' *::before,' + S + ' *::after'
-        + ' { font-family:' + fontStack + ' !important; box-sizing:border-box; }'
-      + S + ' h1,' + S + ' h2,' + S + ' h3,' + S + ' h4,' + S + ' h5,' + S + ' h6'
-        + ' { font-weight:' + headWeight + ' !important; overflow-wrap:break-word; word-break:break-word; }'
-      + S + ' h1 { font-size:' + (15 * scale * 2) + 'px !important; }'
-      + S + ' h2 { font-size:' + (15 * scale * 1.5) + 'px !important; margin-top:1.8em !important; }'
-      + S + ' h3 { font-size:' + (15 * scale * 1.25) + 'px !important; margin-top:1.4em !important; }'
-      + S + ' h4 { font-size:' + (15 * scale * 1.1) + 'px !important; }'
-      + S + ' img { max-width:100%; height:auto; display:block; }'
-      + S + ' pre,' + S + ' code { font-family:"JetBrains Mono",monospace !important; }'
-      + S + ' pre { overflow-x:auto; word-wrap:break-word; white-space:pre-wrap; }'
-      + S + ' table { table-layout:fixed; width:100%; overflow:hidden; }'
-      + S + ' td,' + S + ' th { word-wrap:break-word; overflow-wrap:break-word; max-width:100%; }'
-      + S + ' blockquote { margin:0; padding:0 1em; border-left:3px solid #ccc; }'
-      + S + ' ul,' + S + ' ol { padding-left:1.8em; margin:0.2em 0; list-style-position:outside; }'
-      + S + ' li { margin:0.15em 0; display:list-item; }'
-      + S + ' li > ul,' + S + ' li > ol { margin:0.15em 0; }'
-      + S + ' li::marker { display:inline; }'
-      + S + ' p { margin:0.4em 0; }'
-      + S + ' .fw-alert { padding:0.8rem 1rem; border-radius:4px; margin:0.6rem 0; }'
-      + S + ' .fw-card { border:1px solid #ddd; border-radius:4px; margin:1rem 0; }'
-      + S + ' .fw-card-header { padding:1rem 1.2rem 0.4rem; }'
-      + S + ' .fw-card-title { font-weight:700; font-size:1.1em; }'
-      + S + ' .fw-card-body { padding:0.4rem 1.2rem 1rem; }'
-      + S + ' .fw-form label { display:block; margin:0.8rem 0 0.3rem; font-weight:600; }'
-      + S + ' .fw-form input[type=text],' + S + ' .fw-form input[type=email],'
-        + S + ' .fw-form textarea,' + S + ' .fw-form select'
-        + ' { display:block; width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.95em; }'
-      + S + ' .fw-form button { margin-top:1rem; }'
-      + S + ' .fw-list { margin-left:1.5rem; }'
-      + S + ' .fw-list li { margin-bottom:0.3rem; }';
-    document.head.appendChild(styleEl);
+  function insertComponent(componentId) {
+    var comp = null;
+    for (var i = 0; i < APP_COMPONENTS.length; i++) {
+      if (APP_COMPONENTS[i].id === componentId) { comp = APP_COMPONENTS[i]; break; }
+    }
+    if (!comp) return;
+    var snippet = comp.snippets[currentAppFramework] || comp.snippets.spectre || "";
+    if (!snippet) return;
+    if (mode !== "edit") setMode("edit");
+    editorInsertBlock(snippet);
+  }
 
-    /* ── Build the container ─────────────────────────────────────────────── */
-    var container = document.createElement("div");
-    container.className = "fw-pdf-export";
-    container.innerHTML = renderedHTML;
-    /* Do NOT append to body — html2pdf clones the source via deepCloneBasic,
-       places the clone inside its own opacity:0 overlay, and renders that.
-       Appending the source would flash it on screen AND the cloned copy
-       would inherit any opacity/visibility we set to prevent the flash. */
+  /* ==========================================================================
+     Load from URL modal
+     ========================================================================== */
 
-    /* ── Generate PDF via html2pdf.js ────────────────────────────────────── */
-    var ready = typeof html2pdf !== "undefined" ? Promise.resolve() : loadScript(html2pdfUrl);
-    ready.then(function () {
-      html2pdf().set({
-        margin: [12, 12, 12, 12],
-        filename: "flatwrite-" + timestamp() + ".pdf",
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["avoid-all", "css", "legacy"] }
-      }).from(container).outputPdf("blob").then(function (pdfBlob) {
-        document.head.removeChild(styleEl);
-        window.open(URL.createObjectURL(pdfBlob), "_blank");
-      }).catch(function () {
-        if (styleEl.parentNode) document.head.removeChild(styleEl);
+  function loadFromUrlModal() {
+    var url = prompt("Enter the URL of the markdown file to load:", "https://");
+    if (!url) return;
+
+    showToast("Loading from URL…");
+    fetch(rewriteGitHubUrl(url))
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.text();
+      })
+      .then(function (text) {
+        if (isEditorDirty()) {
+          var ok = confirm("Replace current content with loaded markdown?");
+          if (!ok) return;
+        }
+        setEditorContent(text);
+        setMode("preview");
+        showToast("Loaded markdown from URL");
+      })
+      .catch(function (e) {
+        showToast("Could not load from URL. Check the link and try again.");
       });
-    });
   }
 
   /* ==========================================================================

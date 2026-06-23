@@ -1,8 +1,7 @@
 /* ==========================================================================
    FlatWrite — styles.css
    Three-zone desktop shell: left utility rail | central canvas | right reserve.
-   This is the base stylesheet; UI libraries (PoshUI / Oat / Spectre.css)
-   are loaded dynamically and handle form controls + typography overrides.
+   This is the base stylesheet for the FlatWrite shell.
    ========================================================================== */
 
 /* ---------- Reset & Box Model ---------- */
@@ -96,27 +95,6 @@ body {
   );
   background-attachment: fixed;
   height: 100vh;
-}
-
-/* ---------- PoshUI Override — protect app shell from framework globals ---------- */
-.app-shell button,
-.app-shell select,
-.app-shell input,
-.app-shell textarea:not(.editor) {
-  font-family: var(--font-body);
-  color: var(--text-primary);
-  box-shadow: none;
-}
-
-.app-shell h1,
-.app-shell h2,
-.app-shell h3 {
-  font-family: var(--font-display);
-  color: var(--text-primary);
-}
-
-.app-shell a {
-  color: var(--accent);
 }
 
 /* ==========================================================================
@@ -259,6 +237,7 @@ body {
   font-size: 0.82rem;
   color: var(--text-muted);
   margin-top: var(--space-1);
+  margin-bottom: var(--space-6);
   font-style: italic;
 }
 
@@ -266,6 +245,273 @@ body {
   border: none;
   border-top: 1px solid rgba(180, 160, 200, 0.25);
   margin: var(--space-4) 0;
+}
+
+/* ---------- Sidebar share section (mobile only) ---------- */
+.sidebar-share {
+  display: none;
+}
+
+.sidebar-share-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
+/* ---------- Surface mode toggle (Doc | App) ---------- */
+.surface-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 3px;
+  margin-top: var(--space-3);
+}
+
+.surface-btn {
+  position: relative;
+  z-index: 1;
+  font-family: "Unbounded", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: color 0.25s ease;
+  white-space: nowrap;
+}
+
+.surface-btn.active {
+  color: var(--accent);
+}
+
+.surface-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.surface-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+  width: calc(50% - 3px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.surface-toggle.app .surface-slider {
+  left: 50%;
+}
+
+/* Surface gating */
+.surface-doc .app-only { display: none !important; }
+.surface-app .doc-only { display: none !important; }
+
+/* Engine gating: per-control disabling based on engine */
+.doc-control-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ---------- Framework dropdown (App surface) ---------- */
+.framework-selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fw-dropdown {
+  position: relative;
+}
+
+.fw-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  text-align: left;
+}
+
+.fw-dropdown-btn:hover { border-color: var(--accent); }
+
+.fw-dropdown-arrow {
+  font-size: 0.5rem;
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.fw-dropdown-list {
+  position: fixed;
+  min-width: 180px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.fw-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.fw-dropdown-item:hover { background: rgba(176, 106, 179, 0.1); }
+
+.fw-dropdown-item.selected {
+  background: rgba(176, 106, 179, 0.18);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- Components panel (App surface) ---------- */
+.components-panel { margin-top: 0; }
+
+.components-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: var(--space-3);
+}
+
+/* ---------- Component insert modal (App surface) ---------- */
+.comp-modal-overlay {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.comp-modal {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(180, 160, 200, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
+  width: 380px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideIn 0.25s ease;
+  overflow: hidden;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.comp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
+}
+
+.comp-modal-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.comp-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.comp-modal-close:hover { color: var(--accent); }
+
+.comp-modal-body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.comp-modal-body label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+
+.comp-modal-body label:first-child { margin-top: 0; }
+
+.comp-modal-body input[type="text"],
+.comp-modal-body input[type="url"],
+.comp-modal-body textarea,
+.comp-modal-body select {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(180, 160, 200, 0.35);
+  border-radius: 8px;
+  outline: none;
+}
+
+.comp-modal-body input:focus,
+.comp-modal-body textarea:focus,
+.comp-modal-body select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
+}
+
+.comp-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) 22px var(--space-5);
+  border-top: 1px solid rgba(180, 160, 200, 0.2);
 }
 
 /* Reusable sidebar section label */
@@ -279,36 +525,221 @@ body {
   margin-bottom: 2px;
 }
 
-/* ---------- Framework selector ---------- */
-.framework-selector {
+/* ---------- Engine selector (sidebar) ---------- */
+.engine-selector {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.framework-dropdown {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--btn-border);
+.engine-pane .engine-toggle {
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.engine-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--glass-border);
   border-radius: 10px;
+  padding: 3px;
+}
+
+.engine-btn {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 6px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: color 0.25s ease;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.engine-btn.active {
+  color: var(--accent);
+}
+
+.engine-logo {
+  display: block;
+  height: 18px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  opacity: 0.55;
+  filter: saturate(0.4);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.engine-btn:hover .engine-logo {
+  opacity: 0.8;
+  filter: saturate(0.7);
+}
+
+.engine-btn.active .engine-logo {
+  opacity: 1;
+  filter: none;
+}
+
+.engine-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+  width: calc(33.333% - 3px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.engine-toggle.pagedjs .engine-slider {
+  left: calc(33.333%);
+}
+
+.engine-toggle.vivliostyle .engine-slider {
+  left: calc(66.666%);
+}
+
+.engine-toggle.none .engine-slider {
+  left: 3px;
+}
+
+/* ---------- Engine pane (engine toggle + attached doc-controls) ---------- */
+.engine-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.engine-pane .sidebar-section-label {
+  margin-bottom: var(--space-2);
+}
+
+.engine-pane .doc-controls {
+  border: 1px solid var(--glass-border);
+  border-radius: 0 0 10px 10px;
+  border-top: none;
+  background: rgba(255, 255, 255, 0.25);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: -1px;
+  transition: opacity 0.2s ease;
+}
+
+.doc-control-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.doc-control-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+}
+
+.doc-label {
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.doc-select {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.6);
   font-family: var(--font-body);
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
   appearance: auto;
 }
 
-.framework-dropdown:focus {
+.doc-select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.18);
 }
 
-.framework-current {
-  font-size: 0.75rem;
+.doc-range {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  height: 4px;
+  background: rgba(180, 160, 200, 0.3);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.doc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.doc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.doc-range-val {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  min-width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.doc-toggle {
+  padding: 4px 12px;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 600;
   color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.doc-toggle:hover {
+  border-color: var(--accent);
+}
+
+.doc-toggle[data-state="on"] {
+  background: rgba(176, 106, 179, 0.18);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ---------- Typography controls (in toolbar) ---------- */
@@ -423,8 +854,6 @@ body {
 .font-dropdown-list {
   position: fixed;
   min-width: 180px;
-  max-height: 220px;
-  overflow-y: auto;
   border: 1px solid var(--btn-border);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
@@ -483,6 +912,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 5px;
+  margin-top: var(--space-3);
 }
 
 .comp-btn {
@@ -573,11 +1003,11 @@ body {
 .export-icon {
   background: none;
   border: none;
-  color: var(--text-muted);
-  opacity: 0.4;
+  color: #1a1a1a;
+  opacity: 1;
   cursor: pointer;
   padding: 6px;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -589,7 +1019,16 @@ body {
 }
 
 .export-icon:hover {
+  color: var(--accent);
   opacity: 1;
+}
+
+/* PDF disabled in Plain mode */
+.app-shell.engine-none #btn-export-pdf,
+#btn-export-pdf:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ---------- Load (sidebar) ---------- */
@@ -625,42 +1064,58 @@ body {
 /* ---------- Width Handles (View mode) ---------- */
 .width-handle {
   position: absolute;
-  top: 5%;
-  bottom: 5%;
-  width: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
   cursor: col-resize;
   z-index: 10;
-  background: rgba(180, 160, 200, 0.35);
-  border-radius: 1px;
-  transition: background 0.2s, width 0.2s;
+  background: rgba(180, 160, 200, 0.5);
+  transition: background 0.2s;
 }
 
-/* Drag knob — small rounded rectangle centered on the bar */
+/* Grab knob — centered on the bar */
 .width-handle::after {
   content: "";
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 8px;
-  height: 28px;
-  border-radius: 4px;
-  background: rgba(180, 160, 200, 0.5);
+  width: 6px;
+  height: 24px;
+  border-radius: 3px;
+  background: rgba(180, 160, 200, 0.45);
   transition: background 0.2s, width 0.2s, height 0.2s;
 }
 
 .width-handle:hover::after,
 .width-handle.dragging::after {
   background: var(--accent);
-  width: 10px;
-  height: 32px;
-  border-radius: 5px;
+  width: 8px;
+  height: 28px;
+  border-radius: 4px;
 }
 
 .width-handle:hover,
 .width-handle.dragging {
-  width: 4px;
   background: var(--accent);
+}
+
+/* Dashed handles (Paged.js & Vivliostyle) — non-interactive margin lines */
+.width-handle-dotted {
+  width: 1px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #000 0px,
+    #000 3px,
+    transparent 3px,
+    transparent 6px
+  ) !important;
+  opacity: 0.4;
+  cursor: default !important;
+  pointer-events: none;
+}
+.width-handle-dotted::after {
+  display: none;
 }
 
 .width-drag-overlay {
@@ -683,7 +1138,8 @@ body {
   flex-shrink: 0;
   /* Fixed min-height so Read mode (only mode-switch) matches Edit/View
      and the export-actions tab stays in exactly the same place. */
-  min-height: 42px;
+  min-height: 52px;
+  overflow: visible;
 }
 
 .toolbar-left,
@@ -699,15 +1155,11 @@ body {
 .toolbar-center {
   display: flex;
   align-items: center;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   flex: 1;
   min-width: 0;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* Edge fade: transparent → opaque → opaque → transparent (16px gradient) */
-  -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
-  mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
 }
 
 .toolbar-center::-webkit-scrollbar {
@@ -738,7 +1190,7 @@ body {
 
 /* ---------- Mode-specific toolbar visibility ---------- */
 .mode-edit .toolbar-slides .typo-controls {
-  transform: translateY(-100%);
+  transform: translateX(100%);
   opacity: 0;
   position: absolute;
   top: 0;
@@ -746,7 +1198,17 @@ body {
 }
 
 .mode-preview .toolbar-slides .md-toolbar {
-  transform: translateY(100%);
+  transform: translateX(-100%);
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Read mode: hide both toolbars, only mode-switch stays */
+.mode-read .toolbar-slides .md-toolbar,
+.mode-read .toolbar-slides .typo-controls {
+  transform: translateX(-100%);
   opacity: 0;
   position: absolute;
   top: 0;
@@ -758,10 +1220,6 @@ body {
 }
 
 .mode-read .toolbar-right {
-  display: none;
-}
-
-.mode-read .toolbar-center {
   display: none;
 }
 
@@ -851,18 +1309,6 @@ body {
   left: calc(66.666%);
 }
 
-/* Hide Edit/View, show only Close (relabeled Read) in Read mode */
-.app-shell.mode-read .mode-switch {
-  grid-template-columns: 1fr;
-  margin-left: auto;
-}
-.app-shell.mode-read .mode-switch-label:not(.active) {
-  display: none;
-}
-.app-shell.mode-read .mode-switch-slider {
-  left: 3px;
-  width: calc(100% - 6px);
-}
 
 /* Export icon buttons */
 .export-label {
@@ -911,7 +1357,7 @@ body {
 .md-toolbar {
   display: inline-flex;
   flex-wrap: nowrap;
-  gap: 3px;
+  gap: 6px;
   padding: 5px var(--space-2);
   align-items: center;
   flex-shrink: 0;
@@ -921,30 +1367,62 @@ body {
   font-family: var(--font-body);
   font-size: 0.84rem;
   font-weight: 700;
-  padding: 5px 10px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
-  line-height: 1.4;
+  transition: color 0.15s ease, transform 0.1s ease;
+  line-height: 1;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  width: 44px;
+  position: relative;
+  overflow: visible;
 }
 
 .md-btn:hover {
-  background: rgba(176, 106, 179, 0.12);
-  border-color: rgba(176, 106, 179, 0.25);
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .md-btn:active {
-  background: rgba(176, 106, 179, 0.2);
   transform: scale(0.95);
 }
 
-.md-btn-italic {
-  font-style: italic;
+.md-btn svg {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.md-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0s;
+  z-index: 99999;
+}
+
+.md-btn:hover::after {
+  opacity: 1;
 }
 
 .md-toolbar-sep {
@@ -1008,6 +1486,12 @@ body {
 
 .zoom-slider:hover::-moz-range-thumb {
   background: var(--accent-hover);
+}
+
+/* Zoom disabled in Plain mode */
+.app-shell.engine-none .zoom-selector {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .zoom-value {
@@ -1111,15 +1595,22 @@ body {
 }
 
 /* ==========================================================================
-   PREVIEW (iframe-based, sandboxes framework CSS)
+   PREVIEW (iframe-based, sandboxed)
    ========================================================================== */
 
 .preview-wrap {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   position: relative;
+  background: repeating-linear-gradient(
+    45deg,
+    #f0f0f0 0px,
+    #f0f0f0 16px,
+    #ffffff 16px,
+    #ffffff 32px
+  );
 }
 
 /* Fade-in from top when entering Read/View mode */
@@ -1138,17 +1629,62 @@ body {
   animation: preview-enter 0.35s ease-out both;
 }
 
+/* Loading overlay while paged engines render */
+.preview-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.preview-loader:not(.hidden) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.preview-loader-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(0, 0, 0, 0.12);
+  border-top-color: var(--accent, #6e6e8e);
+  border-radius: 50%;
+  animation: preview-loader-spin 1s linear infinite;
+}
+
+@keyframes preview-loader-spin {
+  to { transform: rotate(360deg); }
+}
+
 .preview-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  flex: 1;
-  min-height: 120px;
-  background: #fff;
+  height: 100%;
+  background: transparent;
   border: 1px solid rgba(180, 160, 200, 0.3);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   border-bottom-left-radius: var(--radius-inner);
   border-bottom-right-radius: var(--radius-inner);
   border-bottom: none;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.25s ease;
+}
+
+.preview-frame.active {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 /* ==========================================================================
@@ -1193,6 +1729,20 @@ body {
 }
 
 /* ==========================================================================
+   ACCENT THEMING (Phase 4: --fw-accent tints editor + toolbar)
+   ========================================================================== */
+
+
+.mode-edit .editor:focus {
+  border-color: var(--fw-accent, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw-accent, var(--accent)) 14%, transparent);
+}
+
+.mode-edit .md-toolbar .md-btn:hover {
+  color: var(--fw-accent, var(--accent));
+}
+
+/* ==========================================================================
    SIDEBAR COPYRIGHT
    ========================================================================== */
 
@@ -1219,156 +1769,6 @@ body {
 }
 
 /* ==========================================================================
-   COMPONENT INSERT MODAL
-   ========================================================================== */
-
-.comp-modal-overlay {
-  position: fixed;
-  top: 80px;
-  right: 24px;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.comp-modal-overlay.hidden {
-  display: none;
-}
-
-.comp-modal {
-  pointer-events: auto;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(180, 160, 200, 0.4);
-  border-radius: 16px;
-  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
-  width: 380px;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  animation: modalSlideIn 0.25s ease;
-  resize: vertical;
-  overflow: hidden;
-}
-
-@keyframes modalSlideIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.comp-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
-  cursor: grab;
-  user-select: none;
-}
-
-.comp-modal-header:active {
-  cursor: grabbing;
-}
-
-.comp-modal-title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.comp-modal-close {
-  background: none;
-  border: none;
-  font-size: 1.4rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  transition: color 0.15s;
-}
-
-.comp-modal-close:hover {
-  color: var(--accent);
-}
-
-.comp-modal-body {
-  padding: 16px 22px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.comp-modal-body label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-  margin-top: 12px;
-}
-
-.comp-modal-body label:first-child {
-  margin-top: 0;
-}
-
-.comp-modal-body input[type="text"],
-.comp-modal-body input[type="url"],
-.comp-modal-body input[type="number"],
-.comp-modal-body textarea,
-.comp-modal-body select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(180, 160, 200, 0.35);
-  border-radius: 8px;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  box-sizing: border-box;
-}
-
-.comp-modal-body input:focus,
-.comp-modal-body textarea:focus,
-.comp-modal-body select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
-}
-
-.comp-modal-body textarea {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.comp-modal-body .modal-hint {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.comp-modal-body .modal-row {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-end;
-}
-
-.comp-modal-body .modal-row > div {
-  flex: 1;
-}
-
-.comp-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  padding: var(--space-3) 22px var(--space-5);
-  border-top: 1px solid rgba(180, 160, 200, 0.2);
-}
-
-/* ==========================================================================
    MOBILE HAMBURGER + LOGO (fixed position, sidebar slides from behind)
    Hidden by default, shown only on narrow screens.
    ========================================================================== */
@@ -1376,13 +1776,13 @@ body {
 .mobile-hamburger {
   display: none;
   position: fixed;
-  top: 16px;
+  top: 12px;
   left: 14px;
   z-index: 104;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -1403,8 +1803,8 @@ body {
 .mobile-logo {
   display: none;
   position: fixed;
-  top: 21px;
-  left: 62px;
+  top: 20px;
+  left: 66px;
   z-index: 102;
   font-family: var(--font-display);
   font-weight: 700;
@@ -1514,16 +1914,18 @@ body {
 
   /* Shell fills viewport, not auto-height flow */
   .app-shell {
-    position: relative;
-    top: auto;
-    left: auto;
-    transform: none;
-    width: 100%;
-    max-width: 100%;
-    height: 100dvh;
-    flex-direction: column;
-    padding: var(--space-3);
-    gap: var(--space-3);
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    flex-direction: column !important;
+    padding: var(--space-3) !important;
+    gap: var(--space-3) !important;
+    overflow: hidden !important;
+    transition: padding 0.45s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* Show hamburger + logo (positioned via base styles with position:fixed) */
@@ -1532,18 +1934,24 @@ body {
     display: flex;
   }
 
-  /* Sidebar becomes off-canvas drawer */
+  /* Sidebar becomes modal covering just the content rectangle */
   .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 280px;
-    z-index: 100;
-    max-height: none;
-    transform: translateX(-100%);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    padding: 0;
+    position: absolute !important;
+    top: var(--space-3) !important;
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    bottom: var(--space-3) !important;
+    width: auto !important;
+    height: auto !important;
+    z-index: 101;
+    max-height: none !important;
+    align-self: stretch !important;
+    transform: translateX(calc(-100% - var(--space-3)));
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 0 !important;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .app-shell.drawer-open .sidebar {
@@ -1557,16 +1965,31 @@ body {
   }
 
   .sidebar-inner {
-    border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
+    border-radius: var(--radius-inner) !important;
+    border: 1px solid rgba(180, 160, 200, 0.3) !important;
+    box-shadow: 0 8px 32px rgba(45, 42, 62, 0.18) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     /* Top padding matches fixed hamburger+logo position */
-    padding: 64px var(--space-5) var(--space-6);
-    background: #ffffff;
-    border-color: rgba(0, 0, 0, 0.08);
+    padding: 64px var(--space-6) var(--space-6);
+    background: #ffffff !important;
+    flex: 1 1 auto !important;
+    min-height: 100% !important;
+    height: 100% !important;
+    overflow-y: auto !important;
   }
 
   /* Drawer backdrop */
   .drawer-backdrop {
     display: block;
+    position: absolute !important;
+    top: var(--space-3) !important;
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    bottom: var(--space-3) !important;
+    inset: auto !important;
+    z-index: 99;
+    border-radius: var(--radius-inner);
   }
 
   .app-shell.drawer-open .drawer-backdrop {
@@ -1589,13 +2012,23 @@ body {
   }
 
   .main-inner {
-    padding: 56px var(--space-3) var(--space-4);
+    padding: 60px var(--space-3) var(--space-4);
     border-radius: var(--radius-inner);
     /* Remove backdrop-filter so toolbar z-index is not trapped in a stacking context */
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(255, 255, 255, 0.92);
     gap: 4px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    transition: padding 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+                border-radius 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.45s ease,
+                box-shadow 0.45s ease;
+  }
+
+  .main-inner::-webkit-scrollbar {
+    display: none;
   }
 
   /* Toolbar — mode switch row above the document area */
@@ -1619,7 +2052,7 @@ body {
   .mode-switch {
     padding: 2px;
     position: fixed;
-    top: 21px;
+    top: 12px;
     right: 20px;
     z-index: 105;
   }
@@ -1628,12 +2061,25 @@ body {
   .toolbar-center {
     flex: 1 1 100%;
     min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .toolbar-center::-webkit-scrollbar {
+    display: none;
   }
 
   .mode-switch-label {
-    padding: 8px 16px;
-    font-size: 0.78rem;
+    padding: 10px 10px;
+    font-size: 0.82rem;
     line-height: 1.2;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ==========================================================================
@@ -1641,32 +2087,32 @@ body {
      These scale further with UI Zoom (zoom: X% on .app-shell)
      ========================================================================== */
 
-  /* Sidebar buttons */
+  /* Sidebar buttons — big and spacious for mobile modal */
   .comp-btn,
   .load-btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px 8px;
-    font-size: 0.8rem;
+    min-height: 52px;
+    min-width: 52px;
+    padding: 14px 16px;
+    font-size: 0.95rem;
+    border-radius: 12px;
   }
 
   .components-grid {
-    gap: 6px;
+    gap: 10px;
   }
 
-  /* Framework dropdown */
-  .framework-dropdown {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 0.88rem;
+  .load-buttons {
+    gap: 10px;
+  }
+
+  .load-panel {
+    gap: var(--space-3);
   }
 
   /* Markdown toolbar buttons */
   .md-btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px 10px;
-    font-size: 0.8rem;
+    height: 44px;
+    width: 44px;
   }
 
   /* Typography +/- buttons */
@@ -1683,9 +2129,28 @@ body {
     font-size: 0.82rem;
   }
 
-  /* Toolbar typography controls spacing */
-  .typo-controls {
-    gap: 6px;
+  /* Sidebar section labels — standardized spacing */
+  .sidebar-section-label {
+    font-size: 0.8rem;
+    margin-bottom: var(--space-3);
+  }
+
+  /* Standardize spacing between sections */
+  .sidebar-divider {
+    margin: var(--space-5) 0;
+  }
+
+  .sidebar-share-buttons {
+    gap: 10px;
+    margin-top: var(--space-3);
+  }
+
+  .engine-pane .sidebar-section-label {
+    margin-bottom: var(--space-3);
+  }
+
+  .engine-selector {
+    gap: var(--space-3);
   }
 
   .toolbar-center {
@@ -1710,35 +2175,70 @@ body {
   .editor {
     min-height: 0;
     flex: 1;
+    font-size: 1rem;
+    padding: var(--space-3) var(--space-3);
   }
 
   .preview-frame {
     min-height: 0;
     flex: 1;
+    border: 1px solid rgba(180, 160, 200, 0.3) !important;
+    border-top: none !important;
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+    border-bottom-left-radius: var(--radius-inner) !important;
+    border-bottom-right-radius: var(--radius-inner) !important;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
-  /* Export actions inline */
-  .main-panel-wrapper {
-    padding-right: 0;
+  .preview-frame::-webkit-scrollbar {
+    display: none;
   }
 
+  .preview-wrap {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    background: #ffffff !important;
+  }
+
+  .preview-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Export actions hidden on mobile — relocated to sidebar */
   .export-actions {
-    position: relative;
-    top: auto;
-    left: auto;
-    right: auto;
-    flex-direction: row;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: var(--space-2) 0;
-    z-index: 1;
-    /* Reset tab bubble styles on mobile */
-    background: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
+    display: none !important;
+  }
+
+  /* Show sidebar share section on mobile */
+  .sidebar-share {
+    display: block;
+  }
+
+  /* Hide Engine and Zoom on mobile — Surface stays */
+  .engine-pane,
+  .zoom-selector {
+    display: none !important;
+  }
+
+  /* Hide orphaned dividers around hidden sections */
+  .engine-pane + .sidebar-divider,
+  .zoom-selector + .sidebar-divider,
+  .sidebar-divider:has(+ .engine-pane) {
+    display: none;
+  }
+
+  /* Hide width handles on mobile (all modes) */
+  .width-handle {
+    display: none !important;
+  }
+
+  /* Disable tooltips on mobile */
+  .md-btn::after,
+  [data-tooltip]:hover::before,
+  [data-tooltip]:hover::after {
+    display: none !important;
   }
 
   .export-icon svg {
@@ -1761,8 +2261,9 @@ body {
   }
 
   .mode-switch-label {
-    padding: 6px 16px;
-    font-size: 0.76rem;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    min-height: 44px;
   }
 }
 
@@ -1819,6 +2320,11 @@ body {
   display: none;
 }
 
+/* No stripe in Read mode — plain white background */
+.app-shell.mode-read .preview-wrap {
+  background: #fff;
+}
+
 /* Strip sidebar glass */
 .app-shell.focus-mode .sidebar-inner {
   background: transparent;
@@ -1831,9 +2337,8 @@ body {
 .app-shell.focus-mode .sidebar-inner .tagline,
 .app-shell.focus-mode .sidebar-inner .sidebar-divider,
 .app-shell.focus-mode .sidebar-inner .load-panel,
-.app-shell.focus-mode .sidebar-inner .framework-selector,
 .app-shell.focus-mode .sidebar-inner .zoom-selector,
-.app-shell.focus-mode .sidebar-inner .components-panel,
+
 .app-shell.focus-mode .sidebar-inner .sidebar-copy {
   opacity: 0;
   pointer-events: none;
@@ -1842,7 +2347,7 @@ body {
 
 /* Dim toolbar — keep mode-switch visible */
 .app-shell.focus-mode .toolbar-left,
-.app-shell.focus-mode .toolbar-center {
+.app-shell.focus-mode .toolbar-right {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
@@ -1851,34 +2356,42 @@ body {
 /* Mobile Read mode: everything vanishes except logo + close button */
 @media (max-width: 759px) {
   .app-shell.focus-mode .mobile-hamburger {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   /* Logo stays visible — no change needed (it's always visible) */
 
-  /* Hide toolbar children individually — NOT the whole toolbar,
-     because opacity on the parent would kill the Close button too */
-  .app-shell.focus-mode .main-inner {
-    gap: 0;
-    padding-top: 56px;
-  }
-  .app-shell.focus-mode .toolbar {
-    height: 0;
-    overflow: hidden;
-    gap: 0;
-  }
-  .app-shell.focus-mode .toolbar-left,
-  .app-shell.focus-mode .toolbar-center,
-  .app-shell.focus-mode .toolbar-right {
-    display: none;
-  }
-
-  /* Bring back the mode-switch (Close button) in read mode */
-  .app-shell.focus-mode.mode-read .mode-switch {
+  /* Restore sidebar visibility in read mode so the drawer works */
+  .app-shell.focus-mode .sidebar {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* Hide toolbar children individually — NOT the whole toolbar,
+     because opacity on the parent would kill the Close button too */
+  .app-shell.focus-mode {
+    gap: 0 !important;
+  }
+  .app-shell.focus-mode .toolbar {
+    display: flex !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    flex-shrink: 1 !important;
+    overflow: visible;
+  }
+  .app-shell.focus-mode .toolbar-center,
+  .app-shell.focus-mode .toolbar-right {
+    display: none !important;
+  }
+  .app-shell.focus-mode .main-inner {
+    gap: 0;
+    padding: 56px 0 0;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: hidden;
+    border-bottom-left-radius: var(--radius-inner) !important;
+    border-bottom-right-radius: var(--radius-inner) !important;
   }
 }
 
@@ -1918,6 +2431,119 @@ body {
 /* ==========================================================================
    Shared document error state (Mode B)
    ========================================================================== */
+
+/* ==========================================================================
+   LOAD FROM URL MODAL
+   ========================================================================== */
+
+.load-modal-overlay {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.load-modal-overlay.hidden {
+  display: none;
+}
+
+.load-modal {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(180, 160, 200, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(45, 42, 62, 0.22), 0 2px 8px rgba(176, 106, 179, 0.12);
+  width: 380px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideIn 0.25s ease;
+  overflow: hidden;
+}
+
+.load-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(180, 160, 200, 0.2);
+}
+
+.load-modal-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.load-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.load-modal-close:hover {
+  color: var(--accent);
+}
+
+.load-modal-body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.load-modal-body label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 0;
+}
+
+.load-modal-body input[type="url"] {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(180, 160, 200, 0.35);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.load-modal-body input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(176, 106, 179, 0.15);
+}
+
+.load-modal-body .modal-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.load-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) 22px var(--space-5);
+  border-top: 1px solid rgba(180, 160, 200, 0.2);
+}
 
 .shared-error {
   display: flex;
