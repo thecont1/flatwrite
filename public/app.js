@@ -1780,6 +1780,8 @@
         + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
         + ' max-width: ' + contentWidth + 'px; margin: 2rem auto; padding: 0 1.5rem;'
         + ' overflow-x: hidden; }'
+        + 'html::-webkit-scrollbar { display: none; }'
+        + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
         + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; }'
         + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
         + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
@@ -2024,6 +2026,8 @@
         + engineScript
         + '<style>'
         + docCss
+        + 'html::-webkit-scrollbar { display: none; }'
+        + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
         /* --- Page-boundary dashed borders on all four sides --- */
         + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; background: transparent !important; }'
         + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.8px solid #000 !important; outline: none !important; box-shadow: none !important; }'
