@@ -1,5 +1,22 @@
 import yaml from 'js-yaml';
 
+/**
+ * Compute HMAC-SHA256 signature using Web Crypto API (CF Worker compatible).
+ * Payload: timestamp.method.path
+ */
+async function sign(secret, timestamp, method, path) {
+  const payload = timestamp + '.' + method + '.' + path;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default {
   async fetch(req, env) {
     if (req.method !== 'POST') {
@@ -37,12 +54,17 @@ export default {
       return new Response('Failed to fetch markdown source: ' + e.message, { status: 502 });
     }
 
+    // Sign request with HMAC
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = await sign(env.INTERNAL_RENDER_KEY, timestamp, 'POST', '/api/render');
+
     // Delegate to Vercel render function
     const renderResp = await fetch('https://flatwrite.md/api/render', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Key': env.INTERNAL_RENDER_KEY,
+        'X-Render-Timestamp': String(timestamp),
+        'X-Render-Signature': signature,
       },
       body: JSON.stringify({ markdown, ...designParams }),
     });

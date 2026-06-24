@@ -1,17 +1,21 @@
 // api/render.js
 'use strict';
 const { renderToDocument } = require('../core/render');
+const { verify } = require('../core/auth');
 
 module.exports = async (req, res) => {
-  // Internal-only guard
-  const internalKey = req.headers['x-internal-key'];
-  if (internalKey !== process.env.INTERNAL_RENDER_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'POST only' });
   }
+
+  /* HMAC auth: constant-time verify + 5-min replay window */
+  const secret = process.env.INTERNAL_RENDER_KEY;
+  if (!secret) return res.status(500).json({ error: 'Server misconfigured' });
+
+  const ts   = req.headers['x-render-timestamp'];
+  const sig  = req.headers['x-render-signature'];
+  const auth = verify(secret, 'POST', '/api/render', ts, sig);
+  if (!auth.ok) return res.status(401).json({ error: 'Unauthorized' });
 
   // Read body manually (consistent with api/share.js pattern)
   let body = '';

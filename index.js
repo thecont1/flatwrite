@@ -74,15 +74,21 @@ async function handleFetch(req, res) {
 }
 
 /* ── API: POST /api/render ──────────────────────────────────────────────── */
+const { verify } = require("./core/auth");
 
 async function handleRender(req, res) {
-  const internalKey = req.headers["x-internal-key"];
-  if (internalKey !== process.env.INTERNAL_RENDER_KEY) {
-    return json(res, 401, { error: "Unauthorized" });
-  }
   if (req.method !== "POST") {
     return json(res, 405, { error: "POST only" });
   }
+
+  /* HMAC auth: constant-time verify + 5-min replay window */
+  const secret = process.env.INTERNAL_RENDER_KEY;
+  if (!secret) return json(res, 500, { error: "Server misconfigured" });
+
+  const ts   = req.headers["x-render-timestamp"];
+  const sig  = req.headers["x-render-signature"];
+  const auth = verify(secret, "POST", "/api/render", ts, sig);
+  if (!auth.ok) return json(res, 401, { error: "Unauthorized" });
 
   let body;
   try { body = await readBody(req); } catch { return json(res, 400, { error: "Bad body" }); }
