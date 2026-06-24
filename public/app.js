@@ -2873,27 +2873,71 @@
      ========================================================================== */
 
   function loadFromUrlModal() {
-    var url = prompt("Enter the URL of the markdown file to load:", "https://");
-    if (!url) return;
+    var overlay  = document.getElementById("load-modal-overlay");
+    var urlInput = document.getElementById("load-url-input");
+    var status   = document.getElementById("load-url-status");
+    var btnFetch = document.getElementById("load-modal-insert");
+    var btnCancel = document.getElementById("load-modal-cancel");
+    var btnClose  = document.getElementById("load-modal-close");
+    if (!overlay || !urlInput) return;
 
-    showToast("Loading from URL…");
-    fetch(rewriteGitHubUrl(url))
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.text();
-      })
-      .then(function (text) {
-        if (isEditorDirty()) {
-          var ok = confirm("Replace current content with loaded markdown?");
-          if (!ok) return;
-        }
-        setEditorContent(text);
-        setMode("preview");
-        showToast("Loaded markdown from URL");
-      })
-      .catch(function (e) {
-        showToast("Could not load from URL. Check the link and try again.");
-      });
+    urlInput.value = "";
+    status.textContent = "";
+    status.className = "load-url-status";
+    overlay.classList.remove("hidden");
+    urlInput.focus();
+
+    function close() { overlay.classList.add("hidden"); }
+
+    function doFetch() {
+      var url = urlInput.value.trim();
+      if (!url) { status.textContent = "Enter a URL"; status.className = "load-url-status error"; return; }
+
+      status.textContent = "Loading…";
+      status.className = "load-url-status loading";
+      btnFetch.disabled = true;
+
+      fetch(rewriteGitHubUrl(url))
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.text();
+        })
+        .then(function (text) {
+          btnFetch.disabled = false;
+          close();
+          if (isEditorDirty()) {
+            var ok = confirm("Replace current content with loaded markdown?");
+            if (!ok) return;
+          }
+          setEditorContent(text);
+          setMode("preview");
+          showToast("Loaded markdown from URL");
+        })
+        .catch(function () {
+          btnFetch.disabled = false;
+          status.textContent = "Could not load. Check the URL and try again.";
+          status.className = "load-url-status error";
+        });
+    }
+
+    /* Remove any previous listeners by replacing elements */
+    var newFetch = btnFetch.cloneNode(true);
+    var newCancel = btnCancel.cloneNode(true);
+    var newClose = btnClose.cloneNode(true);
+    btnFetch.parentNode.replaceChild(newFetch, btnFetch);
+    btnCancel.parentNode.replaceChild(newCancel, btnCancel);
+    btnClose.parentNode.replaceChild(newClose, btnClose);
+
+    newFetch.addEventListener("click", doFetch);
+    newCancel.addEventListener("click", close);
+    newClose.addEventListener("click", close);
+    urlInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); doFetch(); }
+      if (e.key === "Escape") close();
+    });
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) close();
+    });
   }
 
   /* ==========================================================================

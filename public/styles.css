@@ -2537,6 +2537,20 @@ body {
   margin-top: 2px;
 }
 
+.load-url-status {
+  font-size: 0.78rem;
+  margin: 6px 0 0;
+  min-height: 1.2em;
+}
+
+.load-url-status.error {
+  color: #c0392b;
+}
+
+.load-url-status.loading {
+  color: var(--text-secondary);
+}
+
 .load-modal-footer {
   display: flex;
   justify-content: flex-end;

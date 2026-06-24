@@ -383,7 +383,11 @@
         <h3 class="load-modal-title" id="load-modal-title">Load from URL</h3>
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close">&times;</button>
       </div>
-      <div class="load-modal-body" id="load-modal-body"></div>
+      <div class="load-modal-body" id="load-modal-body">
+          <label for="load-url-input" class="load-modal-label">Markdown URL</label>
+          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.md" autocomplete="off" />
+          <p class="load-url-status" id="load-url-status"></p>
+        </div>
       <div class="load-modal-footer">
         <button class="btn btn-mode" id="load-modal-cancel" type="button">Cancel</button>
         <button class="btn btn-export" id="load-modal-insert" type="button">Fetch</button>
