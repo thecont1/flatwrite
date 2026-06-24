@@ -136,6 +136,23 @@ describe("api/render.js", () => {
     expect(res._status).toBe(400);
     expect(res._body.error).toContain("JSON");
   });
+
+  test("oversized body → 413", async () => {
+    const big = "x".repeat(512 * 1024 + 1);
+    const req = mockReq({
+      headers: hmacHeaders(SECRET, "POST", "/api/render"),
+      body: null,
+    });
+    req.on = (event, cb) => {
+      if (event === "data") cb(big);
+      if (event === "end") cb();
+    };
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(413);
+    expect(res._body.error).toContain("large");
+  });
 });
 
 // ── core/auth.js ────────────────────────────────────────────────────────

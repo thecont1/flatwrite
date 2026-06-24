@@ -17,10 +17,20 @@ const MIME = {
 };
 
 /* ── Read raw request body ──────────────────────────────────────────────── */
-function readBody(req) {
+function readBody(req, maxBytes) {
+  const limit = maxBytes || Infinity;
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => { data += chunk; });
+    let total = 0;
+    req.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > limit) {
+        reject(new Error("Payload too large"));
+        req.destroy();
+        return;
+      }
+      data += chunk;
+    });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
@@ -87,9 +97,10 @@ async function handleRender(req, res) {
   if (!auth.ok) return json(res, 401, { error: "Unauthorized" });
 
   let body;
-  try { body = await readBody(req); } catch { return json(res, 400, { error: "Bad body" }); }
-
-  let parsed;
+  try { body = await readBody(req, 512 * 1024); } catch (e) {
+    if (e.message === "Payload too large") return json(res, 413, { error: "Payload too large" });
+    return json(res, 400, { error: "Bad body" });
+  }
   try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: "Invalid JSON" }); }
 
   const { markdown = "", ...frontmatter } = parsed;
