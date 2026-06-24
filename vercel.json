@@ -1,4 +1,7 @@
 {
+  "routes": [
+    { "src": "/api/render", "dest": "/api/render.js" }
+  ],
   "headers": [
     {
       "source": "/((?!api/).*)\\.js$",

@@ -858,6 +858,11 @@
     return raw;
   }
 
+  // SOURCE: core/render.js — keep in sync
+  function renderToFragment(markdown) {
+    return marked.parse(markdown);
+  }
+
   /* ==========================================================================
      IDB persistence — restore from IndexedDB (Mode A default)
      ========================================================================== */
@@ -1742,7 +1747,7 @@
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
       var contentForRender = stripYamlFrontMatter(editor.value || "");
-      var rawHTML = marked.parse(contentForRender);
+      var rawHTML = renderToFragment(contentForRender);
       var renderedHTML = sanitizeHTML(rawHTML);
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
@@ -1846,7 +1851,7 @@
     var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
     var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = marked.parse(contentForRender);
+    var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
@@ -2512,7 +2517,7 @@
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
       var contentForRender = stripYamlFrontMatter(editor.value || "");
-      var rawHTML = marked.parse(contentForRender);
+      var rawHTML = renderToFragment(contentForRender);
       var renderedHTML = sanitizeHTML(rawHTML);
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
@@ -2576,7 +2581,7 @@
     /* === Doc Surface fallback: build a self-paginating HTML from scratch === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = marked.parse(contentForRender);
+    var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
@@ -2710,7 +2715,7 @@
     /* === Doc Surface fallback: render from scratch for direct export === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = marked.parse(contentForRender);
+    var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(rawHTML);
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;

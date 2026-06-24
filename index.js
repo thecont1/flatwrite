@@ -1,6 +1,8 @@
 /* Vercel Node.js root handler — serves public/ + API routes */
 const fs = require("fs");
 const path = require("path");
+const handleRender = require("./api/render");
+const { readBody } = require("./core/io");
 
 const MIME = {
   ".html": "text/html",
@@ -15,16 +17,6 @@ const MIME = {
   ".woff2": "font/woff2",
 };
 
-/* ── Read raw request body ──────────────────────────────────────────────── */
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => { data += chunk; });
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
-}
-
 /* ── JSON response helper ───────────────────────────────────────────────── */
 function json(res, status, obj) {
   res.statusCode = status;
@@ -38,7 +30,10 @@ async function handleShare(req, res) {
   if (!BASE) return json(res, 500, { error: "Server configuration error" });
 
   let body;
-  try { body = await readBody(req); } catch { return json(res, 400, { error: "Bad body" }); }
+  try { body = await readBody(req, 512 * 1024); } catch (e) {
+    if (e.message === "Payload too large") return json(res, 413, { error: "Payload too large" });
+    return json(res, 400, { error: "Bad body" });
+  }
   if (!body) return json(res, 400, { error: "Empty content" });
 
   try {
@@ -103,8 +98,12 @@ module.exports = async function handler(req, res) {
   const url = req.url.split("?")[0];
 
   /* API routes */
-  if (url === "/api/share" && req.method === "POST") return handleShare(req, res);
-  if (url === "/api/s" && req.method === "GET")       return handleFetch(req, res);
+  if (url === "/api/share"  && req.method === "POST") return handleShare(req, res);
+  if (url === "/api/s"      && req.method === "GET")  return handleFetch(req, res);
+  if (url === "/api/render") {
+    if (req.method === "POST") return handleRender(req, res);
+    return json(res, 405, { error: "POST only" });
+  }
 
   /* Static files */
   serveStatic(req, res);

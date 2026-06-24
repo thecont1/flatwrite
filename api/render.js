@@ -1,0 +1,84 @@
+// api/render.js — canonical /api/render handler
+// Uses only standard Node.js http.ServerResponse methods so it works
+// both in Vercel's runtime and the custom server (index.js).
+'use strict';
+const { renderToDocument } = require('../core/render');
+const { verify } = require('../core/auth');
+const { readBody } = require('../core/io');
+const { createRateLimiter } = require('../core/rate-limit');
+
+const MAX_BYTES = 512 * 1024;
+
+// 60 requests per minute per caller IP
+const limiter = createRateLimiter({ windowMs: 60_000, max: 60 });
+
+function json(res, status, obj) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(obj));
+}
+
+function getClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket && req.socket.remoteAddress || 'unknown';
+}
+
+module.exports = async function handleRender(req, res) {
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'POST only' });
+  }
+
+  /* HMAC auth: constant-time verify + 5-min replay window */
+  const secret = process.env.INTERNAL_RENDER_KEY;
+  if (!secret) return json(res, 500, { error: 'Server misconfigured' });
+
+  const ts   = req.headers['x-render-timestamp'];
+  const sig  = req.headers['x-render-signature'];
+  const auth = verify(secret, 'POST', '/api/render', ts, sig);
+  if (!auth.ok) return json(res, 401, { error: 'Unauthorized' });
+
+  /* Rate limit: sliding window per IP */
+  const ip = getClientIp(req);
+  const { allowed, remaining, resetMs } = limiter.check(ip);
+  if (!allowed) {
+    const retryAfter = Math.ceil(resetMs / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    res.setHeader('X-RateLimit-Limit', '60');
+    res.setHeader('X-RateLimit-Remaining', '0');
+    return json(res, 429, { error: 'Rate limit exceeded', retryAfter });
+  }
+  res.setHeader('X-RateLimit-Limit', '60');
+  res.setHeader('X-RateLimit-Remaining', String(remaining));
+
+  /* Read body with size limit */
+  let body;
+  try {
+    body = await readBody(req, MAX_BYTES);
+  } catch (e) {
+    const status = e.message === 'Payload too large' ? 413 : 400;
+    const error  = e.message === 'Payload too large' ? 'Payload too large' : 'Failed to read request body';
+    return json(res, status, { error });
+  }
+
+  let parsed;
+  try { parsed = JSON.parse(body); } catch {
+    return json(res, 400, { error: 'Invalid JSON' });
+  }
+
+  const { markdown = '', ...frontmatter } = parsed;
+  if (!markdown) {
+    return json(res, 400, { error: 'markdown field is required' });
+  }
+
+  try {
+    const html = renderToDocument(markdown, frontmatter);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.statusCode = 200;
+    res.end(html);
+  } catch (err) {
+    console.error('[render]', err);
+    return json(res, 500, { error: 'Render failed' });
+  }
+};
