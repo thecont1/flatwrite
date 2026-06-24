@@ -63,8 +63,12 @@ function escapeHTML(str) {
 }
 
 /**
- * Validate and coerce all frontmatter fields before HTML interpolation.
+ * Validate and coerce all frontmatter fields before HTML/CSS interpolation.
  * Returns a frozen object with only known, safe values.
+ *
+ * CSS injection surface: fm.font goes inside '...' in a style block,
+ * fm.fontSize/fontWeight/lineHeight go directly into CSS property values.
+ * All values are type-checked, bounded, and rounded before interpolation.
  */
 function validateFrontmatter(fm) {
   var f = fm || {};
@@ -72,9 +76,9 @@ function validateFrontmatter(fm) {
     title:      escapeHTML(String(f.title || '').slice(0, 500)),
     framework:  validateFramework(f.framework),
     font:       sanitizeFontName(f.font || 'Inter'),
-    fontSize:   safeNumber(f.fontSize, 16, 8, 72),
-    fontWeight: safeNumber(f.fontWeight, 400, 100, 900),
-    lineHeight: safeNumber(f.lineHeight, 1.6, 0.8, 4.0),
+    fontSize:   Math.round(safeNumber(f.fontSize, 16, 8, 72)),
+    fontWeight: Math.round(safeNumber(f.fontWeight, 400, 100, 900)),
+    lineHeight: Math.round(safeNumber(f.lineHeight, 1.6, 0.8, 4.0) * 10) / 10,
   };
   return Object.freeze(validated);
 }

@@ -294,6 +294,12 @@ describe("renderToDocument sanitization", () => {
     expect(html).toContain("font-weight: 900");
   });
 
+  test("fractional values are rounded in CSS output", () => {
+    const html = renderToDocument("# Hi", { fontSize: "16.7", lineHeight: "1.65" });
+    expect(html).toContain("font-size: 17px");
+    expect(html).toContain("line-height: 1.7");
+  });
+
   test("lineHeight is clamped to 0.8-4.0", () => {
     const html = renderToDocument("# Hi", { lineHeight: "10" });
     expect(html).toContain("line-height: 4");
