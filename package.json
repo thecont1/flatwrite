@@ -15,7 +15,7 @@
     "wrangler": "^4.104.0"
   },
   "dependencies": {
-    "marked": "^18.0.5",
+    "marked": "14.1.4",
     "spectrum-ts": "^5.2.0"
   }
 }

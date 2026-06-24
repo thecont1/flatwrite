@@ -74,7 +74,6 @@ async function handleFetch(req, res) {
 }
 
 /* ── API: POST /api/render ──────────────────────────────────────────────── */
-const { renderToDocument } = require("./core/render");
 
 async function handleRender(req, res) {
   const internalKey = req.headers["x-internal-key"];
@@ -96,11 +95,16 @@ async function handleRender(req, res) {
     return json(res, 400, { error: "markdown field is required" });
   }
 
-  const html = renderToDocument(markdown, frontmatter);
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=3600");
-  res.statusCode = 200;
-  res.end(html);
+  try {
+    const { renderToDocument } = require("./core/render");
+    const html = renderToDocument(markdown, frontmatter);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.statusCode = 200;
+    res.end(html);
+  } catch (err) {
+    return json(res, 500, { error: "Render failed: " + err.message });
+  }
 }
 
 /* ── Static file server ─────────────────────────────────────────────────── */
