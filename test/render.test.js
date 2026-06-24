@@ -293,4 +293,87 @@ describe("renderToDocument sanitization", () => {
     const html = renderToDocument("# Hi", { fontWeight: "9999" });
     expect(html).toContain("font-weight: 900");
   });
+
+  test("lineHeight is clamped to 0.8-4.0", () => {
+    const html = renderToDocument("# Hi", { lineHeight: "10" });
+    expect(html).toContain("line-height: 4");
+  });
+
+  test("non-string title is coerced safely", () => {
+    const html = renderToDocument("# Hi", { title: 12345 });
+    expect(html).toContain("<title>12345</title>");
+  });
+
+  test("title is truncated at 500 chars", () => {
+    const long = "A".repeat(600);
+    const html = renderToDocument("# Hi", { title: long });
+    const match = html.match(/<title>(.*?)<\/title>/);
+    expect(match[1].length).toBeLessThanOrEqual(500);
+  });
+
+  test("framework is case-insensitive", () => {
+    const html = renderToDocument("# Hi", { framework: "Spectre" });
+    expect(html).toContain("spectre");
+  });
+
+  test("unknown framework falls back to spectre", () => {
+    const html = renderToDocument("# Hi", { framework: "nonexistent" });
+    expect(html).toContain("spectre.min.css");
+  });
+
+  test("null/undefined frontmatter uses defaults", () => {
+    const html = renderToDocument("# Hi", null);
+    expect(html).toContain("Inter");
+    expect(html).toContain("font-size: 16px");
+    expect(html).toContain("spectre");
+  });
+
+  test("extra unknown fields are ignored", () => {
+    const fm = { title: "T", evil: "<script>alert(1)</script>" };
+    const html = renderToDocument("# Hi", fm);
+    expect(html).not.toContain("evil");
+    expect(html).not.toContain("<script>");
+  });
+});
+
+describe("validateFrontmatter", () => {
+  const { validateFrontmatter } = require("../core/render");
+
+  test("returns frozen object", () => {
+    const fm = validateFrontmatter({ title: "Test" });
+    expect(Object.isFrozen(fm)).toBe(true);
+  });
+
+  test("contains exactly the six expected keys", () => {
+    const fm = validateFrontmatter({});
+    expect(Object.keys(fm).sort()).toEqual([
+      "font", "fontSize", "fontWeight", "framework", "lineHeight", "title"
+    ]);
+  });
+
+  test("non-string font is coerced and sanitized", () => {
+    const fm = validateFrontmatter({ font: 12345 });
+    expect(fm.font).toBe("12345");
+  });
+
+  test("font with special chars is stripped", () => {
+    const fm = validateFrontmatter({ font: "Inter<script>alert(1)</script>" });
+    expect(fm.font).toBe("Interscriptalert1script");
+  });
+
+  test("framework lowercased and validated", () => {
+    const fm = validateFrontmatter({ framework: "PICO" });
+    expect(fm.framework).toBe("pico");
+  });
+
+  test("numeric strings coerced correctly", () => {
+    const fm = validateFrontmatter({
+      fontSize: "24",
+      fontWeight: "700",
+      lineHeight: "2.0",
+    });
+    expect(fm.fontSize).toBe(24);
+    expect(fm.fontWeight).toBe(700);
+    expect(fm.lineHeight).toBe(2.0);
+  });
 });

@@ -36,38 +36,64 @@ const SANITIZE_OPTS = {
   disallowedTagsMode: "discard",
 };
 
-/* Sanitize a font name to safe characters only (prevents CSS injection) */
+/* ── Validation helpers ───────────────────────────────────────────────── */
+
+/** Strip to safe CSS font-name characters: letters, digits, spaces, hyphens */
 function sanitizeFontName(name) {
   return String(name).replace(/[^a-zA-Z0-9\s\-]/g, '').trim() || 'Inter';
 }
 
-/* Coerce a value to a safe number within bounds */
+/** Coerce to a finite number clamped between min and max */
 function safeNumber(val, fallback, min, max) {
   var n = parseFloat(val);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, n));
 }
 
+/** Validate framework key — must exist in FRAMEWORK_CSS, case-insensitive */
+function validateFramework(val) {
+  var key = String(val || '').trim().toLowerCase();
+  return FRAMEWORK_CSS[key] ? key : 'spectre';
+}
+
+/** Escape HTML entities in a string */
+function escapeHTML(str) {
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
 /**
- * Sanitize HTML produced by marked.parse().
- * Strips dangerous tags/attrs (script, iframe, event handlers, etc.)
+ * Validate and coerce all frontmatter fields before HTML interpolation.
+ * Returns a frozen object with only known, safe values.
  */
+function validateFrontmatter(fm) {
+  var f = fm || {};
+  var validated = {
+    title:      escapeHTML(String(f.title || '').slice(0, 500)),
+    framework:  validateFramework(f.framework),
+    font:       sanitizeFontName(f.font || 'Inter'),
+    fontSize:   safeNumber(f.fontSize, 16, 8, 72),
+    fontWeight: safeNumber(f.fontWeight, 400, 100, 900),
+    lineHeight: safeNumber(f.lineHeight, 1.6, 0.8, 4.0),
+  };
+  return Object.freeze(validated);
+}
+
+/* ── Sanitize HTML produced by marked.parse() ─────────────────────────── */
+
 function sanitizeHTML(raw) {
   return sanitize(raw, SANITIZE_OPTS);
 }
 
+/* ── Public API ───────────────────────────────────────────────────────── */
+
 /**
  * Returns a full HTML document string. No DOM access. Safe to call in Node or CF Workers.
  */
-function renderToDocument(markdown, frontmatter = {}) {
-  var title      = escapeHTML(frontmatter.title || '');
-  var framework  = String(frontmatter.framework || 'spectre');
-  var font       = sanitizeFontName(frontmatter.font || 'Inter');
-  var fontSize   = safeNumber(frontmatter.fontSize, 16, 8, 72);
-  var fontWeight = safeNumber(frontmatter.fontWeight, 400, 100, 900);
-  var lineHeight = safeNumber(frontmatter.lineHeight, 1.6, 0.8, 4.0);
+function renderToDocument(markdown, frontmatter) {
+  var fm = validateFrontmatter(frontmatter);
 
-  var cssUrl = FRAMEWORK_CSS[framework] || FRAMEWORK_CSS.spectre;
+  var cssUrl = FRAMEWORK_CSS[fm.framework];
   var body   = sanitizeHTML(marked.parse(markdown));
 
   return `<!DOCTYPE html>
@@ -75,16 +101,16 @@ function renderToDocument(markdown, frontmatter = {}) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title}</title>
+  <title>${fm.title}</title>
   <link rel="stylesheet" href="${cssUrl}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(font)}:wght@${fontWeight}&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fm.font)}:wght@${fm.fontWeight}&display=swap" rel="stylesheet">
   <style>
     body {
-      font-family: '${font}', sans-serif;
-      font-size: ${fontSize}px;
-      font-weight: ${fontWeight};
-      line-height: ${lineHeight};
+      font-family: '${fm.font}', sans-serif;
+      font-size: ${fm.fontSize}px;
+      font-weight: ${fm.fontWeight};
+      line-height: ${fm.lineHeight};
     }
   </style>
 </head>
@@ -102,9 +128,8 @@ function renderToFragment(markdown) {
   return marked.parse(markdown);
 }
 
-function escapeHTML(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-module.exports = { renderToDocument, renderToFragment, sanitizeHTML, FRAMEWORK_CSS };
+module.exports = {
+  renderToDocument, renderToFragment, sanitizeHTML,
+  validateFrontmatter, escapeHTML,
+  FRAMEWORK_CSS,
+};
