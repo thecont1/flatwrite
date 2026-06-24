@@ -100,7 +100,10 @@ module.exports = async function handler(req, res) {
   /* API routes */
   if (url === "/api/share"  && req.method === "POST") return handleShare(req, res);
   if (url === "/api/s"      && req.method === "GET")  return handleFetch(req, res);
-  if (url === "/api/render" && req.method === "POST") return handleRender(req, res);
+  if (url === "/api/render") {
+    if (req.method === "POST") return handleRender(req, res);
+    return json(res, 405, { error: "POST only" });
+  }
 
   /* Static files */
   serveStatic(req, res);
