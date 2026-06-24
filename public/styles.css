@@ -411,9 +411,11 @@ body {
 /* ---------- Component insert modal (App surface) ---------- */
 .comp-modal-overlay {
   position: fixed;
-  top: 80px;
-  right: 24px;
+  inset: 0;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
 
@@ -2438,14 +2440,21 @@ body {
 
 .load-modal-overlay {
   position: fixed;
-  top: 80px;
-  right: 24px;
+  inset: 0;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
 
 .load-modal-overlay.hidden {
   display: none;
+}
+
+.load-modal-overlay:not(.hidden) {
+  pointer-events: auto;
+  background: rgba(45, 42, 62, 0.25);
 }
 
 .load-modal {
