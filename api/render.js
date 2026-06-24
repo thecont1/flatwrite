@@ -4,13 +4,24 @@
 'use strict';
 const { renderToDocument } = require('../core/render');
 const { verify } = require('../core/auth');
+const { createRateLimiter } = require('../core/rate-limit');
 
 const MAX_BYTES = 512 * 1024;
+
+// 60 requests per minute per caller IP
+const limiter = createRateLimiter({ windowMs: 60_000, max: 60 });
 
 function json(res, status, obj) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(obj));
+}
+
+function getClientIp(req) {
+  // Vercel/CF: x-forwarded-for is the first entry
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket && req.socket.remoteAddress || 'unknown';
 }
 
 module.exports = async function handleRender(req, res) {
@@ -26,6 +37,19 @@ module.exports = async function handleRender(req, res) {
   const sig  = req.headers['x-render-signature'];
   const auth = verify(secret, 'POST', '/api/render', ts, sig);
   if (!auth.ok) return json(res, 401, { error: 'Unauthorized' });
+
+  /* Rate limit: sliding window per IP */
+  const ip = getClientIp(req);
+  const { allowed, remaining, resetMs } = limiter.check(ip);
+  if (!allowed) {
+    const retryAfter = Math.ceil(resetMs / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    res.setHeader('X-RateLimit-Limit', '60');
+    res.setHeader('X-RateLimit-Remaining', '0');
+    return json(res, 429, { error: 'Rate limit exceeded', retryAfter });
+  }
+  res.setHeader('X-RateLimit-Limit', '60');
+  res.setHeader('X-RateLimit-Remaining', String(remaining));
 
   /* Read body with size limit */
   let body;

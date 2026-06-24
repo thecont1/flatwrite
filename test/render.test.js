@@ -164,6 +164,66 @@ describe("api/render.js", () => {
     expect(res._status).toBe(413);
     expect(res._body.error).toContain("large");
   });
+
+  test("rate limit returns 429 with headers", async () => {
+    const { createRateLimiter } = require("../core/rate-limit");
+    const testLimiter = createRateLimiter({ windowMs: 60_000, max: 2 });
+    // Exhaust the limit
+    testLimiter.check("test-ip");
+    testLimiter.check("test-ip");
+    const third = testLimiter.check("test-ip");
+    expect(third.allowed).toBe(false);
+    expect(third.remaining).toBe(0);
+    testLimiter.reset();
+  });
+});
+
+// ── core/rate-limit.js ──────────────────────────────────────────────────
+
+describe("core/rate-limit.js", () => {
+  const { createRateLimiter } = require("../core/rate-limit");
+
+  test("allows requests within limit", () => {
+    const rl = createRateLimiter({ windowMs: 1000, max: 3 });
+    expect(rl.check("a").allowed).toBe(true);
+    expect(rl.check("a").allowed).toBe(true);
+    expect(rl.check("a").allowed).toBe(true);
+    rl.reset();
+  });
+
+  test("rejects requests over limit", () => {
+    const rl = createRateLimiter({ windowMs: 1000, max: 2 });
+    rl.check("b");
+    rl.check("b");
+    const result = rl.check("b");
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
+    rl.reset();
+  });
+
+  test("different keys are independent", () => {
+    const rl = createRateLimiter({ windowMs: 1000, max: 1 });
+    rl.check("x");
+    expect(rl.check("x").allowed).toBe(false);
+    expect(rl.check("y").allowed).toBe(true);
+    rl.reset();
+  });
+
+  test("window expiry allows new requests", async () => {
+    const rl = createRateLimiter({ windowMs: 50, max: 1 });
+    rl.check("z");
+    expect(rl.check("z").allowed).toBe(false);
+    await new Promise(r => setTimeout(r, 60));
+    expect(rl.check("z").allowed).toBe(true);
+    rl.reset();
+  });
+
+  test("reset clears all state", () => {
+    const rl = createRateLimiter({ windowMs: 1000, max: 1 });
+    rl.check("w");
+    rl.reset();
+    expect(rl.check("w").allowed).toBe(true);
+  });
 });
 
 // ── core/auth.js ────────────────────────────────────────────────────────
