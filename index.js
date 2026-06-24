@@ -73,6 +73,36 @@ async function handleFetch(req, res) {
   } catch { return json(res, 502, { error: "upstream_error" }); }
 }
 
+/* ── API: POST /api/render ──────────────────────────────────────────────── */
+const { renderToDocument } = require("./core/render");
+
+async function handleRender(req, res) {
+  const internalKey = req.headers["x-internal-key"];
+  if (internalKey !== process.env.INTERNAL_RENDER_KEY) {
+    return json(res, 401, { error: "Unauthorized" });
+  }
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "POST only" });
+  }
+
+  let body;
+  try { body = await readBody(req); } catch { return json(res, 400, { error: "Bad body" }); }
+
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: "Invalid JSON" }); }
+
+  const { markdown = "", ...frontmatter } = parsed;
+  if (!markdown) {
+    return json(res, 400, { error: "markdown field is required" });
+  }
+
+  const html = renderToDocument(markdown, frontmatter);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.statusCode = 200;
+  res.end(html);
+}
+
 /* ── Static file server ─────────────────────────────────────────────────── */
 function serveStatic(req, res) {
   const url = req.url.split("?")[0];
@@ -103,8 +133,9 @@ module.exports = async function handler(req, res) {
   const url = req.url.split("?")[0];
 
   /* API routes */
-  if (url === "/api/share" && req.method === "POST") return handleShare(req, res);
-  if (url === "/api/s" && req.method === "GET")       return handleFetch(req, res);
+  if (url === "/api/share"  && req.method === "POST") return handleShare(req, res);
+  if (url === "/api/s"      && req.method === "GET")  return handleFetch(req, res);
+  if (url === "/api/render" && req.method === "POST") return handleRender(req, res);
 
   /* Static files */
   serveStatic(req, res);

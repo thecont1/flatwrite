@@ -143,7 +143,7 @@ describe("renderPreview — Paged.js integration", () => {
     expect(body).toContain("body.engine-none");
   });
   test("still renders markdown", () => {
-    expect(body).toContain("marked.parse");
+    expect(body).toContain("renderToFragment");
   });
 });
 
