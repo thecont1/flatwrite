@@ -1,0 +1,4 @@
+name = "flatwrite-render"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+route = { pattern = "render.flatwrite.md/*", zone_name = "flatwrite.md" }
