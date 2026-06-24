@@ -1,25 +1,34 @@
-// api/render.js
+// api/render.js — canonical /api/render handler
+// Uses only standard Node.js http.ServerResponse methods so it works
+// both in Vercel's runtime and the custom server (index.js).
 'use strict';
 const { renderToDocument } = require('../core/render');
 const { verify } = require('../core/auth');
 
-module.exports = async (req, res) => {
+const MAX_BYTES = 512 * 1024;
+
+function json(res, status, obj) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(obj));
+}
+
+module.exports = async function handleRender(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'POST only' });
+    return json(res, 405, { error: 'POST only' });
   }
 
   /* HMAC auth: constant-time verify + 5-min replay window */
   const secret = process.env.INTERNAL_RENDER_KEY;
-  if (!secret) return res.status(500).json({ error: 'Server misconfigured' });
+  if (!secret) return json(res, 500, { error: 'Server misconfigured' });
 
   const ts   = req.headers['x-render-timestamp'];
   const sig  = req.headers['x-render-signature'];
   const auth = verify(secret, 'POST', '/api/render', ts, sig);
-  if (!auth.ok) return res.status(401).json({ error: 'Unauthorized' });
+  if (!auth.ok) return json(res, 401, { error: 'Unauthorized' });
 
-  // Read body with 512 KB limit
-  const MAX_BYTES = 512 * 1024;
-  let body = '';
+  /* Read body with size limit */
+  let body;
   try {
     body = await new Promise((resolve, reject) => {
       let data = '';
@@ -29,31 +38,32 @@ module.exports = async (req, res) => {
         if (total > MAX_BYTES) { reject(new Error('Payload too large')); req.destroy(); return; }
         data += chunk;
       });
-      req.on('end', () => { resolve(data); });
-      req.on('error', (err) => { reject(err); });
+      req.on('end', () => resolve(data));
+      req.on('error', reject);
     });
   } catch (e) {
     const status = e.message === 'Payload too large' ? 413 : 400;
     const error  = e.message === 'Payload too large' ? 'Payload too large' : 'Failed to read request body';
-    return res.status(status).json({ error });
+    return json(res, status, { error });
   }
 
   let parsed;
-  try {
-    parsed = JSON.parse(body);
-  } catch (e) {
-    return res.status(400).json({ error: 'Invalid JSON' });
+  try { parsed = JSON.parse(body); } catch {
+    return json(res, 400, { error: 'Invalid JSON' });
   }
 
   const { markdown = '', ...frontmatter } = parsed;
-
   if (!markdown) {
-    return res.status(400).json({ error: 'markdown field is required' });
+    return json(res, 400, { error: 'markdown field is required' });
   }
 
-  const html = renderToDocument(markdown, frontmatter);
-
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'private, no-store');
-  return res.status(200).send(html);
+  try {
+    const html = renderToDocument(markdown, frontmatter);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.statusCode = 200;
+    res.end(html);
+  } catch (err) {
+    return json(res, 500, { error: 'Render failed: ' + err.message });
+  }
 };

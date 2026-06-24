@@ -1,7 +1,7 @@
 /* Vercel Node.js root handler — serves public/ + API routes */
 const fs = require("fs");
 const path = require("path");
-const { verify } = require("./core/auth");
+const handleRender = require("./api/render");
 
 const MIME = {
   ".html": "text/html",
@@ -17,20 +17,10 @@ const MIME = {
 };
 
 /* ── Read raw request body ──────────────────────────────────────────────── */
-function readBody(req, maxBytes) {
-  const limit = maxBytes || Infinity;
+function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
-    let total = 0;
-    req.on("data", (chunk) => {
-      total += chunk.length;
-      if (total > limit) {
-        reject(new Error("Payload too large"));
-        req.destroy();
-        return;
-      }
-      data += chunk;
-    });
+    req.on("data", (chunk) => { data += chunk; });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
@@ -82,42 +72,6 @@ async function handleFetch(req, res) {
     if (content.indexOf("\0") !== -1) return json(res, 422, { error: "invalid_content" });
     return json(res, 200, { content });
   } catch { return json(res, 502, { error: "upstream_error" }); }
-}
-
-/* ── API: POST /api/render ──────────────────────────────────────────────── */
-
-async function handleRender(req, res) {
-  /* HMAC auth: constant-time verify + 5-min replay window */
-  const secret = process.env.INTERNAL_RENDER_KEY;
-  if (!secret) return json(res, 500, { error: "Server misconfigured" });
-
-  const ts   = req.headers["x-render-timestamp"];
-  const sig  = req.headers["x-render-signature"];
-  const auth = verify(secret, "POST", "/api/render", ts, sig);
-  if (!auth.ok) return json(res, 401, { error: "Unauthorized" });
-
-  let body;
-  try { body = await readBody(req, 512 * 1024); } catch (e) {
-    if (e.message === "Payload too large") return json(res, 413, { error: "Payload too large" });
-    return json(res, 400, { error: "Bad body" });
-  }
-  try { parsed = JSON.parse(body); } catch { return json(res, 400, { error: "Invalid JSON" }); }
-
-  const { markdown = "", ...frontmatter } = parsed;
-  if (!markdown) {
-    return json(res, 400, { error: "markdown field is required" });
-  }
-
-  try {
-    const { renderToDocument } = require("./core/render");
-    const html = renderToDocument(markdown, frontmatter);
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "private, no-store");
-    res.statusCode = 200;
-    res.end(html);
-  } catch (err) {
-    return json(res, 500, { error: "Render failed: " + err.message });
-  }
 }
 
 /* ── Static file server ─────────────────────────────────────────────────── */

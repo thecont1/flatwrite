@@ -33,6 +33,17 @@ function mockRes() {
   res.setHeader = (k, v) => { res._headers[k] = v; };
   res.json = (d) => { res._body = d; return res; };
   res.send = (d) => { res._body = d; return res; };
+  res.end = (d) => {
+    if (typeof d === "string") {
+      try { res._body = JSON.parse(d); } catch { res._body = d; }
+    } else if (d) { res._body = d; }
+    return res;
+  };
+  // Keep _status in sync when handler uses res.statusCode directly
+  Object.defineProperty(res, "statusCode", {
+    set(v) { res._status = v; },
+    get() { return res._status; },
+  });
   return res;
 }
 
