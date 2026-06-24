@@ -4,6 +4,7 @@
 'use strict';
 const { renderToDocument } = require('../core/render');
 const { verify } = require('../core/auth');
+const { readBody } = require('../core/io');
 const { createRateLimiter } = require('../core/rate-limit');
 
 const MAX_BYTES = 512 * 1024;
@@ -18,7 +19,6 @@ function json(res, status, obj) {
 }
 
 function getClientIp(req) {
-  // Vercel/CF: x-forwarded-for is the first entry
   const fwd = req.headers['x-forwarded-for'];
   if (fwd) return String(fwd).split(',')[0].trim();
   return req.socket && req.socket.remoteAddress || 'unknown';
@@ -54,17 +54,7 @@ module.exports = async function handleRender(req, res) {
   /* Read body with size limit */
   let body;
   try {
-    body = await new Promise((resolve, reject) => {
-      let data = '';
-      let total = 0;
-      req.on('data', (chunk) => {
-        total += chunk.length;
-        if (total > MAX_BYTES) { reject(new Error('Payload too large')); req.destroy(); return; }
-        data += chunk;
-      });
-      req.on('end', () => resolve(data));
-      req.on('error', reject);
-    });
+    body = await readBody(req, MAX_BYTES);
   } catch (e) {
     const status = e.message === 'Payload too large' ? 413 : 400;
     const error  = e.message === 'Payload too large' ? 'Payload too large' : 'Failed to read request body';

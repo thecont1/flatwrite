@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const handleRender = require("./api/render");
+const { readBody } = require("./core/io");
 
 const MIME = {
   ".html": "text/html",
@@ -16,16 +17,6 @@ const MIME = {
   ".woff2": "font/woff2",
 };
 
-/* ── Read raw request body ──────────────────────────────────────────────── */
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => { data += chunk; });
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
-}
-
 /* ── JSON response helper ───────────────────────────────────────────────── */
 function json(res, status, obj) {
   res.statusCode = status;
@@ -39,7 +30,10 @@ async function handleShare(req, res) {
   if (!BASE) return json(res, 500, { error: "Server configuration error" });
 
   let body;
-  try { body = await readBody(req); } catch { return json(res, 400, { error: "Bad body" }); }
+  try { body = await readBody(req, 512 * 1024); } catch (e) {
+    if (e.message === "Payload too large") return json(res, 413, { error: "Payload too large" });
+    return json(res, 400, { error: "Bad body" });
+  }
   if (!body) return json(res, 400, { error: "Empty content" });
 
   try {
