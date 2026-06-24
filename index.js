@@ -1,6 +1,7 @@
 /* Vercel Node.js root handler — serves public/ + API routes */
 const fs = require("fs");
 const path = require("path");
+const { verify } = require("./core/auth");
 
 const MIME = {
   ".html": "text/html",
@@ -74,13 +75,8 @@ async function handleFetch(req, res) {
 }
 
 /* ── API: POST /api/render ──────────────────────────────────────────────── */
-const { verify } = require("./core/auth");
 
 async function handleRender(req, res) {
-  if (req.method !== "POST") {
-    return json(res, 405, { error: "POST only" });
-  }
-
   /* HMAC auth: constant-time verify + 5-min replay window */
   const secret = process.env.INTERNAL_RENDER_KEY;
   if (!secret) return json(res, 500, { error: "Server misconfigured" });
