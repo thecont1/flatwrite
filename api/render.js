@@ -78,6 +78,7 @@ module.exports = async function handleRender(req, res) {
     res.statusCode = 200;
     res.end(html);
   } catch (err) {
-    return json(res, 500, { error: 'Render failed: ' + err.message });
+    console.error('[render]', err);
+    return json(res, 500, { error: 'Render failed' });
   }
 };
