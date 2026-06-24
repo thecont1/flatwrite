@@ -112,7 +112,7 @@ async function handleRender(req, res) {
     const { renderToDocument } = require("./core/render");
     const html = renderToDocument(markdown, frontmatter);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cache-Control", "private, no-store");
     res.statusCode = 200;
     res.end(html);
   } catch (err) {
