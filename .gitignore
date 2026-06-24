@@ -1,2 +1,11 @@
 node_modules/
 bun.lock
+.vercel
+.env*.local
+dist/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
