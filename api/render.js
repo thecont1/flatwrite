@@ -129,11 +129,11 @@ module.exports = async function handleRender(req, res) {
   }
 
   try {
-    const html = await renderToDocument(renderMarkdown, frontmatter);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const { head, body } = await renderToDocument(renderMarkdown, frontmatter);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'private, no-store');
     res.statusCode = 200;
-    res.end(html);
+    res.end(JSON.stringify({ head, body }));
   } catch (err) {
     console.error('[render]', err);
     return json(res, 500, { error: 'Render failed: ' + err.message });

@@ -76,19 +76,19 @@ describe("api/render.js", () => {
     process.env.INTERNAL_RENDER_KEY = SECRET;
     await handler(req, res);
     expect(res._status).toBe(200);
-    expect(typeof res._body).toBe("string");
-    expect(res._body).toContain("<head>");
-    expect(res._body).toContain("</head>");
-    expect(res._body).toContain('<body class="fw-render">');
-    expect(res._body).toContain("</body>");
-    expect(res._body).toContain("<main>");
-    expect(res._body).toContain(".fw-render");
-    expect(res._body).toContain("<h1>Hello</h1>");
-    expect(res._body).not.toContain("<!DOCTYPE html>");
-    expect(res._body).not.toContain("<link ");
-    expect(res._body).not.toContain("<meta ");
-    expect(res._body).not.toContain("<title>");
-    expect(res._body).not.toContain("<base ");
+    expect(res._body).toHaveProperty("head");
+    expect(res._body).toHaveProperty("body");
+    expect(res._body.head).toContain("<head>");
+    expect(res._body.head).toContain("</head>");
+    expect(res._body.body).toContain('<body class="fw-render">');
+    expect(res._body.body).toContain("</body>");
+    expect(res._body.body).toContain("<main>");
+    expect(res._body.head).toContain(".fw-render");
+    expect(res._body.body).toContain("<h1>Hello</h1>");
+    expect(res._body.head).not.toContain("<link ");
+    expect(res._body.head).not.toContain("<meta ");
+    expect(res._body.head).not.toContain("<title>");
+    expect(res._body.head).not.toContain("<base ");
   });
 
   test("scale indices are converted to absolute values", async () => {
@@ -105,9 +105,9 @@ describe("api/render.js", () => {
     process.env.INTERNAL_RENDER_KEY = SECRET;
     await handler(req, res);
     expect(res._status).toBe(200);
-    expect(res._body).toContain("font-size: 17px");
-    expect(res._body).toContain("font-weight: 600");
-    expect(res._body).toContain("line-height: 2");
+    expect(res._body.head).toContain("font-size: 17px");
+    expect(res._body.head).toContain("font-weight: 600");
+    expect(res._body.head).toContain("line-height: 2");
   });
 
   test("missing markdown → 400", async () => {
@@ -390,91 +390,92 @@ describe("sanitizeHTML", () => {
 describe("renderToDocument", () => {
   const { renderToDocument } = require("../core/render");
 
-  test("returns a head+body fragment", async () => {
+  test("returns a head+body object", async () => {
     const html = await renderToDocument("# Hi", { font: "Inter" });
-    expect(html).toContain("<head>");
-    expect(html).toContain("</head>");
-    expect(html).toContain('<body class="fw-render">');
-    expect(html).toContain("</body>");
-    expect(html).toContain("<main>");
-    expect(html).toContain(".fw-render");
-    expect(html).toContain("<h1>Hi</h1>");
-    expect(html).not.toContain("<!DOCTYPE html>");
-    expect(html).not.toContain("<link ");
-    expect(html).not.toContain("<meta ");
-    expect(html).not.toContain("<title>");
-    expect(html).not.toContain("<base ");
+    expect(html).toHaveProperty("head");
+    expect(html).toHaveProperty("body");
+    expect(html.head).toContain("<head>");
+    expect(html.head).toContain("</head>");
+    expect(html.body).toContain('<body class="fw-render">');
+    expect(html.body).toContain("</body>");
+    expect(html.body).toContain("<main>");
+    expect(html.head).toContain(".fw-render");
+    expect(html.body).toContain("<h1>Hi</h1>");
+    expect(html.head).not.toContain("<link ");
+    expect(html.head).not.toContain("<meta ");
+    expect(html.head).not.toContain("<title>");
+    expect(html.head).not.toContain("<base ");
   });
 
   test("XSS in markdown is stripped", async () => {
     const html = await renderToDocument('<img src=x onerror=alert(1)>');
-    expect(html).not.toContain("onerror");
+    expect(html.body).not.toContain("onerror");
   });
 
   test("font name is sanitized", async () => {
     const html = await renderToDocument("# Hi", { font: "Inter; background:url(js:alert(1))" });
-    expect(html).not.toContain("javascript:");
-    expect(html).toContain("Inter");
+    expect(html.head).not.toContain("javascript:");
+    expect(html.head).toContain("Inter");
   });
 
   test("scale indices produce absolute CSS", async () => {
     const html = await renderToDocument("# Hi", { size: 1, weight: 1, line: 1 });
-    expect(html).toContain("font-size: 17px");
-    expect(html).toContain("font-weight: 600");
-    expect(html).toContain("line-height: 2");
+    expect(html.head).toContain("font-size: 17px");
+    expect(html.head).toContain("font-weight: 600");
+    expect(html.head).toContain("line-height: 2");
   });
 
   test("absolute values still work", async () => {
     const html = await renderToDocument("# Hi", { fontSize: 24, fontWeight: 700, lineHeight: 2.0 });
-    expect(html).toContain("font-size: 24px");
-    expect(html).toContain("font-weight: 700");
-    expect(html).toContain("line-height: 2");
+    expect(html.head).toContain("font-size: 24px");
+    expect(html.head).toContain("font-weight: 700");
+    expect(html.head).toContain("line-height: 2");
   });
 
   test("fontSize is clamped to 8-72", async () => {
     const html = await renderToDocument("# Hi", { fontSize: "999" });
-    expect(html).toContain("font-size: 72px");
+    expect(html.head).toContain("font-size: 72px");
   });
 
   test("fontWeight is clamped to 100-900", async () => {
     const html = await renderToDocument("# Hi", { fontWeight: "9999" });
-    expect(html).toContain("font-weight: 900");
+    expect(html.head).toContain("font-weight: 900");
   });
 
   test("fractional values are rounded in CSS output", async () => {
     const html = await renderToDocument("# Hi", { fontSize: "16.7", lineHeight: "1.65" });
-    expect(html).toContain("font-size: 17px");
-    expect(html).toContain("line-height: 1.7");
+    expect(html.head).toContain("font-size: 17px");
+    expect(html.head).toContain("line-height: 1.7");
   });
 
   test("lineHeight is clamped to 0.8-4.0", async () => {
     const html = await renderToDocument("# Hi", { lineHeight: "10" });
-    expect(html).toContain("line-height: 4");
+    expect(html.head).toContain("line-height: 4");
   });
 
   test("surfaceMode: app is ignored", async () => {
     const html = await renderToDocument("# Hi", { surfaceMode: "app", framework: "spectre" });
-    expect(html).not.toContain("spectre");
-    expect(html).toContain("font-size:");
+    expect(html.head).not.toContain("spectre");
+    expect(html.head).toContain("font-size:");
   });
 
   test("null/undefined frontmatter uses defaults", async () => {
     const html = await renderToDocument("# Hi", null);
-    expect(html).toContain("Inter");
-    expect(html).toContain("font-size: 16px");
+    expect(html.head).toContain("Inter");
+    expect(html.head).toContain("font-size: 16px");
   });
 
   test("extra unknown fields are ignored", async () => {
     const fm = { title: "T", evil: "<script>alert(1)</script>" };
     const html = await renderToDocument("# Hi", fm);
-    expect(html).not.toContain("evil");
-    expect(html).not.toContain("<script>");
+    expect(html.head).not.toContain("evil");
+    expect(html.head).not.toContain("<script>");
   });
 
   test("inlined font data URI is present for known font", async () => {
     const html = await renderToDocument("# Hi", { font: "Unbounded" });
-    expect(html).toContain("@font-face");
-    expect(html).toContain("data:font/woff2;base64,");
+    expect(html.head).toContain("@font-face");
+    expect(html.head).toContain("data:font/woff2;base64,");
   });
 });
 

@@ -90,10 +90,9 @@ function resolveRenderOptions(fm) {
 /* ── Public API ───────────────────────────────────────────────────────── */
 
 /**
- * Returns a self-contained HTML fragment (head + body) that the caller can embed.
- * The fragment contains:
- *   - <head> with inlined style/font declarations (and an optional engine script)
- *   - <body class="fw-render"> with the rendered markdown wrapped in <main>
+ * Returns a structured document fragment with separate head and body strings.
+ * The head contains inlined style/font declarations (and an optional engine script).
+ * The body has the rendered markdown wrapped in <main> and class="fw-render".
  *
  * No external <link> tags, <meta>, <title>, or <base> are emitted.
  */
@@ -133,7 +132,7 @@ ${body}
   </main>
 </body>`;
 
-  return `${head}\n${bodyTag}`;
+  return { head, body: bodyTag };
 }
 
 /**
