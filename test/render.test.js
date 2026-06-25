@@ -122,6 +122,34 @@ describe("api/render.js", () => {
     expect(res._body.error).toContain("markdown");
   });
 
+  test("disallowed markdownUrl host → 502", async () => {
+    const req = mockReq({
+      headers: hmacHeaders(SECRET, "POST", "/api/render"),
+      body: {
+        markdownUrl: "https://evil.example.com/README.md",
+      },
+    });
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(502);
+    expect(res._body.error).toContain("Disallowed");
+  });
+
+  test("non-http markdownUrl → 502", async () => {
+    const req = mockReq({
+      headers: hmacHeaders(SECRET, "POST", "/api/render"),
+      body: {
+        markdownUrl: "ftp://raw.githubusercontent.com/README.md",
+      },
+    });
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(502);
+    expect(res._body.error).toContain("URL must be http or https");
+  });
+
   test("missing signature headers → 401", async () => {
     const req = mockReq({
       headers: {},

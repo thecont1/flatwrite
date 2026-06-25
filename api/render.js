@@ -25,15 +25,24 @@ function getClientIp(req) {
   return req.socket && req.socket.remoteAddress || 'unknown';
 }
 
+const ALLOWED_MARKDOWN_HOSTS = new Set([
+  'raw.githubusercontent.com',
+  'raw.gitlab.com',
+  'bitbucket.org',
+]);
+
 /**
- * Fetch markdown from a remote URL. Only http/https are allowed.
- * Enforces a byte cap and a 10-second timeout.
+ * Fetch markdown from a remote URL. Only http/https are allowed and the host
+ * must be in the allowlist. Enforces a byte cap and a 10-second timeout.
  */
 async function fetchMarkdownUrl(url) {
   let parsed;
   try { parsed = new URL(url); } catch { return { ok: false, error: 'Invalid URL' }; }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { ok: false, error: 'URL must be http or https' };
+  }
+  if (!ALLOWED_MARKDOWN_HOSTS.has(parsed.hostname)) {
+    return { ok: false, error: 'Disallowed markdownUrl host' };
   }
 
   const controller = new AbortController();
