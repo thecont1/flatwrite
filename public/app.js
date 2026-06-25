@@ -123,6 +123,9 @@
       "zoom: " + zoomStep,
       "---"
     ];
+    if (currentMarkdownUrl) {
+      lines.splice(lines.length - 1, 0, "url: " + currentMarkdownUrl);
+    }
     return lines.join("\n") + "\n";
   }
 
@@ -638,44 +641,66 @@
   var initialEditorContent = "";
   var contentWidth = 780;
   var githubBaseUrl = "";
+  var currentMarkdownUrl = "";
 
-  function rewriteGitHubUrl(url) {
-    var m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
-    if (m) {
-      githubBaseUrl = "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/";
-      return "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/" + m[4];
+  function setMarkdownUrl(url) {
+    currentMarkdownUrl = url || "";
+    if (!currentMarkdownUrl) {
+      githubBaseUrl = "";
+      return;
     }
-    githubBaseUrl = "";
-    return url;
+    var m = currentMarkdownUrl.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+    if (m) {
+      var raw = "https://raw.githubusercontent.com/" + m[1] + "/" + m[2] + "/" + m[3] + "/" + m[4];
+      githubBaseUrl = raw.replace(/\/[^/]*$/, '/');
+      currentMarkdownUrl = raw;
+      return;
+    }
+    if (/^https?:\/\//.test(currentMarkdownUrl)) {
+      try {
+        githubBaseUrl = new URL('.', currentMarkdownUrl).href;
+      } catch (e) {
+        githubBaseUrl = "";
+      }
+    } else {
+      githubBaseUrl = "";
+    }
   }
 
-  function rewriteRelativeUrls(md) {
-    if (!githubBaseUrl) return md;
+  function rewriteGitHubUrl(url) {
+    setMarkdownUrl(url);
+    return currentMarkdownUrl || url;
+  }
 
-    function resolveAsset(src) {
-      if (/^https?:\/\//.test(src) || /^data:/.test(src)) return null;
+  function resolveRelativeUrls(html) {
+    if (!githubBaseUrl) return html;
+
+    function resolveUrl(url) {
+      if (!url) return url;
+      if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
+      if (/^\/\//i.test(url)) return url;
       try {
-        var resolved = new URL(src, githubBaseUrl).href;
-        if (resolved.indexOf("?") === -1) resolved += "?raw=true";
-        return resolved;
-      } catch (e) { return null; }
+        return new URL(url, githubBaseUrl).href;
+      } catch (e) {
+        return url;
+      }
     }
 
-    /* Markdown image syntax: ![alt](src) */
-    md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (match, alt, src) {
-      var r = resolveAsset(src);
-      return r ? "![" + alt + "](" + r + ")" : match;
-    });
-
-    /* HTML img/video/source: <tag src="..."> and <tag src='...'> */
-    md = md.replace(/(<(?:img|video|source)\s[^>]*?)src=([\"'])([^\"']+)\2/gi,
+    html = html.replace(/(<(?:img|video|source)\s[^>]*?)src=(["'])([^"']+)\2/gi,
       function (match, prefix, quote, src) {
-        var r = resolveAsset(src);
-        return r ? prefix + "src=" + quote + r + quote : match;
+        var r = resolveUrl(src);
+        return r !== src ? prefix + "src=" + quote + r + quote : match;
       }
     );
 
-    return md;
+    html = html.replace(/(<a\s[^>]*?)href=(["'])([^"']+)\2/gi,
+      function (match, prefix, quote, href) {
+        var r = resolveUrl(href);
+        return r !== href ? prefix + "href=" + quote + r + quote : match;
+      }
+    );
+
+    return html;
   }
 
   function isEditorDirty() {
@@ -697,6 +722,8 @@
         if (!ok) return;
       }
       setEditorContent(reader.result);
+      currentMarkdownUrl = "";
+      githubBaseUrl = "";
     };
     reader.readAsText(file);
   }
@@ -776,6 +803,7 @@
         /* Apply preferences from YAML front-matter if present */
         if (parsed.frontmatter) {
           var fm = parsed.frontmatter;
+          if (fm.url) setMarkdownUrl(fm.url);
           if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
             currentDocEngine = fm.docEngine;
           }
@@ -1748,7 +1776,7 @@
       var fw = APP_FRAMEWORKS[currentAppFramework];
       var contentForRender = stripYamlFrontMatter(editor.value || "");
       var rawHTML = renderToFragment(contentForRender);
-      var renderedHTML = sanitizeHTML(rawHTML);
+      var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
       var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -1855,7 +1883,7 @@
     var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(rawHTML);
+    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -2524,7 +2552,7 @@
       var fw = APP_FRAMEWORKS[currentAppFramework];
       var contentForRender = stripYamlFrontMatter(editor.value || "");
       var rawHTML = renderToFragment(contentForRender);
-      var renderedHTML = sanitizeHTML(rawHTML);
+      var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
       var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -2588,7 +2616,7 @@
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(rawHTML);
+    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -2722,7 +2750,7 @@
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(rawHTML);
+    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var scale = SIZE_SCALE[String(sizeStep)] || 1;
     var weight = WEIGHT_MAP[String(weightStep)] || 400;
     var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
