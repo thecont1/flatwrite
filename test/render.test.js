@@ -60,18 +60,54 @@ const handler = require("../api/render.js");
 // ── api/render.js ───────────────────────────────────────────────────────
 
 describe("api/render.js", () => {
-  test("valid HMAC → 200 with <!DOCTYPE html>", async () => {
+  test("valid HMAC → 200 with head+body fragment", async () => {
     const req = mockReq({
       headers: hmacHeaders(SECRET, "POST", "/api/render"),
-      body: { markdown: "# Hello\n\nWorld", title: "Test", framework: "spectre" },
+      body: {
+        markdown: "# Hello\n\nWorld",
+        title: "Test",
+        font: "Inter",
+        size: 0,
+        weight: 0,
+        line: 0,
+      },
     });
     const res = mockRes();
     process.env.INTERNAL_RENDER_KEY = SECRET;
     await handler(req, res);
     expect(res._status).toBe(200);
     expect(typeof res._body).toBe("string");
-    expect(res._body).toContain("<!DOCTYPE html>");
+    expect(res._body).toContain("<head>");
+    expect(res._body).toContain("</head>");
+    expect(res._body).toContain('<body class="fw-render">');
+    expect(res._body).toContain("</body>");
+    expect(res._body).toContain("<main>");
+    expect(res._body).toContain(".fw-render");
     expect(res._body).toContain("<h1>Hello</h1>");
+    expect(res._body).not.toContain("<!DOCTYPE html>");
+    expect(res._body).not.toContain("<link ");
+    expect(res._body).not.toContain("<meta ");
+    expect(res._body).not.toContain("<title>");
+    expect(res._body).not.toContain("<base ");
+  });
+
+  test("scale indices are converted to absolute values", async () => {
+    const req = mockReq({
+      headers: hmacHeaders(SECRET, "POST", "/api/render"),
+      body: {
+        markdown: "# Hello",
+        size: 1,
+        weight: 1,
+        line: 1,
+      },
+    });
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(200);
+    expect(res._body).toContain("font-size: 17px");
+    expect(res._body).toContain("font-weight: 600");
+    expect(res._body).toContain("line-height: 2");
   });
 
   test("missing markdown → 400", async () => {
@@ -279,16 +315,15 @@ describe("core/auth.js", () => {
   });
 });
 
-// ── core/render.js sanitization ─────────────────────────────────────────
+// ── core/render.js ──────────────────────────────────────────────────────
 
 describe("core/render.js exports", () => {
   test("exports are complete", () => {
-    const { renderToDocument, renderToFragment, sanitizeHTML, FRAMEWORK_CSS } = require("../core/render");
+    const { renderToDocument, renderToFragment, sanitizeHTML, resolveRenderOptions } = require("../core/render");
     expect(typeof renderToDocument).toBe("function");
     expect(typeof renderToFragment).toBe("function");
     expect(typeof sanitizeHTML).toBe("function");
-    expect(typeof FRAMEWORK_CSS).toBe("object");
-    expect(FRAMEWORK_CSS.spectre).toContain("spectre");
+    expect(typeof resolveRenderOptions).toBe("function");
   });
 });
 
@@ -324,122 +359,125 @@ describe("sanitizeHTML", () => {
   });
 });
 
-describe("renderToDocument sanitization", () => {
+describe("renderToDocument", () => {
   const { renderToDocument } = require("../core/render");
 
-  test("XSS in markdown is stripped", () => {
-    const html = renderToDocument('<img src=x onerror=alert(1)>');
+  test("returns a head+body fragment", async () => {
+    const html = await renderToDocument("# Hi", { font: "Inter" });
+    expect(html).toContain("<head>");
+    expect(html).toContain("</head>");
+    expect(html).toContain('<body class="fw-render">');
+    expect(html).toContain("</body>");
+    expect(html).toContain("<main>");
+    expect(html).toContain(".fw-render");
+    expect(html).toContain("<h1>Hi</h1>");
+    expect(html).not.toContain("<!DOCTYPE html>");
+    expect(html).not.toContain("<link ");
+    expect(html).not.toContain("<meta ");
+    expect(html).not.toContain("<title>");
+    expect(html).not.toContain("<base ");
+  });
+
+  test("XSS in markdown is stripped", async () => {
+    const html = await renderToDocument('<img src=x onerror=alert(1)>');
     expect(html).not.toContain("onerror");
   });
 
-  test("XSS in title is escaped", () => {
-    const html = renderToDocument("# Hi", { title: "<script>alert(1)</script>" });
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
-  });
-
-  test("font name is sanitized", () => {
-    const html = renderToDocument("# Hi", { font: "Inter; background:url(js:alert(1))" });
+  test("font name is sanitized", async () => {
+    const html = await renderToDocument("# Hi", { font: "Inter; background:url(js:alert(1))" });
     expect(html).not.toContain("javascript:");
     expect(html).toContain("Inter");
   });
 
-  test("fontSize is clamped to 8-72", () => {
-    const html = renderToDocument("# Hi", { fontSize: "999" });
+  test("scale indices produce absolute CSS", async () => {
+    const html = await renderToDocument("# Hi", { size: 1, weight: 1, line: 1 });
+    expect(html).toContain("font-size: 17px");
+    expect(html).toContain("font-weight: 600");
+    expect(html).toContain("line-height: 2");
+  });
+
+  test("absolute values still work", async () => {
+    const html = await renderToDocument("# Hi", { fontSize: 24, fontWeight: 700, lineHeight: 2.0 });
+    expect(html).toContain("font-size: 24px");
+    expect(html).toContain("font-weight: 700");
+    expect(html).toContain("line-height: 2");
+  });
+
+  test("fontSize is clamped to 8-72", async () => {
+    const html = await renderToDocument("# Hi", { fontSize: "999" });
     expect(html).toContain("font-size: 72px");
   });
 
-  test("fontWeight is clamped to 100-900", () => {
-    const html = renderToDocument("# Hi", { fontWeight: "9999" });
+  test("fontWeight is clamped to 100-900", async () => {
+    const html = await renderToDocument("# Hi", { fontWeight: "9999" });
     expect(html).toContain("font-weight: 900");
   });
 
-  test("fractional values are rounded in CSS output", () => {
-    const html = renderToDocument("# Hi", { fontSize: "16.7", lineHeight: "1.65" });
+  test("fractional values are rounded in CSS output", async () => {
+    const html = await renderToDocument("# Hi", { fontSize: "16.7", lineHeight: "1.65" });
     expect(html).toContain("font-size: 17px");
     expect(html).toContain("line-height: 1.7");
   });
 
-  test("lineHeight is clamped to 0.8-4.0", () => {
-    const html = renderToDocument("# Hi", { lineHeight: "10" });
+  test("lineHeight is clamped to 0.8-4.0", async () => {
+    const html = await renderToDocument("# Hi", { lineHeight: "10" });
     expect(html).toContain("line-height: 4");
   });
 
-  test("non-string title is coerced safely", () => {
-    const html = renderToDocument("# Hi", { title: 12345 });
-    expect(html).toContain("<title>12345</title>");
+  test("surfaceMode: app is ignored", async () => {
+    const html = await renderToDocument("# Hi", { surfaceMode: "app", framework: "spectre" });
+    expect(html).not.toContain("spectre");
+    expect(html).toContain("font-size:");
   });
 
-  test("title is truncated at 500 chars", () => {
-    const long = "A".repeat(600);
-    const html = renderToDocument("# Hi", { title: long });
-    const match = html.match(/<title>(.*?)<\/title>/);
-    expect(match[1].length).toBeLessThanOrEqual(500);
-  });
-
-  test("framework is case-insensitive", () => {
-    const html = renderToDocument("# Hi", { framework: "Spectre" });
-    expect(html).toContain("spectre");
-  });
-
-  test("unknown framework falls back to spectre", () => {
-    const html = renderToDocument("# Hi", { framework: "nonexistent" });
-    expect(html).toContain("spectre.min.css");
-  });
-
-  test("null/undefined frontmatter uses defaults", () => {
-    const html = renderToDocument("# Hi", null);
+  test("null/undefined frontmatter uses defaults", async () => {
+    const html = await renderToDocument("# Hi", null);
     expect(html).toContain("Inter");
     expect(html).toContain("font-size: 16px");
-    expect(html).toContain("spectre");
   });
 
-  test("extra unknown fields are ignored", () => {
+  test("extra unknown fields are ignored", async () => {
     const fm = { title: "T", evil: "<script>alert(1)</script>" };
-    const html = renderToDocument("# Hi", fm);
+    const html = await renderToDocument("# Hi", fm);
     expect(html).not.toContain("evil");
     expect(html).not.toContain("<script>");
   });
+
+  test("inlined font data URI is present for known font", async () => {
+    const html = await renderToDocument("# Hi", { font: "Unbounded" });
+    expect(html).toContain("@font-face");
+    expect(html).toContain("data:font/woff2;base64,");
+  });
 });
 
-describe("validateFrontmatter", () => {
-  const { validateFrontmatter } = require("../core/render");
+describe("resolveRenderOptions", () => {
+  const { resolveRenderOptions } = require("../core/render");
 
-  test("returns frozen object", () => {
-    const fm = validateFrontmatter({ title: "Test" });
-    expect(Object.isFrozen(fm)).toBe(true);
+  test("returns plain object", () => {
+    const fm = resolveRenderOptions({ title: "Test" });
+    expect(typeof fm).toBe("object");
   });
 
-  test("contains exactly the six expected keys", () => {
-    const fm = validateFrontmatter({});
-    expect(Object.keys(fm).sort()).toEqual([
-      "font", "fontSize", "fontWeight", "framework", "lineHeight", "title"
-    ]);
+  test("contains expected doc keys", () => {
+    const fm = resolveRenderOptions({});
+    expect(Object.keys(fm).sort()).toContain("font");
+    expect(Object.keys(fm).sort()).toContain("fontSize");
+    expect(Object.keys(fm).sort()).toContain("fontWeight");
+    expect(Object.keys(fm).sort()).toContain("lineHeight");
   });
 
   test("non-string font is coerced and sanitized", () => {
-    const fm = validateFrontmatter({ font: 12345 });
+    const fm = resolveRenderOptions({ font: 12345 });
     expect(fm.font).toBe("12345");
   });
 
   test("font with special chars is stripped", () => {
-    const fm = validateFrontmatter({ font: "Inter<script>alert(1)</script>" });
+    const fm = resolveRenderOptions({ font: "Inter<script>alert(1)</script>" });
     expect(fm.font).toBe("Interscriptalert1script");
   });
 
-  test("framework lowercased and validated", () => {
-    const fm = validateFrontmatter({ framework: "PICO" });
-    expect(fm.framework).toBe("pico");
-  });
-
-  test("numeric strings coerced correctly", () => {
-    const fm = validateFrontmatter({
-      fontSize: "24",
-      fontWeight: "700",
-      lineHeight: "2.0",
-    });
-    expect(fm.fontSize).toBe(24);
-    expect(fm.fontWeight).toBe(700);
-    expect(fm.lineHeight).toBe(2.0);
+  test("scale indices take precedence over absolute values", () => {
+    const fm = resolveRenderOptions({ size: 0, fontSize: 999 });
+    expect(fm.fontSize).toBe(15);
   });
 });
