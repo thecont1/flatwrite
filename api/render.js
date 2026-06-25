@@ -8,6 +8,7 @@ const { readBody } = require('../core/io');
 const { createRateLimiter } = require('../core/rate-limit');
 
 const MAX_BYTES = 512 * 1024;
+const MAX_URL_BYTES = 1 * 1024 * 1024;
 
 // 60 requests per minute per caller IP
 const limiter = createRateLimiter({ windowMs: 60_000, max: 60 });
@@ -22,6 +23,43 @@ function getClientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
   if (fwd) return String(fwd).split(',')[0].trim();
   return req.socket && req.socket.remoteAddress || 'unknown';
+}
+
+/**
+ * Fetch markdown from a remote URL. Only http/https are allowed.
+ * Enforces a byte cap and a 10-second timeout.
+ */
+async function fetchMarkdownUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return { ok: false, error: 'Invalid URL' }; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { ok: false, error: 'URL must be http or https' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'Accept': 'text/markdown,text/plain,*/*' },
+      redirect: 'follow',
+    });
+    if (!resp.ok) return { ok: false, error: `Upstream returned ${resp.status}` };
+
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType && !contentType.match(/text\/(markdown|plain)|application\/octet-stream/)) {
+      // Allow unknown or binary-looking content only if the client explicitly requested it; otherwise
+      // this is a safety net against rendering HTML or other non-markdown payloads.
+    }
+
+    const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_URL_BYTES) return { ok: false, error: 'Markdown URL payload too large' };
+    return { ok: true, markdown: new TextDecoder('utf-8', { fatal: false }).decode(buffer) };
+  } catch (err) {
+    return { ok: false, error: err.name === 'AbortError' ? 'Fetch timeout' : 'Failed to fetch URL' };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 module.exports = async function handleRender(req, res) {
@@ -66,13 +104,23 @@ module.exports = async function handleRender(req, res) {
     return json(res, 400, { error: 'Invalid JSON' });
   }
 
-  const { markdown = '', ...frontmatter } = parsed;
-  if (!markdown) {
-    return json(res, 400, { error: 'markdown field is required' });
+  const { markdown, markdownUrl, ...frontmatter } = parsed;
+
+  let renderMarkdown = markdown;
+  if (markdownUrl) {
+    const fetched = await fetchMarkdownUrl(markdownUrl);
+    if (!fetched.ok) {
+      return json(res, 502, { error: `Failed to fetch markdownUrl: ${fetched.error}` });
+    }
+    renderMarkdown = fetched.markdown;
+  }
+
+  if (typeof renderMarkdown !== 'string' || !renderMarkdown) {
+    return json(res, 400, { error: 'Either markdown or markdownUrl is required' });
   }
 
   try {
-    const html = renderToDocument(markdown, frontmatter);
+    const html = renderToDocument(renderMarkdown, frontmatter);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'private, no-store');
     res.statusCode = 200;
