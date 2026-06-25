@@ -120,13 +120,13 @@ module.exports = async function handleRender(req, res) {
   }
 
   try {
-    const html = renderToDocument(renderMarkdown, frontmatter);
+    const html = await renderToDocument(renderMarkdown, frontmatter);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'private, no-store');
     res.statusCode = 200;
     res.end(html);
   } catch (err) {
     console.error('[render]', err);
-    return json(res, 500, { error: 'Render failed' });
+    return json(res, 500, { error: 'Render failed: ' + err.message });
   }
 };

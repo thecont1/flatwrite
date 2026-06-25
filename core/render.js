@@ -2,16 +2,14 @@
 'use strict';
 const { marked } = require('marked');
 const sanitize = require('sanitize-html');
-
-const FRAMEWORK_CSS = {
-  spectre:  'https://unpkg.com/spectre.css/dist/spectre.min.css',
-  posh:     'https://unpkg.com/poshui/dist/posh.min.css',
-  oat:      'https://unpkg.com/oatcss/oat.css',
-  pico:     'https://unpkg.com/@picocss/pico/css/pico.min.css',
-  milligram:'https://unpkg.com/milligram/dist/milligram.min.css',
-  chota:    'https://unpkg.com/chota/dist/chota.min.css',
-  simple:   'https://unpkg.com/simpledotcss/simple.min.css',
-};
+const {
+  absoluteFontSize,
+  absoluteFontWeight,
+  absoluteLineHeight,
+} = require('./scale-map');
+const { DOC_ENGINES } = require('./doc-engines');
+const { buildDocumentCss, sanitizeFontName } = require('./document-css');
+const { buildFontFaces } = require('./font-loader');
 
 /* Allowed tags/attrs match the browser-side DOMPurify config in public/app.js */
 const SANITIZE_OPTS = {
@@ -36,92 +34,106 @@ const SANITIZE_OPTS = {
   disallowedTagsMode: "discard",
 };
 
-/* ── Validation helpers ───────────────────────────────────────────────── */
-
-/** Strip to safe CSS font-name characters: letters, digits, spaces, hyphens */
-function sanitizeFontName(name) {
-  return String(name).replace(/[^a-zA-Z0-9\s\-]/g, '').trim() || 'Inter';
-}
-
-/** Coerce to a finite number clamped between min and max */
-function safeNumber(val, fallback, min, max) {
-  var n = parseFloat(val);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
-}
-
-/** Validate framework key — must exist in FRAMEWORK_CSS, case-insensitive */
-function validateFramework(val) {
-  var key = String(val || '').trim().toLowerCase();
-  return FRAMEWORK_CSS[key] ? key : 'spectre';
-}
-
 /** Escape HTML entities in a string */
 function escapeHTML(str) {
   return String(str).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-/**
- * Validate and coerce all frontmatter fields before HTML/CSS interpolation.
- * Returns a frozen object with only known, safe values.
- *
- * CSS injection surface: fm.font goes inside '...' in a style block,
- * fm.fontSize/fontWeight/lineHeight go directly into CSS property values.
- * All values are type-checked, bounded, and rounded before interpolation.
- */
-function validateFrontmatter(fm) {
-  var f = fm || {};
-  var validated = {
-    title:      escapeHTML(String(f.title || '').slice(0, 500)),
-    framework:  validateFramework(f.framework),
-    font:       sanitizeFontName(f.font || 'Inter'),
-    fontSize:   Math.round(safeNumber(f.fontSize, 16, 8, 72)),
-    fontWeight: Math.round(safeNumber(f.fontWeight, 400, 100, 900)),
-    lineHeight: Math.round(safeNumber(f.lineHeight, 1.6, 0.8, 4.0) * 10) / 10,
-  };
-  return Object.freeze(validated);
-}
-
-/* ── Sanitize HTML produced by marked.parse() ─────────────────────────── */
-
 function sanitizeHTML(raw) {
   return sanitize(raw, SANITIZE_OPTS);
+}
+
+/**
+ * Coerce a frontmatter field to a finite number.
+ */
+function safeNumber(val, fallback, min, max) {
+  const n = parseFloat(val);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+/**
+ * Build the final rendering options from raw frontmatter.
+ * Scale indices (size/weight/line) are preferred over absolute values.
+ */
+function resolveRenderOptions(fm) {
+  const f = fm || {};
+  const font = sanitizeFontName(f.font || 'Inter');
+  const fontSize = f.size !== undefined
+    ? absoluteFontSize(f.size)
+    : Math.round(safeNumber(f.fontSize, 16, 8, 72));
+  const fontWeight = f.weight !== undefined
+    ? absoluteFontWeight(f.weight)
+    : Math.round(safeNumber(f.fontWeight, 400, 100, 900));
+  const lineHeight = f.line !== undefined
+    ? absoluteLineHeight(f.line)
+    : Math.round(safeNumber(f.lineHeight, 1.75, 0.8, 4.0) * 10) / 10;
+
+  return {
+    title: escapeHTML(String(f.title || '').slice(0, 500)),
+    font,
+    fontSize,
+    fontWeight,
+    lineHeight,
+    docEngine: String(f.docEngine || 'none'),
+    surfaceMode: String(f.surfaceMode || 'doc'),
+    pageSize: String(f.pageSize || 'A4'),
+    orientation: String(f.orientation || 'portrait'),
+    marginsLR: String(f.marginsLR || 'normal'),
+    marginsTB: String(f.marginsTB || 'normal'),
+    footer: f.footer === true || f.footer === 'true' || f.footer === 'on',
+    contentWidth: safeNumber(f.width, 1100, 400, 1400),
+  };
 }
 
 /* ── Public API ───────────────────────────────────────────────────────── */
 
 /**
- * Returns a full HTML document string. No DOM access. Safe to call in Node or CF Workers.
+ * Returns a self-contained HTML fragment (head + body) that the caller can embed.
+ * The fragment contains:
+ *   - <head> with inlined style/font declarations (and an optional engine script)
+ *   - <body class="fw-render"> with the rendered markdown wrapped in <main>
+ *
+ * No external <link> tags, <meta>, <title>, or <base> are emitted.
  */
-function renderToDocument(markdown, frontmatter) {
-  var fm = validateFrontmatter(frontmatter);
+async function renderToDocument(markdown, frontmatter) {
+  const opts = resolveRenderOptions(frontmatter);
+  const body = sanitizeHTML(marked.parse(markdown));
+  const { css: fontCss, fontName } = await buildFontFaces(opts.font);
+  const docCss = buildDocumentCss({
+    font: fontName,
+    fontSize: opts.fontSize,
+    fontWeight: opts.fontWeight,
+    lineHeight: opts.lineHeight,
+    docEngine: opts.docEngine,
+    pageSize: opts.pageSize,
+    orientation: opts.orientation,
+    marginsLR: opts.marginsLR,
+    marginsTB: opts.marginsTB,
+    contentWidth: opts.contentWidth,
+  });
 
-  var cssUrl = FRAMEWORK_CSS[fm.framework];
-  var body   = sanitizeHTML(marked.parse(markdown));
+  const engine = DOC_ENGINES[opts.docEngine] || DOC_ENGINES.none;
+  const engineScript = engine.script && !engine.module
+    ? `<script src="${engine.script}" defer></script>`
+    : '';
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${fm.title}</title>
-  <link rel="stylesheet" href="${cssUrl}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fm.font)}:wght@${fm.fontWeight}&display=swap" rel="stylesheet">
+  const head = `<head>
   <style>
-    body {
-      font-family: '${fm.font}', sans-serif;
-      font-size: ${fm.fontSize}px;
-      font-weight: ${fm.fontWeight};
-      line-height: ${fm.lineHeight};
-    }
+${fontCss}
+${docCss}
   </style>
-</head>
-<body class="container">
+${engineScript}
+</head>`;
+
+  const bodyTag = `<body class="fw-render">
+  <main>
 ${body}
-</body>
-</html>`;
+  </main>
+</body>`;
+
+  return `${head}\n${bodyTag}`;
 }
 
 /**
@@ -133,7 +145,9 @@ function renderToFragment(markdown) {
 }
 
 module.exports = {
-  renderToDocument, renderToFragment, sanitizeHTML,
-  validateFrontmatter, escapeHTML,
-  FRAMEWORK_CSS,
+  renderToDocument,
+  renderToFragment,
+  sanitizeHTML,
+  resolveRenderOptions,
+  escapeHTML,
 };
