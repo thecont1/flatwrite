@@ -116,7 +116,7 @@ module.exports = async function handleRender(req, res) {
   const { markdown, markdownUrl, ...frontmatter } = parsed;
 
   let renderMarkdown = markdown;
-  if (markdownUrl) {
+  if (markdownUrl && !renderMarkdown) {
     const fetched = await fetchMarkdownUrl(markdownUrl);
     if (!fetched.ok) {
       return json(res, 502, { error: `Failed to fetch markdownUrl: ${fetched.error}` });
@@ -128,8 +128,18 @@ module.exports = async function handleRender(req, res) {
     return json(res, 400, { error: 'Either markdown or markdownUrl is required' });
   }
 
+  let baseUrl;
+  if (markdownUrl) {
+    try {
+      const parsed = new URL(markdownUrl);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        baseUrl = markdownUrl;
+      }
+    } catch {}
+  }
+
   try {
-    const { head, body } = await renderToDocument(renderMarkdown, frontmatter);
+    const { head, body } = await renderToDocument(renderMarkdown, frontmatter, { baseUrl });
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'private, no-store');
     res.statusCode = 200;

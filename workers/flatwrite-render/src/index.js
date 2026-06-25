@@ -66,7 +66,7 @@ export default {
         'X-Render-Timestamp': String(timestamp),
         'X-Render-Signature': signature,
       },
-      body: JSON.stringify({ markdown, ...designParams }),
+      body: JSON.stringify({ markdown, markdownUrl, ...designParams }),
     });
 
     if (!renderResp.ok) {
