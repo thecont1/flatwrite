@@ -240,6 +240,22 @@ describe("api/render.js", () => {
     expect(third.remaining).toBe(0);
     testLimiter.reset();
   });
+
+  test("markdownUrl is used as baseUrl to resolve relative image URLs", async () => {
+    const req = mockReq({
+      headers: hmacHeaders(SECRET, "POST", "/api/render"),
+      body: {
+        markdown: "![ngl](./assets/app-screenshot.png)\n\n<img src=\"assets/generations/x.jpg\" width=\"400\">",
+        markdownUrl: "https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/README.md",
+      },
+    });
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(200);
+    expect(res._body.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/app-screenshot.png");
+    expect(res._body.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/generations/x.jpg");
+  });
 });
 
 // ── core/rate-limit.js ──────────────────────────────────────────────────
@@ -508,5 +524,66 @@ describe("resolveRenderOptions", () => {
   test("scale indices take precedence over absolute values", () => {
     const fm = resolveRenderOptions({ size: 0, fontSize: 999 });
     expect(fm.fontSize).toBe(15);
+  });
+});
+
+describe("resolveRelativeUrls", () => {
+  const { resolveRelativeUrls } = require("../core/render");
+
+  test("resolves relative image src against baseUrl", () => {
+    const html = resolveRelativeUrls('<img src="./assets/x.png" alt="x">', "https://example.com/path/file.md");
+    expect(html).toContain('src="https://example.com/path/assets/x.png"');
+  });
+
+  test("resolves parent-relative image src", () => {
+    const html = resolveRelativeUrls('<img src="../assets/x.png" alt="x">', "https://example.com/path/file.md");
+    expect(html).toContain('src="https://example.com/assets/x.png"');
+  });
+
+  test("leaves absolute URLs unchanged", () => {
+    const html = resolveRelativeUrls('<img src="https://other.com/x.png" alt="x">', "https://example.com/path/file.md");
+    expect(html).toContain('src="https://other.com/x.png"');
+  });
+
+  test("leaves data URIs unchanged", () => {
+    const html = resolveRelativeUrls('<img src="data:image/png;base64,ABC" alt="x">', "https://example.com/path/file.md");
+    expect(html).toContain('src="data:image/png;base64,ABC"');
+  });
+
+  test("resolves link href", () => {
+    const html = resolveRelativeUrls('<a href="./doc.md">link</a>', "https://example.com/path/file.md");
+    expect(html).toContain('href="https://example.com/path/doc.md"');
+  });
+});
+
+describe("renderToFragment", () => {
+  const { renderToFragment } = require("../core/render");
+
+  test("resolves relative markdown image URLs", () => {
+    const html = renderToFragment("![ngl](./assets/app-screenshot.png)", {
+      baseUrl: "https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/README.md",
+    });
+    expect(html).toContain('src="https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/app-screenshot.png"');
+  });
+
+  test("resolves relative HTML image src", () => {
+    const html = renderToFragment('<img src="assets/generations/x.jpg" width="400">', {
+      baseUrl: "https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/README.md",
+    });
+    expect(html).toContain('src="https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/generations/x.jpg"');
+  });
+});
+
+describe("renderToDocument with baseUrl", () => {
+  const { renderToDocument } = require("../core/render");
+
+  test("resolves relative image URLs", async () => {
+    const html = await renderToDocument(
+      '![ngl](./assets/app-screenshot.png)\n\n<img src="assets/generations/x.jpg" width="400">',
+      {},
+      { baseUrl: "https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/README.md" }
+    );
+    expect(html.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/app-screenshot.png");
+    expect(html.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/generations/x.jpg");
   });
 });

@@ -45,6 +45,51 @@ function sanitizeHTML(raw) {
 }
 
 /**
+ * Resolve relative URLs in rendered HTML against a base URL.
+ * Only rewrites src (img/video/source) and href (a) attributes that are not
+ * already absolute, protocol-relative, data URIs, fragments, or mailto links.
+ */
+function resolveRelativeUrls(html, baseUrl) {
+  if (!baseUrl) return html;
+
+  let base;
+  try {
+    base = new URL('.', baseUrl).href;
+  } catch (e) {
+    return html;
+  }
+
+  function resolveUrl(url) {
+    if (!url) return url;
+    if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
+    if (/^\/\//i.test(url)) return url;
+    try {
+      return new URL(url, base).href;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  html = html.replace(
+    /(<(?:img|video|source)\s[^>]*?)src=(["'])([^"']+)\2/gi,
+    (m, pre, q, src) => {
+      const r = resolveUrl(src);
+      return r !== src ? `${pre}src=${q}${r}${q}` : m;
+    }
+  );
+
+  html = html.replace(
+    /(<a\s[^>]*?)href=(["'])([^"']+)\2/gi,
+    (m, pre, q, href) => {
+      const r = resolveUrl(href);
+      return r !== href ? `${pre}href=${q}${r}${q}` : m;
+    }
+  );
+
+  return html;
+}
+
+/**
  * Coerce a frontmatter field to a finite number.
  */
 function safeNumber(val, fallback, min, max) {
@@ -96,9 +141,10 @@ function resolveRenderOptions(fm) {
  *
  * No external <link> tags, <meta>, <title>, or <base> are emitted.
  */
-async function renderToDocument(markdown, frontmatter) {
+async function renderToDocument(markdown, frontmatter, options) {
+  const { baseUrl } = options || {};
   const opts = resolveRenderOptions(frontmatter);
-  const body = sanitizeHTML(marked.parse(markdown));
+  const body = sanitizeHTML(resolveRelativeUrls(marked.parse(markdown), baseUrl));
   const { css: fontCss, fontName } = await buildFontFaces(opts.font);
   const docCss = buildDocumentCss({
     font: fontName,
@@ -139,8 +185,9 @@ ${body}
  * Returns only the inner HTML fragment (no document shell).
  * Used by the browser preview — caller applies DOMPurify after injection.
  */
-function renderToFragment(markdown) {
-  return marked.parse(markdown);
+function renderToFragment(markdown, options) {
+  const { baseUrl } = options || {};
+  return resolveRelativeUrls(marked.parse(markdown), baseUrl);
 }
 
 module.exports = {
@@ -149,4 +196,5 @@ module.exports = {
   sanitizeHTML,
   resolveRenderOptions,
   escapeHTML,
+  resolveRelativeUrls,
 };
