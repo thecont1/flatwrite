@@ -87,6 +87,9 @@ function buildDocumentCss(opts) {
     .fw-render li > ul, .fw-render li > ol { margin: 0.15em 0; }
     .fw-render li::marker { display: inline; }
     .fw-render li:has(> input[type="checkbox"]) { list-style: none; }
+    .fw-render li:has(> input[type="checkbox"])::marker { display: none; }
+    .fw-render .task-list-item { list-style: none; }
+    .fw-render .task-list-item::marker { display: none; }
     .fw-render input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }
     .fw-render ul { list-style-type: disc; }
     .fw-render ul ul { list-style-type: circle; }

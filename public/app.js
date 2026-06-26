@@ -894,8 +894,15 @@
     );
   }
 
+  function classifyTaskListItems(html) {
+    return html.replace(
+      /<li>\s*(<input[^>]*type="checkbox"[^>]*>)/gi,
+      '<li class="task-list-item">$1'
+    );
+  }
+
   function renderToFragment(markdown) {
-    return fixTaskListNumberedItems(marked.parse(markdown));
+    return classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
   }
 
   /* ==========================================================================
@@ -1839,6 +1846,9 @@
         + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
         + 'li { margin: 0.15em 0; display: list-item; }'
         + 'li:has(> input[type="checkbox"]) { list-style: none; }'
+        + 'li:has(> input[type="checkbox"])::marker { display: none; }'
+        + '.task-list-item { list-style: none; }'
+        + '.task-list-item::marker { display: none; }'
         + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
         + 'ul { list-style-type: disc; }'
         + 'ul ul { list-style-type: circle; }'
@@ -1939,6 +1949,9 @@
       + 'li > ul, li > ol { margin: 0.15em 0; }'
       + 'li::marker { display: inline; }'
       + 'li:has(> input[type="checkbox"]) { list-style: none; }'
+      + 'li:has(> input[type="checkbox"])::marker { display: none; }'
+      + '.task-list-item { list-style: none; }'
+      + '.task-list-item::marker { display: none; }'
       + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
       + 'ul { list-style-type: disc; }'
       + 'ul ul { list-style-type: circle; }'
@@ -2690,6 +2703,15 @@
       + '    li { margin: 0.15em 0; display: list-item; }\n'
       + '    li > ul, li > ol { margin: 0.15em 0; }\n'
       + '    li::marker { display: inline; }\n'
+      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
+      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
+      + '    .task-list-item { list-style: none; }\n'
+      + '    .task-list-item::marker { display: none; }\n'
+      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
+      + '    ul { list-style-type: disc; }\n'
+      + '    ul ul { list-style-type: circle; }\n'
+      + '    ul ul ul { list-style-type: disc; }\n'
+      + '    ul ul ul ul { list-style-type: circle; }\n'
       + '    p { margin: 0.4em 0; }\n'
       + '    br { margin: 0.3em 0; }\n'
       + '  </style>\n'
@@ -2820,6 +2842,15 @@
       + '    li { margin: 0.15em 0; display: list-item; }\n'
       + '    li > ul, li > ol { margin: 0.15em 0; }\n'
       + '    li::marker { display: inline; }\n'
+      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
+      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
+      + '    .task-list-item { list-style: none; }\n'
+      + '    .task-list-item::marker { display: none; }\n'
+      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
+      + '    ul { list-style-type: disc; }\n'
+      + '    ul ul { list-style-type: circle; }\n'
+      + '    ul ul ul { list-style-type: disc; }\n'
+      + '    ul ul ul ul { list-style-type: circle; }\n'
       + '    p { margin: 0.4em 0; }\n'
       + '    br { margin: 0.3em 0; }\n'
       + '  </style>\n'

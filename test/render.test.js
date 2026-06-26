@@ -515,6 +515,7 @@ describe("renderToDocument", () => {
     const html = await renderToDocument("- [ ] 6. Add docs", { font: "Inter" });
     expect(html.body).toContain('<input');
     expect(html.body).toContain("6. Add docs");
+    expect(html.body).toContain('class="task-list-item"');
     expect(html.body).not.toContain('<ol start="6">');
     expect(html.body).not.toContain('<ol start="');
   });
@@ -523,6 +524,8 @@ describe("renderToDocument", () => {
     const html = await renderToDocument("- item", { font: "Inter" });
     expect(html.head).toContain("list-style-type: circle");
     expect(html.head).toContain("list-style-type: disc");
+    expect(html.head).toContain(".task-list-item");
+    expect(html.head).toContain("display: none");
   });
 });
 

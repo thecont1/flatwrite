@@ -149,6 +149,18 @@ function fixTaskListNumberedItems(html) {
 }
 
 /**
+ * Add a stable class to task-list <li> items so we can hide the default bullet
+ * without relying solely on the :has() selector. This is more robust on older
+ * browsers and in some iframe/CSS edge cases.
+ */
+function classifyTaskListItems(html) {
+  return html.replace(
+    /<li>\s*(<input[^>]*type="checkbox"[^>]*>)/gi,
+    '<li class="task-list-item">$1'
+  );
+}
+
+/**
  * Returns a structured document fragment with separate head and body strings.
  * The head contains inlined style/font declarations (and an optional engine script).
  * The body has the rendered markdown wrapped in <main> and class="fw-render".
@@ -158,7 +170,8 @@ function fixTaskListNumberedItems(html) {
 async function renderToDocument(markdown, frontmatter, options) {
   const { baseUrl } = options || {};
   const opts = resolveRenderOptions(frontmatter);
-  const body = sanitizeHTML(resolveRelativeUrls(fixTaskListNumberedItems(marked.parse(markdown)), baseUrl));
+  const rawHTML = classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
+  const body = sanitizeHTML(resolveRelativeUrls(rawHTML, baseUrl));
   const { css: fontCss, fontName } = await buildFontFaces(opts.font);
   const docCss = buildDocumentCss({
     font: fontName,
@@ -201,7 +214,7 @@ ${body}
  */
 function renderToFragment(markdown, options) {
   const { baseUrl } = options || {};
-  return resolveRelativeUrls(fixTaskListNumberedItems(marked.parse(markdown)), baseUrl);
+  return resolveRelativeUrls(classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown))), baseUrl);
 }
 
 module.exports = {
