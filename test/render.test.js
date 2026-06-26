@@ -518,6 +518,12 @@ describe("renderToDocument", () => {
     expect(html.body).not.toContain('<ol start="6">');
     expect(html.body).not.toContain('<ol start="');
   });
+
+  test("document CSS includes nested unordered-list bullet styles", async () => {
+    const html = await renderToDocument("- item", { font: "Inter" });
+    expect(html.head).toContain("list-style-type: circle");
+    expect(html.head).toContain("list-style-type: disc");
+  });
 });
 
 describe("resolveRenderOptions", () => {

@@ -88,6 +88,10 @@ function buildDocumentCss(opts) {
     .fw-render li::marker { display: inline; }
     .fw-render li:has(> input[type="checkbox"]) { list-style: none; }
     .fw-render input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }
+    .fw-render ul { list-style-type: disc; }
+    .fw-render ul ul { list-style-type: circle; }
+    .fw-render ul ul ul { list-style-type: disc; }
+    .fw-render ul ul ul ul { list-style-type: circle; }
     .fw-render p { margin: 0.4em 0; }
     .fw-render br { margin: 0.3em 0; }
     .fw-render a { color: #4569d4; text-decoration: underline; }
