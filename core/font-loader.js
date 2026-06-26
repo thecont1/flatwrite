@@ -20,6 +20,10 @@ const FONT_FILES = {
     { file: 'lato-latin-400.woff2', weight: '400', style: 'normal' },
     { file: 'lato-latin-700.woff2', weight: '700', style: 'normal' },
   ],
+  Lora: [{ file: 'lora-latin.woff2', weight: '400 700', style: 'normal' }],
+  Merriweather: [{ file: 'merriweather-latin.woff2', weight: '400 900', style: 'normal' }],
+  'Playfair Display': [{ file: 'playfair-display-latin.woff2', weight: '400 900', style: 'normal' }],
+  Comfortaa: [{ file: 'comfortaa-latin.woff2', weight: '300 700', style: 'normal' }],
   Unbounded: [{ file: 'unbounded-latin.woff2', weight: '200 900', style: 'normal' }],
 };
 
