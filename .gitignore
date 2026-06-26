@@ -4,6 +4,9 @@ bun.lock
 .env*.local
 dist/
 
+# local preview artifacts from manual render tests
+preview/
+
 # wrangler files
 .wrangler
 .dev.vars*
