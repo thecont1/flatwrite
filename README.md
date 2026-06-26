@@ -77,10 +77,70 @@ bun test
 
 The test suite lives in `test/` and includes parity checks that make sure the exported HTML and PDF styles stay in sync with the live preview.
 
+## Render API and MCP tools
+
+FlatWrite exposes its renderer as a small public HTTP service plus an MCP
+server in this monorepo. Both sit on top of the canonical `/api/render`
+handler that powers the live preview.
+
+### Public HTTP API
+
+`POST https://render.flatwrite.md/render`
+
+- Auth: `X-Api-Key: <your-api-key>` header.
+- Body: `application/json` with `{ markdown?, markdownUrl?, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }`.
+  - `markdown` and `markdownUrl` are mutually optional, but at least one is required.
+  - If both are supplied, `markdown` wins and `markdownUrl` is used as the base URL for resolving relative links.
+- Response: `{ head, body }` HTML fragments.
+- Errors: `{ error, code, retryAfter? }` with codes like `MISSING_CONTENT`, `INVALID_JSON`, `UNAUTHORIZED`, `METHOD_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`, `RATE_LIMIT`, `UPSTREAM_FETCH_FAILED`, `RENDER_FAILED`.
+- CORS: preflight `OPTIONS` returns 204 with `Access-Control-Allow-*` headers; responses set `Access-Control-Allow-Origin: *`.
+- Rate-limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`) are forwarded from `/api/render`.
+
+The full OpenAPI spec lives in [`openapi.yaml`](./openapi.yaml).
+
+```bash
+curl -X POST https://render.flatwrite.md/render \
+  -H 'Content-Type: application/json' \
+  -H 'X-Api-Key: ***    -d '{"markdown":"# Hello, FlatWrite","framework":"spectre"}'
+```
+
+### MCP server (`mcp/flatwrite-render-server`)
+
+A Node/TypeScript MCP server that exposes two tools, both backed by the same
+public HTTP endpoint:
+
+| Tool | Input | Output |
+| --- | --- | --- |
+| `render_markdown` | `{ markdown, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
+| `render_markdown_from_url` | `{ url, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
+
+Run locally:
+
+```bash
+cd mcp/flatwrite-render-server
+npm install
+npm run build
+FLATWRITE_RENDER_API_KEY=*** node dist/index.js
+```
+
+Wire it into Hermes Agent in `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  flatwrite-render:
+    command: node
+    args: ["/absolute/path/to/flatwrite/mcp/flatwrite-render-server/dist/index.js"]
+    env:
+      FLATWRITE_RENDER_API_KEY: "your-api-key-here"
+```
+
 ## Project structure
 
 - `public/` — static app files (`index.html`, `app.js`, `styles.css`, fonts, etc.).
-- `api/` — Vercel serverless API routes (`share.js`, `s.js`) for creating and reading shared links.
+- `api/` — Vercel serverless API routes (`render.js`, `share.js`, `s.js`) for the canonical render handler and shared links.
+- `workers/flatwrite-render/` — Cloudflare Worker JSON façade at `render.flatwrite.md`.
+- `mcp/flatwrite-render-server/` — Node/TypeScript MCP server exposing `render_markdown` and `render_markdown_from_url`.
+- `openapi.yaml` — public HTTP API spec for the CF endpoint.
 - `index.js` — Vercel root request handler (static files + API fallbacks).
 - `public/server.js` — tiny static file server for local development.
 - `demo-kashmir.md` — sample document that shows off components, cards, grids, and badges.
