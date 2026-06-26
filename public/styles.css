@@ -252,6 +252,15 @@ body {
   display: none;
 }
 
+/* Hide the dividers around the hidden Share section on desktop;
+   the Share controls live in the bottom bar there. */
+@media (min-width: 760px) {
+  .zoom-selector + .sidebar-divider,
+  .sidebar-share + .sidebar-divider {
+    display: none;
+  }
+}
+
 .sidebar-share-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
