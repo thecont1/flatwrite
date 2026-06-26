@@ -19,7 +19,7 @@ Markdown is one of the greatest cross-platform information formats ever invented
 
 The share button is the jewel in the crown. Instead of stuffing a long document into a URL hash, FlatWrite saves the markdown to a paste bin backend and returns a short, readable link. The recipient can open the link and immediately see the document in the same preview style you chose.
 
-- Links are short enough to paste into a chat, email, or tweet.
+- Links are short enough to paste into a chat, email, or a tweet.
 - The document is stored server-side, so it works with large files and survives URL-length limits.
 - Opening a shared link loads the exact content, ready to read, edit, or re-export.
 
@@ -41,9 +41,18 @@ Switching between them is instant, so you can see the same content in entirely d
 
 The preview is not just skinned by the framework. You also get fine-grained controls:
 
-- Choose from a handful of quality fonts: Inter, Merriweather, Playfair Display, Lora, Lato, Plus Jakarta Sans, and JetBrains Mono.
-- Tweak size, weight, and line spacing until the reading rhythm feels right.
-- Adjust UI zoom when the chrome needs to be a little larger or smaller.
+- **Eight bundled fonts**, each shipped as an inlined woff2 so the rendered output has no external font dependency:
+  - **Inter** (variable, 100–900) — the workhorse
+  - **JetBrains Mono** (variable, 100–800) — for code-heavy docs
+  - **Lora** (variable, 400–700) — a contemporary serif
+  - **Merriweather** (variable, 400–900) — a reading serif
+  - **Playfair Display** (variable, 400–900) — a high-contrast display serif
+  - **Comfortaa** (variable, 300–700) — a friendly geometric
+  - **Lato** (300 / 400 / 700) — a humanist sans
+  - **Unbounded** (variable, 200–900) — an expressive display sans
+- Pick a font, then tune **size**, **weight**, and **line spacing** until the reading rhythm feels right. Adjust **UI zoom** when the chrome needs to be a little larger or smaller.
+
+Because the fonts ship as inlined woff2 data URIs, a FlatWrite preview is fully self-contained — no Google Fonts request, no FOIT, no fallback to system-ui for the fonts you actually picked. A regression test (`test/font-inventory.test.js`) keeps the picker inventory in sync with the bundled woff2 files, so a font that shows up in the picker but has no asset fails CI loudly instead of silently degrading.
 
 ## Components
 
@@ -75,39 +84,94 @@ DUSTEBIN_BASE_URL=https://your-dustebin-instance.example.com vercel dev
 bun test
 ```
 
-The test suite lives in `test/` and includes parity checks that make sure the exported HTML and PDF styles stay in sync with the live preview.
+The test suite lives in `test/` and includes:
+
+- **Worker tests** — exercise the Cloudflare Worker logic directly (auth, CORS, JSON path, YAML path, rate-limit header forwarding, transport failures).
+- **Font inventory tests** — every font in the picker allowlist must have a corresponding woff2 bundled, the file must exist on disk, and it must start with the `wOF2` magic bytes.
+- **Render parity tests** — exported HTML and PDF styles stay in sync with the live preview.
 
 ## Render API and MCP tools
 
-FlatWrite exposes its renderer as a small public HTTP service plus an MCP
-server in this monorepo. Both sit on top of the canonical `/api/render`
-handler that powers the live preview.
+FlatWrite exposes its renderer as a small public HTTP service plus an MCP server in this monorepo. Both sit on top of the canonical `/api/render` handler on `flatwrite.md` (the same handler that powers the live preview).
+
+```
+                 ┌─────────────────────────────┐
+                 │  Caller (HTTP / MCP / curl) │
+                 └─────────────┬───────────────┘
+                               │ POST + X-Api-Key
+                               ▼
+                 ┌─────────────────────────────┐
+                 │  render.flatwrite.md  ← CF  │
+                 │  workers/flatwrite-render/  │
+                 │  JSON-first façade + CORS   │
+                 └─────────────┬───────────────┘
+                               │ POST + HMAC
+                               ▼
+                 ┌─────────────────────────────┐
+                 │  flatwrite.md/api/render    │
+                 │  canonical renderer:        │
+                 │   - marked + DOMPurify      │
+                 │   - font-loader (inlined)   │
+                 │   - page CSS / engines      │
+                 └─────────────────────────────┘
+```
 
 ### Public HTTP API
 
 `POST https://render.flatwrite.md/render`
 
-- Auth: `X-Api-Key: <your-api-key>` header.
+The endpoint accepts **two content types**:
+
+#### JSON (primary, recommended for new callers)
+
+- Auth: `X-Api-Key: *** header.
 - Body: `application/json` with `{ markdown?, markdownUrl?, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }`.
   - `markdown` and `markdownUrl` are mutually optional, but at least one is required.
   - If both are supplied, `markdown` wins and `markdownUrl` is used as the base URL for resolving relative links.
 - Response: `{ head, body }` HTML fragments.
-- Errors: `{ error, code, retryAfter? }` with codes like `MISSING_CONTENT`, `INVALID_JSON`, `UNAUTHORIZED`, `METHOD_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`, `RATE_LIMIT`, `UPSTREAM_FETCH_FAILED`, `RENDER_FAILED`.
+
+#### YAML (legacy, used by `scripts/render_remote.py` and the existing share-pipeline callers)
+
+- Auth: `X-Api-Key: *** header.
+- Body: `text/yaml` (or `application/x-yaml`, `application/yaml`) with `{ url: <markdownUrl>, ...frontmatter }`.
+- The Worker fetches `url`, merges `frontmatter` (font, size, weight, line, width, pageSize, orientation, appFramework, surfaceMode, etc.) into the render, and forwards to `/api/render`.
+- This is the same shape FlatWrite's editor writes when you save a sidecar `.yaml` next to a markdown file.
+
+#### Errors, CORS, and rate limits
+
+- Errors: `{ error, code, retryAfter? }` JSON with codes like `MISSING_CONTENT`, `INVALID_JSON`, `INVALID_YAML`, `UNAUTHORIZED`, `METHOD_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`, `RATE_LIMIT`, `UPSTREAM_FETCH_FAILED`, `RENDER_FAILED`.
 - CORS: preflight `OPTIONS` returns 204 with `Access-Control-Allow-*` headers; responses set `Access-Control-Allow-Origin: *`.
-- Rate-limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`) are forwarded from `/api/render`.
+- Rate-limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`) are forwarded from `/api/render` on every response.
+
+#### Examples
+
+```bash
+# Raw markdown, JSON
+curl -X POST https://render.flatwrite.md/render \
+  -H 'Content-Type: application/json' \
+  -H 'X-Api-Key: ***  -d '{"markdown":"# Hello, FlatWrite","framework":"spectre"}'
+
+# Render a remote README with full design controls, YAML
+curl -X POST https://render.flatwrite.md/render \
+  -H 'Content-Type: text/yaml' \
+  -H 'X-Api-Key: ***  --data-binary @- <<'YAML'
+font: Comfortaa
+size: 1
+weight: -1
+line: 0
+width: 890
+pageSize: A3
+orientation: portrait
+appFramework: spectre
+url: https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/README.md
+YAML
+```
 
 The full OpenAPI spec lives in [`openapi.yaml`](./openapi.yaml).
 
-```bash
-curl -X POST https://render.flatwrite.md/render \
-  -H 'Content-Type: application/json' \
-  -H 'X-Api-Key: ***    -d '{"markdown":"# Hello, FlatWrite","framework":"spectre"}'
-```
-
 ### MCP server (`mcp/flatwrite-render-server`)
 
-A Node/TypeScript MCP server that exposes two tools, both backed by the same
-public HTTP endpoint:
+A Node/TypeScript MCP server that exposes two tools, both backed by the same public HTTP endpoint:
 
 | Tool | Input | Output |
 | --- | --- | --- |
@@ -134,28 +198,30 @@ mcp_servers:
       FLATWRITE_RENDER_API_KEY: "your-api-key-here"
 ```
 
+In any MCP host (Windsurf, Cursor, Claude Desktop, etc.) the two tools appear under the `flatwrite-render` server entry. See [`mcp/flatwrite-render-server/README.md`](./mcp/flatwrite-render-server/README.md) for transport details and the `~/.codeium/windsurf/mcp_config.json` example.
+
 ## Project structure
 
 - `public/` — static app files (`index.html`, `app.js`, `styles.css`, fonts, etc.).
 - `api/` — Vercel serverless API routes (`render.js`, `share.js`, `s.js`) for the canonical render handler and shared links.
-- `workers/flatwrite-render/` — Cloudflare Worker JSON façade at `render.flatwrite.md`.
+- `core/` — render-core modules shared between the editor and the headless API (`render.js`, `font-loader.js`, `document-css.js`, `inline-assets.js`, `doc-engines.js`, `auth.js`, `rate-limit.js`).
+- `workers/flatwrite-render/` — Cloudflare Worker JSON-first façade at `render.flatwrite.md`.
 - `mcp/flatwrite-render-server/` — Node/TypeScript MCP server exposing `render_markdown` and `render_markdown_from_url`.
 - `openapi.yaml` — public HTTP API spec for the CF endpoint.
+- `scripts/render_remote.py` — build-script caller that POSTs YAML sidecars to the CF Worker.
 - `index.js` — Vercel root request handler (static files + API fallbacks).
 - `public/server.js` — tiny static file server for local development.
-- `demo-kashmir.md` — sample document that shows off components, cards, grids, and badges.
-
-## The demo file
-
-The repo includes `demo-solar.md` (a README file from another repo, a solar explorer project). Load it in FlatWrite and play around with it. See how markdown can be used to create a professional-looking document for humans and an easily digestible one for agents.
 
 ## Tech stack
 
 - [marked.js](https://marked.js.org/) for Markdown → HTML.
 - [DOMPurify](https://github.com/cure53/DOMPurify) to keep the rendered output safe.
 - [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/) for PDF export.
+- [js-yaml](https://github.com/nodeca/js-yaml) for the legacy YAML frontmatter path.
+- Self-hosted variable woff2 fonts in `public/fonts/` (Inter, JetBrains Mono, Lora, Merriweather, Playfair Display, Comfortaa, Lato, Unbounded), inlined as data URIs at render time.
 - Dustebin (or any compatible paste backend with `/api/pastes`) for temporarily storing shared documents.
 - Browser-native `CompressionStream` for compact local URL fallbacks.
+- Cloudflare Workers + the [TypeScript MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) for the public façade and the MCP server.
 
 ## Why another markdown editor?
 
