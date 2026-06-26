@@ -178,6 +178,15 @@ A Node/TypeScript MCP server that exposes two tools, both backed by the same pub
 | `render_markdown` | `{ markdown, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
 | `render_markdown_from_url` | `{ url, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
 
+Both tools pre-flight validate their inputs against the upstream renderer's
+constraints. `render_markdown_from_url` rejects the call with a structured
+`isError: true` (and a `[DISALLOWED_HOST]`, `[UNSUPPORTED_SCHEME]`, or
+`[INVALID_URL]` code) when the URL is malformed, uses a non-http(s) scheme,
+or points at a host outside the allowlist (`raw.githubusercontent.com`,
+`raw.gitlab.com`, `bitbucket.org` — kept in sync with `api/render.js`'s
+canonical allowlist). That avoids waiting for a 502 roundtrip when the
+caller passes something the upstream was always going to reject.
+
 Run locally:
 
 ```bash
