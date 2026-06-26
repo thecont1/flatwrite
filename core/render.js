@@ -22,7 +22,7 @@ const SANITIZE_OPTS = {
     "sub","sup","small","mark","abbr","cite","q","kbd","input",
   ],
   allowedAttributes: {
-    "*": ["class","id","role","aria-label","aria-hidden","tabindex","style"],
+    "*": ["class","id","role","aria-label","aria-hidden","tabindex","style","start","type"],
     "a": ["href","target","rel","title"],
     "img": ["src","alt","width","height","title"],
     "td": ["colspan","rowspan","align","valign"],
@@ -143,20 +143,27 @@ function resolveRenderOptions(fm) {
  */
 function fixTaskListNumberedItems(html) {
   return html.replace(
-    /(<input[^>]*type="checkbox"[^>]*>)\s*<ol start="(\d+)">\s*<li>(.*?)<\/li>\s*<\/ol>/g,
-    (m, inputHtml, num, text) => inputHtml + ' ' + num + '. ' + text
+    /<li([^>]*)>\s*(?:<p>\s*)?(<input[^>]*type="checkbox"[^>]*>)\s*(?:<\/p>\s*)?<ol(?:\s+start="(\d+)")?>\s*<li>(.*?)<\/li>\s*<\/ol>/gi,
+    (m, attrs, inputHtml, num, text) => '<li' + attrs + '>' + inputHtml + ' ' + (num || '1') + '. ' + text
   );
 }
 
 /**
  * Add a stable class to task-list <li> items so we can hide the default bullet
  * without relying solely on the :has() selector. This is more robust on older
- * browsers and in some iframe/CSS edge cases.
+ * browsers and in some iframe/CSS edge cases. It also copes with marked
+ * wrapping an empty checkbox in a <p>.
  */
 function classifyTaskListItems(html) {
   return html.replace(
-    /<li>\s*(<input[^>]*type="checkbox"[^>]*>)/gi,
-    '<li class="task-list-item">$1'
+    /<li([^>]*)>\s*(?:<p>\s*)?(<input[^>]*type="checkbox"[^>]*>)/gi,
+    (m, attrs, input) => {
+      const classMatch = attrs.match(/class="([^"]*)"/);
+      if (classMatch) {
+        return '<li' + attrs.replace(/class="([^"]*)"/, 'class="$1 task-list-item"') + '>' + input;
+      }
+      return '<li class="task-list-item"' + attrs + '>' + input;
+    }
   );
 }
 

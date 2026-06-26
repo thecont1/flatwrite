@@ -346,7 +346,9 @@ describe("core/auth.js", () => {
   test("rejects tampered signature", () => {
     const ts = Math.floor(Date.now() / 1000);
     const sig = sign(SECRET, ts, "POST", "/api/render");
-    const tampered = "0" + sig.slice(1);
+    const last = sig.slice(-1);
+    const tamperedLast = last === "0" ? "1" : "0";
+    const tampered = sig.slice(0, -1) + tamperedLast;
     const result = verify(SECRET, "POST", "/api/render", String(ts), tampered);
     expect(result.ok).toBe(false);
   });
@@ -518,6 +520,14 @@ describe("renderToDocument", () => {
     expect(html.body).toContain('class="task-list-item"');
     expect(html.body).not.toContain('<ol start="6">');
     expect(html.body).not.toContain('<ol start="');
+  });
+
+  test("task-list items with numbered text survive a blank line after the checkbox", async () => {
+    const html = await renderToDocument("- [ ] \n\n   6. Add docs", { font: "Inter" });
+    expect(html.body).toContain('<input');
+    expect(html.body).toContain("6. Add docs");
+    expect(html.body).toContain('class="task-list-item"');
+    expect(html.body).not.toContain('<ol');
   });
 
   test("document CSS includes nested unordered-list bullet styles", async () => {

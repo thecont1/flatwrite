@@ -878,7 +878,8 @@
           "value","placeholder","checked","disabled","for","role",
           "aria-label","aria-hidden","tabindex","colspan","rowspan","style",
           "data-md","data-component","data-tooltip","target","rel","title",
-          "open","align","valign","border","cellpadding","cellspacing"
+          "open","align","valign","border","cellpadding","cellspacing",
+          "start"
         ],
         ALLOW_DATA_ATTR: false
       });
@@ -889,15 +890,21 @@
   // SOURCE: core/render.js — keep in sync
   function fixTaskListNumberedItems(html) {
     return html.replace(
-      /(<input[^>]*type="checkbox"[^>]*>)\s*<ol start="(\d+)">\s*<li>(.*?)<\/li>\s*<\/ol>/g,
-      function (m, inputHtml, num, text) { return inputHtml + ' ' + num + '. ' + text; }
+      /<li([^>]*)>\s*(?:<p>\s*)?(<input[^>]*type="checkbox"[^>]*>)\s*(?:<\/p>\s*)?<ol(?:\s+start="(\d+)")?>\s*<li>(.*?)<\/li>\s*<\/ol>/gi,
+      function (m, attrs, inputHtml, num, text) { return '<li' + attrs + '>' + inputHtml + ' ' + (num || '1') + '. ' + text; }
     );
   }
 
   function classifyTaskListItems(html) {
     return html.replace(
-      /<li>\s*(<input[^>]*type="checkbox"[^>]*>)/gi,
-      '<li class="task-list-item">$1'
+      /<li([^>]*)>\s*(?:<p>\s*)?(<input[^>]*type="checkbox"[^>]*>)/gi,
+      function (m, attrs, input) {
+        var classMatch = attrs.match(/class="([^"]*)"/);
+        if (classMatch) {
+          return '<li' + attrs.replace(/class="([^"]*)"/, 'class="$1 task-list-item"') + '>' + input;
+        }
+        return '<li class="task-list-item"' + attrs + '>' + input;
+      }
     );
   }
 
