@@ -149,12 +149,14 @@ The endpoint accepts **two content types**:
 # Raw markdown, JSON
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: application/json' \
-  -H 'X-Api-Key: ***  -d '{"markdown":"# Hello, FlatWrite","framework":"spectre"}'
+  -H 'X-Api-Key: YOUR_API_KEY' \
+  -d '{"markdown":"# Hello, FlatWrite","framework":"spectre"}'
 
 # Render a remote README with full design controls, YAML
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: text/yaml' \
-  -H 'X-Api-Key: ***  --data-binary @- <<'YAML'
+  -H 'X-Api-Key: YOUR_API_KEY' \
+  --data-binary @- <<'YAML'
 font: Comfortaa
 size: 1
 weight: -1
