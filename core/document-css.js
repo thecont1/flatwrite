@@ -84,7 +84,7 @@ function buildDocumentCss(opts) {
     .fw-render blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }
     .fw-render ul, .fw-render ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }
     .fw-render li { margin: 0.15em 0; display: list-item; }
-    .fw-render li > ul, .fw-render li > ol { margin: 0.15em 0; }
+    .fw-render li > ul, .fw-render li > ol { margin: 0.15em 0; padding-left: 2em; }
     .fw-render li::marker { display: inline; }
     .fw-render li:has(> input[type="checkbox"]) { list-style: none; }
     .fw-render li:has(> input[type="checkbox"])::marker { display: none; }
