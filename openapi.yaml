@@ -1,0 +1,213 @@
+openapi: 3.0.3
+info:
+  title: FlatWrite Render API
+  version: 0.1.0
+  description: |
+    Public JSON façade for the FlatWrite renderer. Runs on a Cloudflare Worker
+    at `https://render.flatwrite.md` and forwards requests to the canonical
+    `/api/render` handler on `flatwrite.md`.
+  contact:
+    name: Mahesh Shantaram
+    url: https://thecontrarian.in
+servers:
+  - url: https://render.flatwrite.md
+    description: Production
+tags:
+  - name: render
+    description: Render markdown into HTML head/body fragments
+security:
+  - ApiKeyAuth: []
+paths:
+  /render:
+    options:
+      summary: CORS preflight
+      description: |
+        Returns the CORS headers required for browser clients to call the
+        endpoint. Always returns 204 with no body.
+      security: []
+      responses:
+        '204':
+          description: CORS preflight accepted
+          headers:
+            Access-Control-Allow-Origin:
+              schema: { type: string }
+            Access-Control-Allow-Methods:
+              schema: { type: string }
+            Access-Control-Allow-Headers:
+              schema: { type: string }
+            Access-Control-Max-Age:
+              schema: { type: string }
+    post:
+      summary: Render markdown (or a markdown URL) to HTML fragments
+      description: |
+        Renders the given markdown (or markdown fetched from `markdownUrl`) into
+        `{ head, body }` HTML fragments suitable for direct injection into a
+        document. If both `markdown` and `markdownUrl` are provided, `markdown`
+        wins and `markdownUrl` is used as the base URL for resolving relative
+        links.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkdownRenderRequest'
+            examples:
+              rawMarkdown:
+                summary: Raw markdown
+                value:
+                  markdown: "# Hello\n\nWorld"
+                  framework: spectre
+              fromUrl:
+                summary: Markdown fetched from a URL
+                value:
+                  markdownUrl: https://raw.githubusercontent.com/owner/repo/main/README.md
+      responses:
+        '200':
+          description: Rendered HTML fragments
+          headers:
+            X-RateLimit-Limit:
+              schema: { type: integer }
+              description: Per-minute request cap for this caller IP
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+              description: Remaining requests in the current window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkdownRenderResponse'
+        '400':
+          description: Bad request (missing fields, invalid JSON)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid X-Api-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Payload too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported media type (Worker only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds until the next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Render failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream fetch failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  schemas:
+    MarkdownRenderRequest:
+      type: object
+      anyOf:
+        - required: [markdown]
+        - required: [markdownUrl]
+      properties:
+        markdown:
+          type: string
+          description: Raw markdown content to render. Wins if both are supplied.
+        markdownUrl:
+          type: string
+          format: uri
+          description: |
+            URL pointing to raw markdown content. The host must be on the
+            upstream allowlist (raw.githubusercontent.com, raw.gitlab.com,
+            bitbucket.org).
+        framework:
+          type: string
+          description: UI framework token (e.g. spectre, pico, oat, poshui).
+        fontFamily:
+          type: string
+          description: Font family name (e.g. Inter, Merriweather, Lora).
+        theme:
+          type: string
+          description: Theme identifier (e.g. light, dark).
+        fontSize:
+          type: string
+          description: Font size token.
+        lineHeight:
+          type: string
+          description: Line height token.
+        uiZoom:
+          type: number
+          format: float
+          description: UI zoom multiplier (1.0 = default).
+    MarkdownRenderResponse:
+      type: object
+      required: [head, body]
+      properties:
+        head:
+          type: string
+          description: HTML to inject into <head>.
+        body:
+          type: string
+          description: HTML to inject into <body>.
+    ErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+        code:
+          type: string
+          description: Machine-readable error code.
+          enum:
+            - MISSING_CONTENT
+            - INVALID_JSON
+            - INVALID_YAML
+            - UNAUTHORIZED
+            - METHOD_NOT_ALLOWED
+            - PAYLOAD_TOO_LARGE
+            - RATE_LIMIT
+            - UPSTREAM_FETCH_FAILED
+            - UPSTREAM_UNREACHABLE
+            - UNSUPPORTED_MEDIA_TYPE
+            - MISCONFIGURED
+            - RENDER_FAILED
+            - BAD_REQUEST
+        detail:
+          type: string
+          description: Optional additional context (e.g. upstream error).
+        retryAfter:
+          type: integer
+          format: int32
+          nullable: true
+          description: Seconds until the next request is allowed (RATE_LIMIT only).
