@@ -401,6 +401,13 @@ describe("sanitizeHTML", () => {
     expect(clean).toContain("<h1>");
     expect(clean).toContain("<strong>");
   });
+
+  test("preserves disabled checkbox inputs", () => {
+    const clean = sanitizeHTML('<li><input disabled="" type="checkbox" checked> Task</li>');
+    expect(clean).toContain('<input');
+    expect(clean).toContain("checked");
+    expect(clean).toContain("disabled");
+  });
 });
 
 describe("renderToDocument", () => {
@@ -492,6 +499,16 @@ describe("renderToDocument", () => {
     const html = await renderToDocument("# Hi", { font: "Unbounded" });
     expect(html.head).toContain("@font-face");
     expect(html.head).toContain("data:font/woff2;base64,");
+  });
+
+  test("GFM task list checkboxes are preserved", async () => {
+    const html = await renderToDocument("- [ ] Task 1\n- [x] Done task", { font: "Inter" });
+    expect(html.body).toContain('<input');
+    expect(html.body).toContain('type="checkbox"');
+    expect(html.body).toContain("checked");
+    expect(html.body).toContain("Task 1");
+    expect(html.body).toContain("Done task");
+    expect(html.head).toContain("input[type=\"checkbox\"]");
   });
 });
 

@@ -19,7 +19,7 @@ const SANITIZE_OPTS = {
     "thead","tbody","tr","th","td","br","hr","div","span",
     "details","summary","main","section","article","aside",
     "header","footer","nav","figure","figcaption","dl","dt","dd",
-    "sub","sup","small","mark","abbr","cite","q","kbd",
+    "sub","sup","small","mark","abbr","cite","q","kbd","input",
   ],
   allowedAttributes: {
     "*": ["class","id","role","aria-label","aria-hidden","tabindex","style"],
@@ -28,6 +28,7 @@ const SANITIZE_OPTS = {
     "td": ["colspan","rowspan","align","valign"],
     "th": ["colspan","rowspan","align","valign","scope"],
     "table": ["border","cellpadding","cellspacing"],
+    "input": ["type","checked","disabled"],
   },
   allowedSchemes: ["http","https","mailto"],
   allowProtocolRelative: true,
