@@ -187,6 +187,15 @@ or points at a host outside the allowlist (`raw.githubusercontent.com`,
 canonical allowlist). That avoids waiting for a 502 roundtrip when the
 caller passes something the upstream was always going to reject.
 
+All error details returned to MCP callers are scrubbed through
+`sanitizeDetail()` before they leave the server: bearer tokens, API keys,
+32+ char hex/base64 blobs, URLs with query strings, IPv4 addresses, Node
+stack frames, and local filesystem paths are redacted. This prevents
+upstream stack traces, fetch-failure messages with internal hostnames,
+and Cloudflare/Vercel error pages from leaking into the LLM's context.
+The high-level reason (`fetch failed`, `ECONNREFUSED`, `502 Bad Gateway`)
+is preserved so the model can still reason about what to do next.
+
 Run locally:
 
 ```bash

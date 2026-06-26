@@ -7,6 +7,7 @@
  */
 
 import { RenderApiError } from '../renderClient.js';
+import { sanitizeDetail } from './sanitize.js';
 
 export interface ToolErrorResult extends Record<string, unknown> {
   isError: true;
@@ -25,13 +26,11 @@ export function renderErrorResult(e: unknown): ToolErrorResult {
       content: [{ type: 'text', text: summary }],
     };
   }
+  // Defensive fallback for non-RenderApiError exceptions (shouldn't normally
+  // surface, but if it does we still scrub before returning to the LLM).
+  const safeDetail = sanitizeDetail((e as Error)?.message ?? e);
   return {
     isError: true,
-    content: [
-      {
-        type: 'text',
-        text: `Render failed: ${String((e as Error)?.message ?? e)}`,
-      },
-    ],
+    content: [{ type: 'text', text: `Render failed: ${safeDetail}` }],
   };
 }

@@ -7,6 +7,8 @@
  * `FLATWRITE_RENDER_API_KEY` environment variable.
  */
 
+import { sanitizeDetail, sanitizeRenderErrorPayload } from './tools/sanitize.js';
+
 export const DEFAULT_RENDER_URL = 'https://render.flatwrite.md/render';
 
 export type RenderStyle = {
@@ -111,8 +113,12 @@ export async function callRender(
   } catch (e) {
     throw new RenderApiError(
       0,
-      { error: 'Failed to reach render service', code: 'UPSTREAM_UNREACHABLE', detail: String(e) },
-      `Failed to reach render service: ${String(e)}`,
+      {
+        error: 'Failed to reach render service',
+        code: 'UPSTREAM_UNREACHABLE',
+        detail: sanitizeDetail(e),
+      },
+      `Failed to reach render service: ${sanitizeDetail(e)}`,
     );
   } finally {
     clearTimeout(timer);
@@ -123,11 +129,11 @@ export async function callRender(
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new RenderApiError(resp.status, { raw: text });
+    throw new RenderApiError(resp.status, { raw: sanitizeDetail(text) });
   }
 
   if (!resp.ok) {
-    const err = parsed as RenderError;
+    const err = sanitizeRenderErrorPayload(parsed as RenderError);
     throw new RenderApiError(resp.status, err);
   }
 
@@ -135,7 +141,11 @@ export async function callRender(
   if (typeof ok?.head !== 'string' || typeof ok?.body !== 'string') {
     throw new RenderApiError(
       resp.status,
-      { error: 'Malformed render response', code: 'RENDER_FAILED', detail: text.slice(0, 200) },
+      {
+        error: 'Malformed render response',
+        code: 'RENDER_FAILED',
+        detail: sanitizeDetail(text),
+      },
     );
   }
 
