@@ -136,6 +136,19 @@ function resolveRenderOptions(fm) {
 /* ── Public API ───────────────────────────────────────────────────────── */
 
 /**
+ * marked treats text like "- [ ] 6. Add docs" as a task-list item followed
+ * by a nested ordered list. That produces a checkbox plus a separate "6."
+ * marker. If the generated <ol> immediately follows the checkbox and has a
+ * single item, unwrap it so the text reads as "6. Add docs" inline.
+ */
+function fixTaskListNumberedItems(html) {
+  return html.replace(
+    /(<input[^>]*type="checkbox"[^>]*>)\s*<ol start="(\d+)">\s*<li>(.*?)<\/li>\s*<\/ol>/g,
+    (m, inputHtml, num, text) => inputHtml + ' ' + num + '. ' + text
+  );
+}
+
+/**
  * Returns a structured document fragment with separate head and body strings.
  * The head contains inlined style/font declarations (and an optional engine script).
  * The body has the rendered markdown wrapped in <main> and class="fw-render".
@@ -145,7 +158,7 @@ function resolveRenderOptions(fm) {
 async function renderToDocument(markdown, frontmatter, options) {
   const { baseUrl } = options || {};
   const opts = resolveRenderOptions(frontmatter);
-  const body = sanitizeHTML(resolveRelativeUrls(marked.parse(markdown), baseUrl));
+  const body = sanitizeHTML(resolveRelativeUrls(fixTaskListNumberedItems(marked.parse(markdown)), baseUrl));
   const { css: fontCss, fontName } = await buildFontFaces(opts.font);
   const docCss = buildDocumentCss({
     font: fontName,
@@ -188,7 +201,7 @@ ${body}
  */
 function renderToFragment(markdown, options) {
   const { baseUrl } = options || {};
-  return resolveRelativeUrls(marked.parse(markdown), baseUrl);
+  return resolveRelativeUrls(fixTaskListNumberedItems(marked.parse(markdown)), baseUrl);
 }
 
 module.exports = {

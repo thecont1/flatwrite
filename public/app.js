@@ -887,8 +887,15 @@
   }
 
   // SOURCE: core/render.js — keep in sync
+  function fixTaskListNumberedItems(html) {
+    return html.replace(
+      /(<input[^>]*type="checkbox"[^>]*>)\s*<ol start="(\d+)">\s*<li>(.*?)<\/li>\s*<\/ol>/g,
+      function (m, inputHtml, num, text) { return inputHtml + ' ' + num + '. ' + text; }
+    );
+  }
+
   function renderToFragment(markdown) {
-    return marked.parse(markdown);
+    return fixTaskListNumberedItems(marked.parse(markdown));
   }
 
   /* ==========================================================================

@@ -510,6 +510,14 @@ describe("renderToDocument", () => {
     expect(html.body).toContain("Done task");
     expect(html.head).toContain("input[type=\"checkbox\"]");
   });
+
+  test("task-list items with numbered text do not create nested ordered lists", async () => {
+    const html = await renderToDocument("- [ ] 6. Add docs", { font: "Inter" });
+    expect(html.body).toContain('<input');
+    expect(html.body).toContain("6. Add docs");
+    expect(html.body).not.toContain('<ol start="6">');
+    expect(html.body).not.toContain('<ol start="');
+  });
 });
 
 describe("resolveRenderOptions", () => {
