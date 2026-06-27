@@ -52,7 +52,14 @@ The preview is not just skinned by the framework. You also get fine-grained cont
   - **Unbounded** (variable, 200–900) — an expressive display sans
 - Pick a font, then tune **size**, **weight**, and **line spacing** until the reading rhythm feels right. Adjust **UI zoom** when the chrome needs to be a little larger or smaller.
 
-Because the fonts ship as inlined woff2 data URIs, a FlatWrite preview is fully self-contained — no Google Fonts request, no FOIT, no fallback to system-ui for the fonts you actually picked. A regression test (`test/font-inventory.test.js`) keeps the picker inventory in sync with the bundled woff2 files, so a font that shows up in the picker but has no asset fails CI loudly instead of silently degrading.
+Because the fonts ship as inlined woff2 data URIs, a FlatWrite preview is fully self-contained — no Google Fonts request, no FOIT, no fallback to system-ui for the fonts you actually picked.
+
+The font inventory lives in **one place** — `core/font-inventory.js` — and is consumed by both:
+
+- `core/font-loader.js` (server-side render path that embeds the woff2 as a data URI for `/api/render` and `render.flatwrite.md`).
+- `scripts/build-fonts-css.mjs` (regenerates `public/fonts.css`, which `public/index.html` loads via `<link rel="stylesheet">` for the static preview).
+
+Adding a font = drop a woff2 in `public/fonts/`, add an entry to `core/font-inventory.js`, run `node scripts/build-fonts-css.mjs`. The regression test `test/font-inventory.test.js` cross-checks all three sources (the inventory, the generated CSS, the render-core loader, the picker allowlist) so they can't drift silently.
 
 ## Components
 
