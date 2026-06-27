@@ -105,16 +105,30 @@ function safeNumber(val, fallback, min, max) {
  */
 function resolveRenderOptions(fm) {
   const f = fm || {};
-  const font = sanitizeFontName(f.font || 'Inter');
+  // Accept both canonical YAML-codename fields (font, appFramework, size,
+  // weight, line, width, zoom) and friendly aliases (fontFamily, framework,
+  // fontSize, fontWeight, lineHeight, uiZoom). The MCP server and the
+  // public HTTP API expose the friendly names; the editor's
+  // buildShareYaml() writes the codenames. Both should reach the same
+  // place — this is the single source of truth for what the renderer
+  // accepts.
+  const rawFont = f.fontFamily ?? f.font;
+  const font = sanitizeFontName(rawFont || 'Inter');
   const fontSize = f.size !== undefined
     ? absoluteFontSize(f.size)
-    : Math.round(safeNumber(f.fontSize, 16, 8, 72));
+    : (f.fontSize !== undefined
+        ? Math.round(safeNumber(f.fontSize, 16, 8, 72))
+        : 16);
   const fontWeight = f.weight !== undefined
     ? absoluteFontWeight(f.weight)
-    : Math.round(safeNumber(f.fontWeight, 400, 100, 900));
+    : (f.fontWeight !== undefined
+        ? Math.round(safeNumber(f.fontWeight, 400, 100, 900))
+        : 400);
   const lineHeight = f.line !== undefined
     ? absoluteLineHeight(f.line)
-    : Math.round(safeNumber(f.lineHeight, 1.75, 0.8, 4.0) * 10) / 10;
+    : (f.lineHeight !== undefined
+        ? Math.round(safeNumber(f.lineHeight, 1.75, 0.8, 4.0) * 10) / 10
+        : 1.75);
 
   return {
     title: escapeHTML(String(f.title || '').slice(0, 500)),

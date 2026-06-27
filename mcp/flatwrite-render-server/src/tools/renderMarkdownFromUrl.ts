@@ -2,12 +2,14 @@
  * MCP tool: render_markdown_from_url
  *
  * Fetches markdown from a URL and renders it into FlatWrite-styled HTML
- * <head> and <body> fragments.
+ * <head> and <body> fragments, with optional typography and page-layout
+ * controls (same set as `render_markdown`).
  */
 
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
+  ALLOWED_FONT_FAMILIES,
   RenderStyle,
   buildRemoteMarkdownBody,
   callRender,
@@ -17,12 +19,70 @@ import { renderErrorResult } from './error.js';
 const InputSchema = z
   .object({
     url: z.string().url().describe('URL pointing to raw markdown content'),
-    framework: z.string().optional().describe('Optional UI framework (e.g. spectre, pico, oat, poshui)'),
-    fontFamily: z.string().optional().describe('Optional font family (e.g. Inter, Merriweather, Lora)'),
-    theme: z.string().optional().describe('Optional theme identifier (e.g. light, dark)'),
-    fontSize: z.string().optional().describe('Optional font size token'),
-    lineHeight: z.string().optional().describe('Optional line height token'),
-    uiZoom: z.number().optional().describe('Optional UI zoom level (1.0 = default)'),
+    framework: z
+      .string()
+      .optional()
+      .describe('Optional UI framework — e.g. spectre, pico, oat, poshui, simple'),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe(
+        'Optional font family name. Must be one of the bundled families: ' +
+          [...ALLOWED_FONT_FAMILIES].join(', ') +
+          '. Defaults to Inter.',
+      ),
+    fontSize: z
+      .union([z.string(), z.number()])
+      .optional()
+      .describe('Optional font size — absolute px (number) or scale token (string)'),
+    fontWeight: z
+      .union([z.string(), z.number()])
+      .optional()
+      .describe('Optional font weight — absolute (100..900) or scale token'),
+    lineHeight: z
+      .union([z.string(), z.number()])
+      .optional()
+      .describe('Optional line height — absolute multiplier or scale token'),
+    uiZoom: z
+      .number()
+      .optional()
+      .describe('Optional UI zoom level (1.0 = default)'),
+    pageSize: z
+      .string()
+      .optional()
+      .describe('Optional page size for paged output — e.g. A4, A3, Letter, Legal'),
+    orientation: z
+      .enum(['portrait', 'landscape'])
+      .optional()
+      .describe('Optional page orientation'),
+    marginsLR: z
+      .string()
+      .optional()
+      .describe('Optional left/right page margins — e.g. narrow, normal, wide'),
+    marginsTB: z
+      .string()
+      .optional()
+      .describe('Optional top/bottom page margins — e.g. narrow, normal, wide'),
+    footer: z
+      .boolean()
+      .optional()
+      .describe('Optional: include a page-number footer in paged output'),
+    width: z
+      .number()
+      .optional()
+      .describe('Optional content width in pixels (400..1400)'),
+    docEngine: z
+      .string()
+      .optional()
+      .describe('Optional document engine — "none" or "paged"'),
+    surfaceMode: z
+      .string()
+      .optional()
+      .describe('Optional surface mode — "doc" or "app"'),
+    theme: z
+      .string()
+      .optional()
+      .describe('Optional theme identifier — e.g. light, dark'),
   })
   .strict();
 
@@ -100,21 +160,22 @@ export function validateMarkdownUrl(rawUrl: string): UrlValidationResult {
 
 export function registerRenderMarkdownFromUrlTool(
   server: McpServer,
-  apiKey: string,   baseUrl?: string,
+  apiKey: string,  baseUrl?: string,
 ) {
   server.registerTool(
     'render_markdown_from_url',
     {
       title: 'Render Markdown From URL',
       description:
-        'Fetch markdown from a URL and render it into FlatWrite-styled HTML <head> and <body> fragments.',
+        'Fetch markdown from a URL and render it into FlatWrite-styled HTML <head> and <body> fragments, with optional typography and page-layout controls.',
       inputSchema: InputSchema,
       outputSchema: {
         head: z.string().describe('HTML to inject in <head>'),
         body: z.string().describe('HTML to inject in <body>'),
       },
     },
-    async ({ url, ...style }) => {
+    async ({ url, fontFamily, ...style }) => {
+      // URL allowlist pre-flight
       const check = validateMarkdownUrl(url);
       if (!check.ok) {
         return {
@@ -128,7 +189,23 @@ export function registerRenderMarkdownFromUrlTool(
         };
       }
 
-      const body = buildRemoteMarkdownBody(check.url, style as RenderStyle);
+      // fontFamily pre-flight against bundled inventory
+      if (fontFamily !== undefined && !ALLOWED_FONT_FAMILIES.has(fontFamily)) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `fontFamily '${fontFamily}' is not one of the bundled fonts (${[...ALLOWED_FONT_FAMILIES].join(', ')}) [INVALID_FONT_FAMILY]`,
+            },
+          ],
+        };
+      }
+
+      const body = buildRemoteMarkdownBody(check.url, {
+        fontFamily,
+        ...(style as Omit<RenderStyle, 'fontFamily'>),
+      });
       try {
         const result = await callRender(body, { apiKey, baseUrl });
         return {

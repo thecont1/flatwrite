@@ -184,17 +184,21 @@ A Node/TypeScript MCP server that exposes two tools, both backed by the same pub
 
 | Tool | Input | Output |
 | --- | --- | --- |
-| `render_markdown` | `{ markdown, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
-| `render_markdown_from_url` | `{ url, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }` | `{ head, body }` |
+| `render_markdown` | `{ markdown, framework?, fontFamily?, fontSize?, fontWeight?, lineHeight?, uiZoom?, pageSize?, orientation?, marginsLR?, marginsTB?, footer?, width?, docEngine?, surfaceMode?, theme? }` | `{ head, body }` |
+| `render_markdown_from_url` | `{ url, framework?, fontFamily?, fontSize?, fontWeight?, lineHeight?, uiZoom?, pageSize?, orientation?, marginsLR?, marginsTB?, footer?, width?, docEngine?, surfaceMode?, theme? }` | `{ head, body }` |
+
+The MCP tool schemas mirror the FlatWrite editor's design controls
+(`fontFamily`, `framework`, `pageSize`, etc.) and translate internally to
+the canonical render frontmatter (`font`, `appFramework`, `pageSize`,
+...) before forwarding to `/api/render`. The wire format matches what
+the editor writes into shared-URL YAML, so the web app and the
+microservice produce identical output.
 
 Both tools pre-flight validate their inputs against the upstream renderer's
-constraints. `render_markdown_from_url` rejects the call with a structured
-`isError: true` (and a `[DISALLOWED_HOST]`, `[UNSUPPORTED_SCHEME]`, or
-`[INVALID_URL]` code) when the URL is malformed, uses a non-http(s) scheme,
-or points at a host outside the allowlist (`raw.githubusercontent.com`,
-`raw.gitlab.com`, `bitbucket.org` — kept in sync with `api/render.js`'s
-canonical allowlist). That avoids waiting for a 502 roundtrip when the
-caller passes something the upstream was always going to reject.
+constraints.
+
+- **`render_markdown_from_url`** rejects the call with a structured `isError: true` (and a `[DISALLOWED_HOST]`, `[UNSUPPORTED_SCHEME]`, or `[INVALID_URL]` code) when the URL is malformed, uses a non-http(s) scheme, or points at a host outside the markdown URL allowlist (`raw.githubusercontent.com`, `raw.gitlab.com`, `bitbucket.org` — kept in sync with `api/render.js`'s canonical allowlist). That avoids waiting for a 502 roundtrip when the caller passes something the upstream was always going to reject.
+- **Both tools** validate `fontFamily` against the bundled font inventory (`Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded` — kept in sync with `core/font-inventory.js`) and reject with `[INVALID_FONT_FAMILY]` immediately if the requested family has no bundled woff2.
 
 All error details returned to MCP callers are scrubbed through
 `sanitizeDetail()` before they leave the server: bearer tokens, API keys,
