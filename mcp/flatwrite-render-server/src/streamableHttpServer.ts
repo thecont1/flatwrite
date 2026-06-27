@@ -6,27 +6,31 @@
  *   FLATWRITE_TRANSPORT=streamable-http
  * switches to a long-running HTTP server on the port specified by
  *   FLATWRITE_PORT (default 3000)
- * that speaks the MCP Streamable HTTP transport.
+ * that speaks the MCP Streamable HTTP transport. Clients connect with:
  *
- * CORS is restrictive by default. The server only emits
- * Access-Control-Allow-* headers when the request's `Origin` is in
- * the `trustedOrigins` allowlist (default: `https://flatwrite.md`
- * and subdomains). Browser callers from other origins receive a
- * response without CORS headers — the browser blocks it before any
- * JS can read the body. The server-to-server path (no Origin
- * header) is unaffected and still accepts the long-lived
- * `X-Api-Key`.
+ *   {
+ *     "mcpServers": {
+ *       "flatwrite-render": {
+ *         "type": "streamable-http",
+ *         "url": "http://localhost:3000/mcp"
+ *       }
+ *     }
+ *   }
  *
- * Auth split:
- *   - `X-Api-Key`   — long-lived key, server-to-server only. The
- *     request must NOT carry an `Origin` header; browser-side
- *     callers use `X-Mcp-Token` instead.
- *   - `X-Mcp-Token` — short-lived HMAC token minted by the upstream
- *     Cloudflare Worker (POST /mcp-token). Browser-safe. The token
- *     is bound to a scope (default "mcp") and an expiry.
+ * Or, against the deployed Cloudflare Worker:
  *
- * Each MCP session gets its own McpServer instance because the SDK's
- * Protocol object owns exactly one Transport.
+ *   {
+ *     "mcpServers": {
+ *       "flatwrite-render": {
+ *         "type": "streamable-http",
+ *         "url": "https://mcp.flatwrite.md/mcp"
+ *       }
+ *     }
+ *   }
+ *
+ * Each session gets its own McpServer instance because the SDK's
+ * Protocol object owns exactly one Transport. The route to /mcp
+ * dispatches by session ID.
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -37,6 +41,8 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { callRender } from './renderClient.js';
 
+// Bundled font inventory — must match core/font-inventory.js and
+// core/document-css.js's COMFORT_FONTS exactly.
 const ALLOWED_FONTS = new Set([
   'Inter', 'JetBrains Mono', 'Lato', 'Lora',
   'Merriweather', 'Playfair Display', 'Comfortaa', 'Unbounded',
@@ -49,47 +55,11 @@ const ALLOWED_MARKDOWN_HOSTS = new Set([
 ]);
 
 /**
- * Default origin allowlist for browser-side callers. The long-lived
- * X-Api-Key path is server-to-server only; browser callers come from
- * these origins and use the short-lived X-Mcp-Token flow.
- *
- * Override via the `trustedOrigins` option (or the
- * `FLATWRITE_TRUSTED_ORIGINS` env var when run from the CLI entry).
+ * Build a fresh MCP server with the FlatWrite render tools registered.
+ * Each session needs its own because the SDK's Protocol object
+ * owns exactly one Transport.
  */
-const DEFAULT_TRUSTED_ORIGINS = [
-  'https://flatwrite.md',
-  'https://*.flatwrite.md',
-];
-
-/**
- * Compute CORS headers for a request. Returns `{}` (no CORS) unless
- * the request's `Origin` is in the allowlist. When allowlisted,
- * the response gets a single-value Access-Control-Allow-Origin
- * echoing the request's Origin (NOT a wildcard — wildcards block
- * the `X-Mcp-Token` custom header from being readable by the page).
- */
-function corsHeadersFor(req: IncomingMessage, trustedOrigins: string[]): Record<string, string> {
-  const origin = (req.headers['origin'] as string | undefined) ?? '';
-  if (!origin) return {}; // no Origin = non-browser = no CORS needed
-  if (!trustedOrigins.includes(origin)) return {};
-  // Echo the exact origin back (NOT '*') so the browser permits the
-  // response to be read by JS — '*' would block credentialed
-  // custom headers like X-Mcp-Token.
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Vary': 'Origin',
-  };
-}
-
-/**
- * Determine whether the request is from a browser (has an Origin
- * header) or from a server-to-server caller.
- */
-function isBrowserRequest(req: IncomingMessage): boolean {
-  return Boolean(req.headers['origin']);
-}
-
-function buildMcpServer(apiKey: string, baseUrl?: string) {
+function createMcpServer(apiKey: string, baseUrl?: string) {
   const mcp = new McpServer({ name: 'flatwrite-render', version: '0.2.0' });
 
   const RenderStyleSchema = z
@@ -176,121 +146,60 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
 }
 
 /**
- * Authenticate a request. Two paths:
- *   - `X-Mcp-Token` — short-lived HMAC, accepted from any caller
- *     (browser or server). Token's scope and expiry are validated
- *     here. The token's underlying secret is the same as the
- *     X-Api-Key (the upstream Worker mints and validates against
- *     the same env var), so this server trusts a token that the
- *     upstream Worker trusts.
- *   - `X-Api-Key` — long-lived key, accepted only from non-browser
- *     callers (no Origin header). Browsers always send Origin, so
- *     this is the cleanest signal.
- *
- * Browser callers that try to send `X-Api-Key` will be rejected
- * with a clear error code (`API_KEY_NOT_ALLOWED_FROM_BROWSER`).
- */
-function authenticate(req: IncomingMessage, expectedKey: string):
-   { ok: true; kind: 'disabled' | 'token' | 'key' } | { ok: false; status: number; body: { error: string; code: string; } }
-{
-  if (!expectedKey) return { ok: true, kind: 'disabled' };
-  // Short-lived token takes priority.
-  if (req.headers['x-mcp-token']) {
-    // The upstream Worker already validated this token; if it reaches
-    // us, the upstream HMAC call will succeed. We accept any non-empty
-    // X-Mcp-Token because the Worker's signature check is the source
-    // of truth. (This Node server is typically deployed behind the
-    // Worker; the Worker is the auth gate.)
-    return { ok: true, kind: 'token' };
-  }
-  // Long-lived key only from non-browser callers.
-  if (isBrowserRequest(req)) {
-    return {
-      ok: false,
-      status: 401,
-      body: {
-        error: 'X-Api-Key cannot be used from a browser. Use X-Mcp-Token instead.',
-        code: 'API_KEY_NOT_ALLOWED_FROM_BROWSER',
-      },
-    };
-  }
-  if (req.headers['x-api-key'] === expectedKey) return { ok: true, kind: 'key' };
-  return { ok: false, status: 401, body: { error: 'Unauthorized', code: 'UNAUTHORIZED' } };
-}
-
-function preflightHeaders(cors: Record<string, string>, requestedHeaders?: string): Record<string, string> {
-  // Echo the requested headers (subset) so the browser's preflight
-  // passes for X-Mcp-Token, Content-Type, Accept, and the MCP session
-  // id. We intentionally do NOT advertise `X-Api-Key` to browsers —
-  // the long-lived key path is server-to-server only.
-  const allowed = ['Content-Type', 'X-Mcp-Token', 'Accept', 'Mcp-Session-Id', 'Last-Event-Id'];
-  let allowHeaders = allowed.join(', ');
-  if (requestedHeaders) {
-    // Intersect requested with allowed; never echo X-Api-Key.
-    const requested = requestedHeaders.split(',').map((h) => h.trim().toLowerCase());
-    const filtered = requested
-      .map((h) => allowed.find((a) => a.toLowerCase() === h))
-      .filter((h): h is string => Boolean(h));
-    if (filtered.length > 0) allowHeaders = filtered.join(', ');
-  }
-  return {
-    ...cors,
-    'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': allowHeaders,
-    'Access-Control-Max-Age': '600',
-    'Access-Control-Expose-Headers': 'Mcp-Session-Id',
-  };
-}
-
-/**
  * Run the server over Streamable HTTP on the given port.
+ * Returns the http.Server instance so tests can close it.
  */
 export async function startStreamableHttp(opts: {
   port: number;
-  apiKey: string;
-  baseUrl?: string;
+  apiKey: string, baseUrl?: string;
   host?: string;
-  trustedOrigins?: string[];
 }): Promise<{
   server: ReturnType<typeof createServer>;
   port: number;
   close: () => Promise<void>;
 }> {
-  const trustedOrigins = opts.trustedOrigins ?? DEFAULT_TRUSTED_ORIGINS;
-
+  // Per-session map. Key is session ID, value is { transport, server }.
+  // Each session gets its own McpServer so SDK Protocol ownership works.
   const sessions = new Map<
     string,
     { transport: StreamableHTTPServerTransport; server: McpServer }
   >();
 
+  async function getOrCreateSession(sessionId: string) {
+    const existing = sessions.get(sessionId);
+    if (existing) return existing;
+    throw new Error('NO_SESSION');
+  }
+
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-    // CORS — only emitted for trusted origins.
-    const cors = corsHeadersFor(req, trustedOrigins);
-
+    // CORS preflight
     if (req.method === 'OPTIONS') {
-      // Preflight. Echo only the headers the browser actually requested,
-      // intersected with the browser-safe allowlist (no X-Api-Key).
-      const requested = req.headers['access-control-request-headers'] as string | undefined;
-      res.writeHead(204, preflightHeaders(cors, requested));
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key, Accept, Mcp-Session-Id',
+        'Access-Control-Expose-Headers': 'Mcp-Session-Id',
+      });
       res.end();
       return;
     }
 
     if (url.pathname !== '/mcp') {
-      res.writeHead(404, { 'Content-Type': 'application/json', ...cors });
+      res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ error: 'Not Found — use POST/GET /mcp', code: 'NOT_FOUND' }));
       return;
     }
 
-    // Auth — runs before we touch anything else. CORS is included in
-    // the error response so the browser can read the structured code.
-    const auth = authenticate(req, opts.apiKey);
-    if (!auth.ok) {
-      res.writeHead(auth.status, { 'Content-Type': 'application/json', ...cors });
-      res.end(JSON.stringify(auth.body));
-      return;
+    // Auth: X-Api-Key header (skip when apiKey is empty, e.g. local dev)
+    if (opts.apiKey) {
+      const provided = req.headers['x-api-key'];
+      if (provided !== opts.apiKey) {
+        res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Unauthorized', code: 'UNAUTHORIZED' }));
+        return;
+      }
     }
 
     const sessionId = (req.headers['mcp-session-id'] as string | undefined) ?? '';
@@ -298,7 +207,7 @@ export async function startStreamableHttp(opts: {
     if (req.method === 'POST') {
       const body = await readJsonBody(req);
       if (!body) {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...cors });
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }));
         return;
       }
@@ -323,10 +232,10 @@ export async function startStreamableHttp(opts: {
             sessions.delete(transport.sessionId);
           }
         };
-        freshServer = buildMcpServer(opts.apiKey, opts.baseUrl);
+        freshServer = createMcpServer(opts.apiKey, opts.baseUrl);
         await freshServer.connect(transport);
       } else {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...cors });
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Missing or unknown session ID', code: 'NO_SESSION' }));
         return;
       }
@@ -338,14 +247,9 @@ export async function startStreamableHttp(opts: {
     if (req.method === 'GET') {
       // SSE stream for server-initiated notifications
       let entry;
-      try { entry = sessions.get(sessionId); }
+      try { entry = await getOrCreateSession(sessionId); }
       catch {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...cors });
-        res.end(JSON.stringify({ error: 'Missing or unknown session ID', code: 'NO_SESSION' }));
-        return;
-      }
-      if (!entry) {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...cors });
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Missing or unknown session ID', code: 'NO_SESSION' }));
         return;
       }
@@ -356,7 +260,7 @@ export async function startStreamableHttp(opts: {
     if (req.method === 'DELETE') {
       const entry = sessions.get(sessionId);
       if (!entry) {
-        res.writeHead(404, { 'Content-Type': 'application/json', ...cors });
+        res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Unknown session', code: 'NO_SESSION' }));
         return;
       }
@@ -364,7 +268,7 @@ export async function startStreamableHttp(opts: {
       return;
     }
 
-    res.writeHead(405, { 'Content-Type': 'application/json', ...cors });
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }));
   });
 
@@ -374,6 +278,7 @@ export async function startStreamableHttp(opts: {
   const actualPort = typeof addr === 'object' && addr ? addr.port : opts.port;
 
   async function close(): Promise<void> {
+    // Close all sessions first
     for (const [, entry] of sessions) {
       try { await entry.transport.close(); } catch { /* ignore */ }
       try { await entry.server.close(); } catch { /* ignore */ }
@@ -442,8 +347,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const apiKey = process.env.FLATWRITE_RENDER_API_KEY || '';
   const baseUrl = process.env.FLATWRITE_RENDER_BASE_URL;
   const port = parseInt(process.env.FLATWRITE_PORT || '3000', 10);
-  const trustedOrigins = (process.env.FLATWRITE_TRUSTED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-  startStreamableHttp({ port, apiKey, baseUrl, trustedOrigins: trustedOrigins.length ? trustedOrigins : undefined }).then(({ port: actualPort }) => {
+  startStreamableHttp({ port, apiKey, baseUrl }).then(({ port: actualPort }) => {
     console.error(`[flatwrite-mcp] streamable-http listening on http://127.0.0.1:${actualPort}/mcp`);
   }).catch((e) => {
     console.error('[flatwrite-mcp] failed to start:', e);
