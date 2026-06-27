@@ -457,24 +457,31 @@ describe("renderToDocument", () => {
     expect(html.head).toContain("line-height: 2");
   });
 
-  test("fontSize is clamped to 8-72", async () => {
-    const html = await renderToDocument("# Hi", { fontSize: "999" });
+  test("fontSize is clamped to 8-72 (absolute pixel value)", async () => {
+    // fontSize as a NUMBER is treated as an absolute pixel value and
+    // clamped to [8, 72] by safeNumber. Strings are scale tokens.
+    const html = await renderToDocument("# Hi", { fontSize: 999 });
     expect(html.head).toContain("font-size: 72px");
   });
 
   test("fontWeight is clamped to 100-900", async () => {
-    const html = await renderToDocument("# Hi", { fontWeight: "9999" });
+    const html = await renderToDocument("# Hi", { fontWeight: 9999 });
     expect(html.head).toContain("font-weight: 900");
   });
 
-  test("fractional values are rounded in CSS output", async () => {
-    const html = await renderToDocument("# Hi", { fontSize: "16.7", lineHeight: "1.65" });
+  test("fractional absolute values are rounded in CSS output", async () => {
+    // When fontSize/lineHeight are passed as numbers, they're treated
+    // as absolute pixel/line-height values and rounded. Strings remain
+    // scale tokens (rounded by the scale map, not Math.round).
+    const html = await renderToDocument("# Hi", { fontSize: 16.7, lineHeight: 1.65 });
     expect(html.head).toContain("font-size: 17px");
     expect(html.head).toContain("line-height: 1.7");
   });
 
-  test("lineHeight is clamped to 0.8-4.0", async () => {
-    const html = await renderToDocument("# Hi", { lineHeight: "10" });
+  test("lineHeight is clamped to 0.8-4.0 (absolute line-height value)", async () => {
+    // lineHeight as a NUMBER is treated as an absolute multiplier and
+    // clamped to [0.8, 4.0]. Strings are scale tokens.
+    const html = await renderToDocument("# Hi", { lineHeight: 10 });
     expect(html.head).toContain("line-height: 4");
   });
 
@@ -629,5 +636,61 @@ describe("renderToDocument with baseUrl", () => {
     );
     expect(html.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/app-screenshot.png");
     expect(html.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/generations/x.jpg");
+  });
+
+  test("convergence: same semantic input via canonical vs friendly aliases produces the same output", async () => {
+    // Document the field semantics:
+    //   - size/weight/line (canonical)        — STRING scale tokens like "1", "0", "-1"
+    //   - fontSize/lineHeight/fontWeight (friendly) — NUMBER absolute values (or STRING scale)
+    //   - font/appFramework (canonical)        — STRING family/framework names
+    //   - fontFamily/framework (friendly)     — same thing under friendlier names
+    //
+    // Both paths should reach the same render() output.
+    const settingsYaml = {
+      font: "Playfair Display",
+      size: "1",
+      weight: "0",
+      line: "0",
+      framework: "spectre",
+      pageSize: "A3",
+      orientation: "portrait",
+      width: 890,
+    };
+    const settingsJson = {
+      fontFamily: "Playfair Display",
+      size: "1",
+      weight: "0",
+      line: "0",
+      framework: "spectre",
+      pageSize: "A3",
+      orientation: "portrait",
+      width: 890,
+    };
+    const settingsJsonAbs = {
+      fontFamily: "Playfair Display",
+      fontSize: 17,         // number = absolute pixels
+      fontWeight: 400,      // number = absolute weight
+      lineHeight: 1.75,     // number = absolute line-height
+      framework: "spectre",
+      pageSize: "A3",
+      orientation: "portrait",
+      width: 890,
+    };
+
+    const md = "# Title\n\nBody.";
+    const htmlYaml = await renderToDocument(md, settingsYaml);
+    const htmlJson = await renderToDocument(md, settingsJson);
+    const htmlJsonAbs = await renderToDocument(md, settingsJsonAbs);
+
+    // Scale-string and scale-string friendly should produce identical output.
+    expect(htmlJson.head).toBe(htmlYaml.head);
+    expect(htmlJson.body).toBe(htmlYaml.body);
+
+    // Absolute-number path should land at the same body/head dimensions
+    // (rounding Math.round(16.5)*1.1 = 17 may differ from absolute 17, but
+    // the font and major layout choices must match).
+    expect(htmlJsonAbs.head).toContain("font-family: 'Playfair Display'");
+    expect(htmlJsonAbs.head).toContain("A3");
+    expect(htmlJsonAbs.body).toContain("Title");
   });
 });

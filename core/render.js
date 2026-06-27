@@ -114,21 +114,27 @@ function resolveRenderOptions(fm) {
   // accepts.
   const rawFont = f.fontFamily ?? f.font;
   const font = sanitizeFontName(rawFont || 'Inter');
-  const fontSize = f.size !== undefined
-    ? absoluteFontSize(f.size)
-    : (f.fontSize !== undefined
-        ? Math.round(safeNumber(f.fontSize, 16, 8, 72))
-        : 16);
-  const fontWeight = f.weight !== undefined
-    ? absoluteFontWeight(f.weight)
-    : (f.fontWeight !== undefined
-        ? Math.round(safeNumber(f.fontWeight, 400, 100, 900))
-        : 400);
-  const lineHeight = f.line !== undefined
-    ? absoluteLineHeight(f.line)
-    : (f.lineHeight !== undefined
-        ? Math.round(safeNumber(f.lineHeight, 1.75, 0.8, 4.0) * 10) / 10
-        : 1.75);
+  // fontSize / lineHeight / fontWeight: when STRING, treat as a scale
+  // index (looks up in core/scale-map.js). When NUMBER, treat as an
+  // absolute pixel/weight/line-height value. This matches the
+  // editor's buildShareYaml() convention: size/weight/line are scale
+  // token strings; the friendly JSON/MCP aliases preserve the same
+  // semantic by dispatching on type.
+  const fontSize = f.size !== undefined ? absoluteFontSize(f.size)
+    : f.fontSize !== undefined ? (typeof f.fontSize === 'string'
+        ? absoluteFontSize(f.fontSize)
+        : Math.round(safeNumber(f.fontSize, 16, 8, 72)))
+    : 16;
+  const fontWeight = f.weight !== undefined ? absoluteFontWeight(f.weight)
+    : f.fontWeight !== undefined ? (typeof f.fontWeight === 'string'
+        ? absoluteFontWeight(f.fontWeight)
+        : Math.round(safeNumber(f.fontWeight, 400, 100, 900)))
+    : 400;
+  const lineHeight = f.line !== undefined ? absoluteLineHeight(f.line)
+    : f.lineHeight !== undefined ? (typeof f.lineHeight === 'string'
+        ? absoluteLineHeight(f.lineHeight)
+        : Math.round(safeNumber(f.lineHeight, 1.75, 0.8, 4.0) * 10) / 10)
+    : 1.75;
 
   return {
     title: escapeHTML(String(f.title || '').slice(0, 500)),
