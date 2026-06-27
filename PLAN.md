@@ -1,297 +1,154 @@
-# FlatWrite v3 — Implementation Plan
-
-## Overview
-
-Two major phases:
-
-1. **Phase 1 — Document Mode:** Remove all seven web-app-oriented CSS frameworks and replace them with proper paged-media document engines (Paged.js, Vivliostyle).
-2. **Phase 2 — Doc/App Switch:** Introduce a top-level surface toggle that bifurcates FlatWrite into two personalities — **Doc** (paged document layout) and **App** (web app layout composition) — each exposing only its relevant frameworks, components, controls, and export options.
+# Plan — WebMCP + Streamable HTTP Transport for FlatWrite
 
 ---
 
-## Phase 1 — Document Mode: Replace Web App Frameworks with Document Engines
+## Objective 1 — WebMCP in `public/`
 
-### Milestone 1.1 — Audit & Strip Existing Frameworks
+### Goal
+Register `render_markdown` and `render_markdown_from_url` as [navigator.modelContext](https://bug0.com/blog/webmcp-chrome-146-guide) tools when a user has `flatwrite.md` open in Chrome 146+. The handler calls the existing `/api/render` Vercel function (same one the editor already uses for the live preview) and returns the rendered head/body to the agent.
 
-**Files affected:** `public/app.js`, `public/index.html`
+### Why
+Right now an AI agent can only interact with `flatwrite.md` by parsing DOM, simulating clicks, or scraping the editor. WebMCP exposes a structured contract: same tools the MCP server exposes, but registered directly by the page. No new server needed — the existing canonical render path is the truth.
 
-- Remove the entire `FRAMEWORKS` object from `app.js` — all seven entries (Spectre, PoshUI, Oat, Pico, Milligram, Chota, Simple.css) and their CDN URLs.
-- Remove `fwCssCache`, `applyFramework()`, and all `style(doc)` class-injection logic.
-- Remove the `COMPONENTS` array and all 15 component entries.
-- Remove the component picker UI from the sidebar (`.components-panel`, `.components-grid`, `.comp-btn`, `.comp-modal`) in both `index.html` and `styles.css`.
-- Remove the framework dropdown selector from the toolbar in `index.html`.
-- Update `saveToIDB()` schema: rename `framework` key to `docEngine` in the `preferences` store. Bump `DB_VERSION` to 2 and write a migration in `onupgradeneeded`.
+### File touches
 
-**Validation:** App loads, editor works, preview renders unstyled markdown. No framework references remain in JS or HTML.
-
----
-
-### Milestone 1.2 — Integrate Paged.js
-
-**Files affected:** `public/app.js`, `public/index.html`
-
-- Inject Paged.js via CDN into the sandboxed iframe `srcdoc` template inside `renderPreview()`:
-  ```html
-  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
-  ```
-- Add a baseline `@page` CSS block to the iframe's `<style>` section:
-  ```css
-  @page { size: A4; margin: 25mm 20mm; }
-  body { font-family: var(--body-font); }
-  ```
-- Wire page size and margin controls (added in 1.4) to CSS custom properties inside the iframe via `postMessage`.
-- Patch `exportHTML()` to bundle the Paged.js `<script>` tag so exported HTML self-paginates on open.
-- Patch `exportPDF()`: replace `html2pdf.js` with a `window.print()` call inside the iframe after Paged.js has rendered. This is the canonical Paged.js PDF workflow and respects all `@page` rules.
-
-**Validation:** Preview shows A4 page boundaries with crop marks. Content paginates across pages. PDF export via print dialog produces correctly sized pages.
-
----
-
-### Milestone 1.3 — Integrate Vivliostyle (Second Engine Option)
-
-**Files affected:** `public/app.js`, `public/index.html`
-
-- Define a `DOC_ENGINES` object in `app.js` to replace the old `FRAMEWORKS` object:
-  ```javascript
-  var DOC_ENGINES = {
-    pagedjs: {
-      label: "Paged.js",
-      script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js",
-      category: "paged-media"
-    },
-    vivliostyle: {
-      label: "Vivliostyle",
-      script: "https://unpkg.com/@vivliostyle/viewer/lib/vivliostyle.js",
-      category: "css-books"
-    },
-    none: {
-      label: "Plain CSS",
-      script: null,
-      category: "unstyled"
-    }
-  };
-  ```
-- Add a compact three-segment engine selector to the toolbar: `Paged.js | Vivliostyle | Plain`.
-- Update `renderPreview()` to inject the correct engine script into the iframe based on selection.
-- Persist selected engine to IndexedDB via the `docEngine` key.
-
-**Validation:** Switching engines re-renders the preview. Vivliostyle correctly handles `@footnote` and `running()` CSS constructs. Plain mode renders undecorated HTML.
-
----
-
-### Milestone 1.4 — Document Controls UI
-
-**Files affected:** `public/styles.css`, `public/index.html`, `public/app.js`
-
-Replace the old web-reading typography sliders with document-layout controls that map directly to `@page` CSS:
-
-| Control | CSS Target | Values |
-|---|---|---|
-| Page size | `@page { size: ... }` | A4, A5, Letter, Legal, Custom |
-| Margins | `@page { margin: ... }` | Narrow / Normal / Wide / Custom mm |
-| Columns | `column-count` on `body` | 1 / 2 / 3 |
-| Baseline grid | `line-height` on `body` | 1.2 → 2.0 |
-| Running headers | `position: running(header)` toggle | On / Off |
-| Page numbers | `@bottom-center { content: counter(page) }` toggle | On / Off |
-
-- Build controls as plain `<select>` and `<input type="range">` elements consistent with existing shell styling.
-- Write a `buildPageCSS()` function that assembles the `@page` block from current control values and injects it into the iframe via `postMessage`.
-- Persist all document layout preferences to IndexedDB.
-
-**Validation:** Changing page size re-renders preview at new dimensions. Columns split body text correctly. Running headers and page numbers appear in margins.
-
----
-
-### Milestone 1.5 — Export Pipeline Update
-
-**Files affected:** `public/app.js`
-
-| Export | Behaviour |
+| Path | Change |
 |---|---|
-| `.md` | No change — raw markdown text |
-| `.html` | Bundle includes engine script tag + `@page` CSS block. Self-contained, self-paginating HTML document. |
-| PDF | Remove `html2pdf.js`. New flow: render in iframe → `postMessage({ action: 'print' })` → iframe calls `window.print()` → browser print dialog at correct `@page` size. |
+| `public/webmcp.js` (new) | Registers `render_markdown` and `render_markdown_from_url` via `navigator.modelContext.registerTool(...)`. ~80 LOC. |
+| `public/index.html` | Add `<script src="webmcp.js?v=93" defer></script>` just before `app.js`. Bump `app.js?v=` to `93` for cache-bust. |
+| `mcp/flatwrite-render-server/src/tools/*.ts` | (no change — schemas already exported and stable). |
+| `test/webmcp.test.js` (new) | Bun test using a minimal `navigator.modelContext` stub: verifies the tool list, input schemas, and that calling `render_markdown` with the canonical settings returns `head` + `body`. Doesn't require Chrome. |
 
-- Remove `html2pdf.js` CDN reference from `index.html`.
-- Add tooltip on PDF export button: *"Save as PDF from the browser's print dialog."*
+### What the page registers
 
-**Validation:** HTML export opens in a browser and paginates. PDF flow opens print dialog at correct page size.
+```js
+if (!('modelContext' in navigator)) return; // graceful no-op on older browsers
 
----
+navigator.modelContext.registerTool({
+  name: 'render_markdown',
+  description: 'Render raw markdown to FlatWrite-styled HTML head/body fragments. Same schema as the flatwrite-render MCP server.',
+  inputSchema: { /* mirror of src/tools/renderMarkdown.ts zod schema */ },
+  annotations: { readOnlyHint: true },
+  handler: async (args) => {
+    const r = await fetch('/api/render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(toCanonicalStyle(args)),
+    });
+    if (!r.ok) throw new Error(`render failed: ${r.status}`);
+    return await r.json(); // { head, body }
+  },
+});
 
-## Phase 2 — Doc/App Switch
-
-### Milestone 2.1 — Top-Level Mode Architecture
-
-**Files affected:** `public/app.js`, `public/index.html`, `public/styles.css`
-
-Introduce a `surfaceMode` variable (`"doc"` | `"app"`) that sits above the existing `mode` variable:
-
-surfaceMode: "doc" | "app"
-└── mode: "edit" | "preview" | "read"
-
-- Add `surfaceMode` variable, defaulting to `"doc"`.
-- Add a persistent `surfaceMode` key to the IndexedDB `preferences` store.
-- Write `setSurfaceMode(sm)` that: sets `surfaceMode`; adds/removes `surface-doc` / `surface-app` class on `<html>`; calls `renderPreview()`; triggers sidebar re-render.
-- Add a two-segment pill toggle at the very top of the left sidebar rail: **Doc | App**.
-- Gate all sidebar panels and toolbar sections with `.doc-only` / `.app-only` classes:
-  ```css
-  .surface-doc  .app-only  { display: none; }
-  .surface-app  .doc-only  { display: none; }
-  ```
-
-**Validation:** Toggle changes `<html>` class, hides/shows correct panels, persists across page reloads.
-
----
-
-### Milestone 2.2 — Restore Web App Frameworks (App Surface Only)
-
-**Files affected:** `public/app.js`
-
-Re-introduce the web app framework registry, scoped to `surface-app`. The two registries coexist:
-
-```javascript
-var DOC_ENGINES    = { pagedjs: {...}, vivliostyle: {...}, none: {...} };  // Doc surface
-var APP_FRAMEWORKS = { spectre: {...}, poshui: {...}, pico: {...}, chota: {...}, milligram: {...} };  // App surface
+navigator.modelContext.registerTool({
+  name: 'render_markdown_from_url',
+  description: 'Fetch markdown from an allowlisted URL and render it.',
+  inputSchema: { /* mirror of src/tools/renderMarkdownFromUrl.ts */ },
+  annotations: { readOnlyHint: true },
+  handler: async (args) => { /* same, but with markdownUrl */ },
+});
 ```
 
-> **Note:** Oat and Simple.css are intentionally excluded from `APP_FRAMEWORKS`. Oat is not designed for app layout; Simple.css is document/reading-oriented. The five retained frameworks all have usable grid or component systems.
+Notes:
+- `toCanonicalStyle()` is the same translator that lives in `mcp/flatwrite-render-server/src/renderClient.ts`. I'll inline a minimal version in `webmcp.js` (same logic, ~30 lines). The MCP test `test/renderClient.test.ts` already pins the translation semantics — the WebMCP test will verify the same shapes end-to-end.
+- `/api/render` is HMAC-protected. The browser-side call will use the **internal** HMAC key path: `/api/render` accepts anonymous POSTs from the same zone (Cloudflare rule) — same way the editor's live preview already calls it. Verify the existing `api/render.js` middleware doesn't reject same-origin POSTs.
+- `navigator.modelContext` is the only API surface. No polyfill, no fallback for older Chrome. Tools just don't show up.
 
-- Restore `APP_FRAMEWORKS` with five entries and their CDN URLs.
-- Restore `style(doc)` class-injection functions for each.
-- Update `renderPreview()` to branch on `surfaceMode`: Doc → use `DOC_ENGINES`; App → use `APP_FRAMEWORKS` (no pagination engine).
-- Add framework selector to toolbar `.app-only` section.
+### Verification
+1. Local: `bun test test/webmcp.test.js` — Bun-style stub for `navigator.modelContext`, verify tool shapes.
+2. Live: open `https://flatwrite.md` in Chrome 146+ with "Experimental Web Platform Features" flag on. Inspect the page in DevTools console — `navigator.modelContext` should list `render_markdown` and `render_markdown_from_url`.
+3. End-to-end with an agent: have an MCP-capable browser extension list the page's tools, then call `render_markdown` with `{ markdown: "# Hi", fontFamily: "Comfortaa" }`. Confirm the response has a populated `body` containing `<h1>Hi</h1>`.
 
-**Validation:** In App surface, framework switcher appears and applies classes. In Doc surface, engine selector appears instead.
+### Risk
+- The `/api/render` HMAC middleware currently requires `X-Render-Timestamp` and `X-Render-Signature` headers. If the browser-side call doesn't pass those, the request fails. The editor's own preview already calls `/api/render` — check how `public/app.js` does it. If there's a same-origin exception baked into the rate-limit/auth middleware, the WebMCP path works automatically. If not, we'll need to either:
+  (a) extend the middleware to allow same-origin requests, or
+  (b) have the WebMCP handler go through the public `render.flatwrite.md` Worker instead (same X-Api-Key, but we need to expose the key to the page — not ideal).
+- Option (a) is preferred. Same-origin calls can include the HMAC headers generated client-side if we expose a small `/api/sign` endpoint, but that's a future iteration. For now, simplest: allow unauthenticated same-origin POSTs to `/api/render` and rely on the rate-limiter for abuse control.
 
 ---
 
-### Milestone 2.3 — Restore Component Picker (App Surface Only)
+## Objective 2 — Streamable HTTP transport for the MCP server
 
-**Files affected:** `public/app.js`, `public/index.html`, `public/styles.css`
+### Goal
+Expose the existing MCP tools (`render_markdown`, `render_markdown_from_url`) over MCP's Streamable HTTP transport at `https://mcp.flatwrite.md/mcp`. Hermes (and any other MCP client supporting streamable-http) can connect without spawning a local stdio process.
 
-- Restore `COMPONENTS` array (15 original entries) with `class="app-only"` on all containing UI.
-- Restore `insertComponent()` function.
-- Add five new layout-level components not previously present:
+### Why
+Right now the MCP server only speaks stdio — every Hermes install needs a local Node process. For hosted agents (e.g. AI assistants running in a SaaS) this is wrong. Streamable HTTP is the MCP transport of choice for remote servers (the legacy SSE transport is deprecated in the spec).
 
-| ID | Purpose |
+### File touches
+
+| Path | Change |
 |---|---|
-| `navbar` | Top navigation bar |
-| `footer` | Page footer |
-| `hero-wide` | Full-width hero with CTA |
-| `two-col` | Two-column section wrapper |
-| `three-col` | Three-column section wrapper |
+| `workers/flatwrite-mcp/wrangler.toml` (new) | name = "flatwrite-mcp", route = "mcp.flatwrite.md/*", main = "src/index.js". |
+| `workers/flatwrite-mcp/src/index.js` (new) | CF Worker: handles `POST /mcp` and `GET /mcp` via `WebStandardStreamableHTTPServerTransport`. Wraps a single `McpServer` instance. Verifies `X-Api-Key`. |
+| `workers/flatwrite-mcp/package.json` (new) | deps: `@modelcontextprotocol/sdk`, `zod`. |
+| `workers/flatwrite-mcp/README.md` (new) | Documents the endpoint, auth, CORS, session model. |
+| `mcp/flatwrite-render-server/src/streamableServer.ts` (new) | Pure-Node entry that wires the same tools to a `StreamableHTTPServerTransport` — useful for self-hosting or local dev. ~60 LOC. |
+| `mcp/flatwrite-render-server/src/index.ts` | Branch: if `FLATWRITE_TRANSPORT=streamable-http`, bind to `process.env.PORT` and use the streamable server. Else (default), keep stdio. |
+| `mcp/flatwrite-render-server/test/streamableHttp.test.ts` (new) | Start the streamable server on a random port; `initialize` + `tools/list` + `tools/call` roundtrip. ~80 LOC. |
+| `openapi.yaml` | Append a new section documenting the streamable HTTP endpoint shape (`POST /mcp`, `GET /mcp`, `DELETE /mcp`). |
+| `README.md` | Add "Streamable HTTP transport" section to the MCP server block. |
+| DNS | Add a CNAME from `mcp.flatwrite.md` → `flatwrite-md.flatwrite-render.workers.dev` (or whatever CF gives). |
 
-**Validation:** Component picker hidden in Doc surface, visible in App surface. All components insert and render correctly.
+### What the Worker looks like
 
----
+```js
+// workers/flatwrite-mcp/src/index.js
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { z } from 'zod';
 
-### Milestone 2.4 — App Surface Layout Controls
+const server = new McpServer({ name: 'flatwrite-render', version: '0.2.0' });
 
-**Files affected:** `public/app.js`, `public/styles.css`, `public/index.html`
+server.registerTool('render_markdown', { /* same as src/tools/renderMarkdown.ts */ }, handler);
+server.registerTool('render_markdown_from_url', { /* same */ }, handler);
 
-Replace the Doc surface's `@page` controls with viewport/breakpoint controls in the sidebar's `.app-only` panel:
+export default {
+  async fetch(req, env, ctx) {
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (req.headers.get('X-Api-Key') !== env.API_KEY) return new Response('Unauthorized', { status: 401 });
 
-| Control | Function |
-|---|---|
-| Viewport preview | Resize preview iframe: Mobile (375px) / Tablet (768px) / Desktop (100%) |
-| Framework selector | Segmented control: Spectre / PoshUI / Pico / Chota / Milligram |
-| Typography | Font family + size step sliders (repurposed for web type) |
-| Content width | `--canvas-max` token override |
+    // Stateless mode — one transport per request.
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true, // simpler for one-shot calls; revisit for streaming
+    });
+    await server.connect(transport);
+    const response = await transport.handleRequest(req, ctx);
+    return response;
+  },
+};
+```
 
-- Add viewport control buttons to toolbar `.app-only` section.
-- Write `setViewport(w)` that sets `max-width` on `.preview-wrap` and sends resize message to iframe.
-- Restore font/size/weight/line typography sliders from v2, tagged `.app-only`.
+Notes:
+- **Stateless mode**: each request gets a fresh transport. Simpler than tracking sessions across Worker invocations (Workers are short-lived). The MCP client won't get resumable SSE streams, but `tools/call` roundtrips work fine — and `enableJsonResponse: true` makes the response shape stable.
+- **Single shared `McpServer`**: tools are registered once on import. The transport is per-request, but the tool definitions are not. This is the pattern the SDK examples recommend.
+- **Auth**: same `X-Api-Key` as the public Worker. Cloudflare `wrangler secret put API_KEY` to set the value (one secret, same value as `render.flatwrite.md`).
 
-**Validation:** Viewport toggle resizes preview iframe. Framework classes apply at each breakpoint.
+### What the Node entry looks like
 
----
+```ts
+// mcp/flatwrite-render-server/src/streamableServer.ts
+import { createServer } from 'node:http';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMcpServer } from './mcpServer.js';
 
-### Milestone 2.5 — Export Pipeline Branching
-
-**Files affected:** `public/app.js`
-
-| Export | Doc surface | App surface |
-|---|---|---|
-| `.md` | Raw markdown (unchanged) | Raw markdown (unchanged) |
-| `.html` | Self-contained HTML + engine script + `@page` CSS | Self-contained HTML + framework CSS + class-injected markup |
-| PDF / Print | `window.print()` via iframe (Paged.js / Vivliostyle) | `window.print()` for screen capture; tooltip suggests HTML export for sharing |
-
-- Add `if (surfaceMode === 'doc') { ... } else { ... }` branch in `exportHTML()`.
-- For App surface, restore the `html2pdf.js`-compatible bundle export that inlines framework CSS.
-- Update PDF export button tooltip text per active surface.
-
-**Validation:** Both export paths produce correct, self-contained output for their respective surfaces.
-
----
-
-### Milestone 2.6 — Shared State & Persistence
-
-**Files affected:** `public/app.js`
-
-- Markdown content (`editor.value`) is **shared** between surfaces — the same document can be previewed as a paginated print document or as a styled web page. This is intentional.
-- The `preferences` IndexedDB store gains: `surfaceMode`, `appFramework` (separate from `docEngine`), so each surface remembers its last-used engine/framework independently.
-- On `setSurfaceMode()`, load the saved preference for the newly active surface without re-loading markdown content.
-- Update `saveToIDB()` to always persist `surfaceMode`, `docEngine`, and `appFramework`.
-
-**Validation:** Switching surfaces preserves editor content. Each surface restores its last-used engine/framework independently on reload.
-
----
-
-### Milestone 2.7 — Share Pipeline Branching
-
-**Files affected:** `public/app.js`, `api/` (server-side share handler)
-
-The existing Dustebin-compatible share backend stores raw markdown and returns a short URL. With two surfaces, the share payload must also encode surface context so a recipient opens the document in the correct mode.
-
-- Extend the share payload from bare markdown to a JSON envelope:
-  ```json
-  {
-    "content": "# My document...",
-    "surfaceMode": "doc",
-    "docEngine": "pagedjs",
-    "appFramework": null,
-    "pageSize": "A4",
-    "margins": "normal"
-  }
-  ```
-- Update `handleShare()` in `index.js` (server): accept the JSON envelope, stringify it, and pass it as the `content` field to the Dustebin API (no server-side logic change required; the envelope is opaque to the paste backend).
-- Update the client-side share fetch call to POST the JSON envelope instead of raw markdown.
-- Update the URL-load path (`?s=<key>`): when fetching a shared document, detect whether the stored content is a JSON envelope or legacy raw markdown (use `try { JSON.parse(...) }`) and handle both:
-  - **JSON envelope:** restore `surfaceMode`, `docEngine`/`appFramework`, and layout preferences before rendering.
-  - **Legacy markdown string:** default to `surfaceMode: "doc"`, engine `pagedjs` — safe forward-compatible fallback.
-- Add a "Copy share link" button to both surfaces in the toolbar (`.share-btn`), which triggers the share flow and copies the resulting URL to clipboard.
-- The share URL itself remains a simple short key (e.g., `flatwrite.md/?s=abc123`) — no surface state is encoded in the URL. All context travels in the paste payload.
-
-**Validation:** Sharing a Doc-surface document with Paged.js selected opens correctly for the recipient in Doc mode with Paged.js active. Sharing an App-surface document opens in App mode with the correct framework. Legacy share URLs from v2 load cleanly in Doc mode.
-
----
-
-## Milestone Summary
-
-| # | Milestone | Phase | Files Touched | Key Output |
-|---|---|---|---|---|
-| 1.1 | Audit & Strip Frameworks | 1 | `app.js`, `index.html`, `styles.css` | Clean codebase, no web-app framework references |
-| 1.2 | Integrate Paged.js | 1 | `app.js`, `index.html` | Paginated A4 preview, print-dialog PDF |
-| 1.3 | Integrate Vivliostyle | 1 | `app.js`, `index.html` | `DOC_ENGINES` registry, engine selector UI |
-| 1.4 | Document Controls UI | 1 | `app.js`, `index.html`, `styles.css` | `@page` controls, `buildPageCSS()` |
-| 1.5 | Export Pipeline Update | 1 | `app.js` | Paginated HTML export, `html2pdf.js` removed |
-| 2.1 | Top-Level Mode Architecture | 2 | `app.js`, `index.html`, `styles.css` | `surfaceMode` variable, Doc/App pill toggle, `.doc-only`/`.app-only` CSS gates |
-| 2.2 | Restore Web App Frameworks | 2 | `app.js` | `APP_FRAMEWORKS` registry, `renderPreview()` branching |
-| 2.3 | Restore Component Picker | 2 | `app.js`, `index.html`, `styles.css` | 15 original + 5 new layout components, `.app-only` scoped |
-| 2.4 | App Surface Layout Controls | 2 | `app.js`, `index.html`, `styles.css` | Viewport toggle, framework selector, typography sliders restored |
-| 2.5 | Export Pipeline Branching | 2 | `app.js` | Dual export paths per surface mode |
-| 2.6 | Shared State & Persistence | 2 | `app.js` | `appFramework` + `docEngine` persisted independently per surface |
-| 2.7 | Share Pipeline Branching | 2 | `app.js`, `index.js` | JSON share envelope, legacy fallback, clipboard share button |
-
-**Five Architectural Constraints:**
-
-1. **The Iframe Boundary Is Inviolable** — Paged.js and Vivliostyle must only ever run inside the sandboxed preview iframe, never in the shell document. Communication goes through the existing `postMessage` channel exclusively.
-
-2. **`surfaceMode` Is Above `mode` — Never Conflate Them** — `surfaceMode` (`"doc"` | `"app"`) and `mode` (`"edit"` | `"preview"` | `"read"`) are orthogonal axes. `setSurfaceMode()` must never call `setMode()` as a side effect, and vice versa. Surface gating uses CSS classes, not `mode` conditionals.
-
-3. **Markdown Content Is Surface-Agnostic** — The same `editor.value` string renders in both surfaces. No separate stores, no separate editor instances per surface. One document, two rendering pipelines.
-
-4. **Legacy Share URLs Must Always Load** — The v2 raw-markdown share format must always be handled as a fallback after the JSON envelope format is introduced in 2.7. This fallback must never be removed.
-
-5. **No Build Step** — The zero-toolchain constraint (no bundler, no transpiler, plain ES5 JS) must be maintained across all milestones. CDN script tags are fine; npm frontend build dependencies are not.
+export function startStreamableHttp(port: number, apiKey: string) {
+  const server = createServer(async (req, res) => {
+    if (req.url === '/mcp' && req.method === 'POST') {
+      if (req.headers['x-api-key'] !== apiKey) {
+        res.writeHead(401); res.end(); return;
+      }
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+      });
+      const mcp = createMcpServer(apiKey);
+      await mcp.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } else {
+      res.writeHead(404); res.end();
+    }
+  });
+  server.listen(port);
+  return server;
+}
