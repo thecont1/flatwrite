@@ -200,6 +200,11 @@ constraints.
 - **`render_markdown_from_url`** rejects the call with a structured `isError: true` (and a `[DISALLOWED_HOST]`, `[UNSUPPORTED_SCHEME]`, or `[INVALID_URL]` code) when the URL is malformed, uses a non-http(s) scheme, or points at a host outside the markdown URL allowlist (`raw.githubusercontent.com`, `raw.gitlab.com`, `bitbucket.org` — kept in sync with `api/render.js`'s canonical allowlist). That avoids waiting for a 502 roundtrip when the caller passes something the upstream was always going to reject.
 - **Both tools** validate `fontFamily` against the bundled font inventory (`Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded` — kept in sync with `core/font-inventory.js`) and reject with `[INVALID_FONT_FAMILY]` immediately if the requested family has no bundled woff2.
 
+The MCP server supports two transports:
+
+- **stdio** (default) — local process, started via `npm start` in `mcp/flatwrite-render-server/`. Used by Hermes when configured with `command: node ...`.
+- **Streamable HTTP** — long-running HTTP server exposing `/mcp`. Set `FLATWRITE_TRANSPORT=streamable-http` (and optionally `FLATWRITE_PORT`) and start the same way. Clients connect via `type: streamable-http` in their MCP config. A Cloudflare Worker deployment of this transport lives at `workers/flatwrite-mcp/` and is intended to be served at `mcp.flatwrite.md/mcp`.
+
 All error details returned to MCP callers are scrubbed through
 `sanitizeDetail()` before they leave the server: bearer tokens, API keys,
 32+ char hex/base64 blobs, URLs with query strings, IPv4 addresses, Node
