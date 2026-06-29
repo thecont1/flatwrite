@@ -24,19 +24,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-
-// Bundled font inventory — must match core/font-inventory.js and
-// core/document-css.js's COMFORT_FONTS exactly.
-const ALLOWED_FONTS = new Set([
-  "Inter", "JetBrains Mono", "Lato", "Lora",
-  "Merriweather", "Playfair Display", "Comfortaa", "Unbounded",
-]);
-
-const ALLOWED_MARKDOWN_HOSTS = new Set([
-  "raw.githubusercontent.com",
-  "raw.gitlab.com",
-  "bitbucket.org",
-]);
+import {
+  toCanonicalStyle,
+  validateFontFamily,
+  validateMarkdownUrl,
+} from "../../../public/webmcp-shared.js";
 
 // Origins allowed to call this Worker over the browser-side path
 // (Streamable HTTP from a browser tab, not a server-to-server MCP
@@ -86,33 +78,6 @@ const RenderMarkdownFromUrlInput = z
   })
   .strict();
 
-function toCanonicalStyle(publicStyle) {
-  const out = {};
-  if (!publicStyle) return out;
-  if (publicStyle.fontFamily != null) out.font = String(publicStyle.fontFamily);
-  if (publicStyle.framework != null) out.appFramework = String(publicStyle.framework);
-  if (publicStyle.fontSize != null) {
-    if (typeof publicStyle.fontSize === "string") out.size = publicStyle.fontSize;
-    else out.fontSize = publicStyle.fontSize;
-  }
-  if (publicStyle.fontWeight != null) {
-    if (typeof publicStyle.fontWeight === "string") out.weight = publicStyle.fontWeight;
-    else out.fontWeight = publicStyle.fontWeight;
-  }
-  if (publicStyle.lineHeight != null) {
-    if (typeof publicStyle.lineHeight === "string") out.line = publicStyle.lineHeight;
-    else out.lineHeight = publicStyle.lineHeight;
-  }
-  for (const k of [
-    "docEngine", "surfaceMode", "pageSize", "orientation",
-    "marginsLR", "marginsTB", "footer", "width",
-    "theme",
-  ]) {
-    if (publicStyle[k] != null) out[k] = publicStyle[k];
-  }
-  return out;
-}
-
 function compact(obj) {
   const out = {};
   for (const k of Object.keys(obj)) {
@@ -127,29 +92,6 @@ function buildRawBody(markdown, style) {
 
 function buildRemoteBody(url, style) {
   return compact({ markdownUrl: url, ...toCanonicalStyle(style) });
-}
-
-function validateMarkdownUrl(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch (_) {
-    return { ok: false, code: "INVALID_URL", message: "url is not a valid URL" };
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return {
-      ok: false, code: "UNSUPPORTED_SCHEME",
-      message: "url must use http or https (got " + parsed.protocol + ")",
-    };
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (!ALLOWED_MARKDOWN_HOSTS.has(host)) {
-    return {
-      ok: false, code: "DISALLOWED_HOST",
-      message: "host '" + host + "' is not on the markdown URL allowlist",
-    };
-  }
-  return { ok: true, url: parsed.toString() };
 }
 
 function sanitizeDetail(input) {
@@ -266,12 +208,11 @@ mcp.registerTool(
     inputSchema: RenderMarkdownInput,
   },
   async ({ markdown, fontFamily, ...style }) => {
-    if (fontFamily !== undefined && !ALLOWED_FONTS.has(fontFamily)) {
-      return isErrorResult(
-        "fontFamily '" + fontFamily + "' is not one of the bundled fonts (Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded) [INVALID_FONT_FAMILY]",
-      );
+    const fontCheck = validateFontFamily(fontFamily);
+    if (!fontCheck.ok) {
+      return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
     }
-    const body = buildRawBody(markdown, { fontFamily, ...style });
+    const body = buildRawBody(markdown, toCanonicalStyle({ fontFamily, ...style }));
     try {
       const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
       return { structuredContent: result };
@@ -294,12 +235,11 @@ mcp.registerTool(
     if (!urlCheck.ok) {
       return isErrorResult(urlCheck.message + " [" + urlCheck.code + "]");
     }
-    if (fontFamily !== undefined && !ALLOWED_FONTS.has(fontFamily)) {
-      return isErrorResult(
-        "fontFamily '" + fontFamily + "' is not one of the bundled fonts (Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded) [INVALID_FONT_FAMILY]",
-      );
+    const fontCheck = validateFontFamily(fontFamily);
+    if (!fontCheck.ok) {
+      return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
     }
-    const body = buildRemoteBody(urlCheck.url, { fontFamily, ...style });
+    const body = buildRemoteBody(urlCheck.url, toCanonicalStyle({ fontFamily, ...style }));
     try {
       const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
       return { structuredContent: result };

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"const fs=require('fs'); fs.copyFileSync('dist/shared/mcpShared.js', '../../public/webmcp-shared.js');\"",
     "start": "node dist/index.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "bun test test/"

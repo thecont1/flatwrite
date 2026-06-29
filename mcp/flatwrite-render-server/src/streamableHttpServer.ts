@@ -36,17 +36,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { callRender } from './renderClient.js';
-
-const ALLOWED_FONTS = new Set([
-  'Inter', 'JetBrains Mono', 'Lato', 'Lora',
-  'Merriweather', 'Playfair Display', 'Comfortaa', 'Unbounded',
-]);
-
-const ALLOWED_MARKDOWN_HOSTS = new Set([
-  'raw.githubusercontent.com',
-  'raw.gitlab.com',
-  'bitbucket.org',
-]);
+import {
+  toCanonicalStyle,
+  validateFontFamily,
+  validateMarkdownUrl,
+} from './shared/mcpShared.js';
 
 /**
  * Default origin allowlist for browser-side callers. The long-lived
@@ -123,11 +117,11 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
     },
     async ({ markdown, ...style }) => {
       const fontFamily = (style as { fontFamily?: string }).fontFamily;
-      if (fontFamily !== undefined && !ALLOWED_FONTS.has(fontFamily)) {
-        const msg = `fontFamily '${fontFamily}' is not one of the bundled fonts (Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded) [INVALID_FONT_FAMILY]`;
-        return { isError: true, content: [{ type: 'text' as const, text: msg }] };
+      const fontCheck = validateFontFamily(fontFamily);
+      if (!fontCheck.ok) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${fontCheck.message} [${fontCheck.code}]` }] };
       }
-      const body = buildRawBody(markdown, style);
+      const body = buildRawBody(markdown, toCanonicalStyle(style));
       try {
         const result = await callRender(body, { apiKey, baseUrl });
         return {
@@ -155,11 +149,11 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
         return { isError: true, content: [{ type: 'text' as const, text: `${check.message} [${check.code}]` }] };
       }
       const fontFamily = (style as { fontFamily?: string }).fontFamily;
-      if (fontFamily !== undefined && !ALLOWED_FONTS.has(fontFamily)) {
-        const msg = `fontFamily '${fontFamily}' is not one of the bundled fonts (Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded) [INVALID_FONT_FAMILY]`;
-        return { isError: true, content: [{ type: 'text' as const, text: msg }] };
+      const fontCheck = validateFontFamily(fontFamily);
+      if (!fontCheck.ok) {
+        return { isError: true, content: [{ type: 'text' as const, text: `${fontCheck.message} [${fontCheck.code}]` }] };
       }
-      const body = buildRemoteBody(check.url, style);
+      const body = buildRemoteBody(check.url, toCanonicalStyle(style));
       try {
         const result = await callRender(body, { apiKey, baseUrl });
         return {
@@ -417,16 +411,16 @@ export async function startStreamableHttp(opts: {
 }
 
 // === helpers (duplicated from tools/error.ts to keep this file self-contained) ===
-function buildRawBody(markdown: string, style: Record<string, unknown>): Record<string, unknown> {
+function buildRawBody(markdown: string, canonicalStyle: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { markdown };
-  for (const [k, v] of Object.entries(style)) {
+  for (const [k, v] of Object.entries(canonicalStyle)) {
     if (v !== undefined) out[k] = v;
   }
   return out;
 }
-function buildRemoteBody(url: string, style: Record<string, unknown>): Record<string, unknown> {
+function buildRemoteBody(url: string, canonicalStyle: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { markdownUrl: url };
-  for (const [k, v] of Object.entries(style)) {
+  for (const [k, v] of Object.entries(canonicalStyle)) {
     if (v !== undefined) out[k] = v;
   }
   return out;
@@ -436,22 +430,6 @@ function sanitizeError(e: unknown): string {
   return s
     .replace(/(?:Authorization|Bearer|ApiKey|Token)[:=\s]+[^\s,;"'`<>]+/gi, '[redacted]')
     .replace(/\b[a-f0-9]{32,}\b/gi, '[hex]');
-}
-function validateMarkdownUrl(rawUrl: string) {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return { ok: false as const, code: 'INVALID_URL', message: 'url is not a valid URL' };
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return { ok: false as const, code: 'UNSUPPORTED_SCHEME', message: `url must use http or https (got ${parsed.protocol})`, host: parsed.hostname };
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (!ALLOWED_MARKDOWN_HOSTS.has(host)) {
-    return { ok: false as const, code: 'DISALLOWED_HOST', message: `host '${host}' is not on the markdown URL allowlist`, host };
-  }
-  return { ok: true as const, url: parsed.toString(), host };
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
