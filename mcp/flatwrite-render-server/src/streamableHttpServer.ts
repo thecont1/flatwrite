@@ -251,16 +251,20 @@ export async function startStreamableHttp(opts: {
   baseUrl?: string;
   host?: string;
   trustedOrigins?: string[];
+  sessionTtlMs?: number;
+  sessionCleanupIntervalMs?: number;
 }): Promise<{
   server: ReturnType<typeof createServer>;
   port: number;
   close: () => Promise<void>;
 }> {
   const trustedOrigins = opts.trustedOrigins ?? DEFAULT_TRUSTED_ORIGINS;
+  const sessionTtlMs = opts.sessionTtlMs ?? 15 * 60 * 1000; // 15 minutes
+  const sessionCleanupIntervalMs = opts.sessionCleanupIntervalMs ?? 60 * 1000; // 1 minute
 
   const sessions = new Map<
     string,
-    { transport: StreamableHTTPServerTransport; server: McpServer }
+    { transport: StreamableHTTPServerTransport; server: McpServer; lastUsedAt: number }
   >();
 
   const server = createServer(async (req, res) => {
@@ -305,16 +309,19 @@ export async function startStreamableHttp(opts: {
 
       let transport: StreamableHTTPServerTransport | undefined;
       let freshServer: McpServer | undefined;
-      if (sessionId && sessions.has(sessionId)) {
-        transport = sessions.get(sessionId)!.transport;
+      let entry = sessionId ? sessions.get(sessionId) : undefined;
+      if (entry) {
+        entry.lastUsedAt = Date.now();
+        transport = entry.transport;
       } else if (isInitializeRequest(body)) {
         // New session — fresh server + transport pair.
+        const now = Date.now();
         const newId = randomUUID();
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => newId,
           onsessioninitialized: (id) => {
             if (transport && freshServer) {
-              sessions.set(id, { transport, server: freshServer });
+              sessions.set(id, { transport, server: freshServer, lastUsedAt: now });
             }
           },
         });
@@ -349,6 +356,7 @@ export async function startStreamableHttp(opts: {
         res.end(JSON.stringify({ error: 'Missing or unknown session ID', code: 'NO_SESSION' }));
         return;
       }
+      entry.lastUsedAt = Date.now();
       await entry.transport.handleRequest(req, res);
       return;
     }
@@ -360,6 +368,7 @@ export async function startStreamableHttp(opts: {
         res.end(JSON.stringify({ error: 'Unknown session', code: 'NO_SESSION' }));
         return;
       }
+      entry.lastUsedAt = Date.now();
       await entry.transport.handleRequest(req, res);
       return;
     }
@@ -373,7 +382,29 @@ export async function startStreamableHttp(opts: {
   const addr = server.address();
   const actualPort = typeof addr === 'object' && addr ? addr.port : opts.port;
 
+  function evictExpiredSessions() {
+    const now = Date.now();
+    const deadline = now - sessionTtlMs;
+    for (const [id, entry] of sessions) {
+      if (entry.lastUsedAt < deadline) {
+        sessions.delete(id);
+        // Close transport + server in the background; errors are
+        // ignored because the session is already considered dead.
+        (async () => {
+          try { await entry.transport.close(); } catch { /* ignore */ }
+          try { await entry.server.close(); } catch { /* ignore */ }
+        })();
+      }
+    }
+  }
+
+  const cleanupInterval = setInterval(evictExpiredSessions, sessionCleanupIntervalMs);
+  // Prevent the interval from keeping the process alive if the server
+  // is otherwise idle; the cleanup is not critical work.
+  cleanupInterval.unref();
+
   async function close(): Promise<void> {
+    clearInterval(cleanupInterval);
     for (const [, entry] of sessions) {
       try { await entry.transport.close(); } catch { /* ignore */ }
       try { await entry.server.close(); } catch { /* ignore */ }

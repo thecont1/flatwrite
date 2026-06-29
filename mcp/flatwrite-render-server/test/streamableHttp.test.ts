@@ -362,3 +362,106 @@ describe("streamableHttpServer — auth", () => {
     expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
+
+describe("streamableHttpServer — session TTL eviction", () => {
+  async function startTtlServer(ttlMs: number, intervalMs: number) {
+    const handle = await startStreamableHttp({
+      port: 0,
+      apiKey: API_KEY,
+      sessionTtlMs: ttlMs,
+      sessionCleanupIntervalMs: intervalMs,
+    });
+    return handle;
+  }
+
+  async function postJson(port: number, body: unknown, headers: Record<string, string> = {}) {
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "X-Api-Key": API_KEY,
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await r.text();
+    return {
+      status: r.status,
+      headers: Object.fromEntries(r.headers.entries()),
+      body: text.startsWith("{") ? JSON.parse(text) : text,
+    };
+  }
+
+  test("evicts idle sessions after TTL expires", async () => {
+    const handle = await startTtlServer(80, 40);
+    try {
+      // Initialize a session.
+      const init = await postJson(handle.port, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test", version: "0" },
+        },
+      });
+      expect(init.status).toBe(200);
+      const sid = init.headers["mcp-session-id"] || init.headers["Mcp-Session-Id"];
+      expect(sid).toBeTruthy();
+
+      // Wait for TTL + one cleanup interval to pass.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // The session should now be gone.
+      const reuse = await postJson(handle.port, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      }, { "mcp-session-id": sid });
+      expect(reuse.status).toBe(400);
+      expect(reuse.body.code).toBe("NO_SESSION");
+    } finally {
+      await handle.close();
+    }
+  });
+
+  test("bumping a session keeps it alive past the TTL", async () => {
+    const handle = await startTtlServer(120, 50);
+    try {
+      const init = await postJson(handle.port, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test", version: "0" },
+        },
+      });
+      expect(init.status).toBe(200);
+      const sid = init.headers["mcp-session-id"] || init.headers["Mcp-Session-Id"];
+
+      // Wait almost long enough for the session to expire, then bump it.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const bump = await postJson(handle.port, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      }, { "mcp-session-id": sid });
+      expect(bump.status).toBe(200);
+
+      // Wait another almost-TTL window.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const stillThere = await postJson(handle.port, {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/list",
+      }, { "mcp-session-id": sid });
+      expect(stillThere.status).toBe(200);
+    } finally {
+      await handle.close();
+    }
+  });
+});
