@@ -271,8 +271,21 @@ async function authenticateRequest(req, env) {
     };
   }
   const apiKey = req.headers.get("X-Api-Key");
-  if (apiKey === env.API_KEY) return { ok: true, kind: "key" };
+  if (constantTimeEqual(apiKey || "", env.API_KEY || "")) return { ok: true, kind: "key" };
   return { ok: false, status: 401, body: { error: "Unauthorized", code: "UNAUTHORIZED" } };
+}
+
+/**
+ * Constant-time string comparison. Prevents timing attacks on signature
+ * or secret comparisons by always scanning every byte.
+ */
+function constantTimeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 async function verifyToken(secret, token, scope) {
@@ -296,7 +309,7 @@ async function verifyToken(secret, token, scope) {
     return { ok: false, reason: "malformed" };
   }
   const actualSig = await sign(secret, expStr + "." + scope);
-  if (expectedSig !== actualSig) return { ok: false, reason: "bad_signature" };
+  if (!constantTimeEqual(expectedSig, actualSig)) return { ok: false, reason: "bad_signature" };
   return { ok: true, exp };
 }
 
