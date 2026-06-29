@@ -140,9 +140,6 @@ function isBrowserRequest(req) {
   return Boolean(req.headers.get("Origin"));
 }
 
-// === Single shared McpServer (tool definitions are module-scope) ===
-const mcp = new McpServer({ name: "flatwrite-render", version: "0.2.0" });
-
 // Outbound call to render.flatwrite.md — Workers fetch supports this.
 async function callUpstream(upstreamUrl, apiKey, body) {
   const resp = await fetch(upstreamUrl, {
@@ -171,55 +168,69 @@ function isErrorResult(message) {
   return { isError: true, content: [{ type: "text", text: message }] };
 }
 
-mcp.registerTool(
-  "render_markdown",
-  {
-    title: "Render Markdown",
-    description:
-      "Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments.",
-    inputSchema: RenderMarkdownInput,
-  },
-  async ({ markdown, fontFamily, ...style }) => {
-    const fontCheck = validateFontFamily(fontFamily);
-    if (!fontCheck.ok) {
-      return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
-    }
-    const body = buildRawMarkdownBody(markdown, { fontFamily, ...style });
-    try {
-      const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
-      return { structuredContent: result };
-    } catch (e) {
-      return isErrorResult(sanitizeDetail(e.message || e));
-    }
-  },
-);
+/**
+ * Create a fresh McpServer for each request. The SDK's underlying
+ * Protocol object owns exactly one Transport, so reusing a single
+ * module-scoped server and reconnecting it on every request is unsafe.
+ * This mirrors the Node streamable server's pattern of one McpServer per
+ * session. Tool handlers read the per-request env via the currentEnv
+ * globals set before the transport handles the request.
+ */
+function createMcpServer() {
+  const server = new McpServer({ name: "flatwrite-render", version: "0.2.0" });
 
-mcp.registerTool(
-  "render_markdown_from_url",
-  {
-    title: "Render Markdown From URL",
-    description:
-      "Fetch markdown from a URL and render it into FlatWrite-styled HTML <head> and <body> fragments.",
-    inputSchema: RenderMarkdownFromUrlInput,
-  },
-  async ({ url, fontFamily, ...style }) => {
-    const urlCheck = validateMarkdownUrl(url);
-    if (!urlCheck.ok) {
-      return isErrorResult(urlCheck.message + " [" + urlCheck.code + "]");
-    }
-    const fontCheck = validateFontFamily(fontFamily);
-    if (!fontCheck.ok) {
-      return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
-    }
-    const body = buildRemoteMarkdownBody(urlCheck.url, { fontFamily, ...style });
-    try {
-      const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
-      return { structuredContent: result };
-    } catch (e) {
-      return isErrorResult(sanitizeDetail(e.message || e));
-    }
-  },
-);
+  server.registerTool(
+    "render_markdown",
+    {
+      title: "Render Markdown",
+      description:
+        "Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments.",
+      inputSchema: RenderMarkdownInput,
+    },
+    async ({ markdown, fontFamily, ...style }) => {
+      const fontCheck = validateFontFamily(fontFamily);
+      if (!fontCheck.ok) {
+        return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
+      }
+      const body = buildRawMarkdownBody(markdown, { fontFamily, ...style });
+      try {
+        const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
+        return { structuredContent: result };
+      } catch (e) {
+        return isErrorResult(sanitizeDetail(e.message || e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "render_markdown_from_url",
+    {
+      title: "Render Markdown From URL",
+      description:
+        "Fetch markdown from a URL and render it into FlatWrite-styled HTML <head> and <body> fragments.",
+      inputSchema: RenderMarkdownFromUrlInput,
+    },
+    async ({ url, fontFamily, ...style }) => {
+      const urlCheck = validateMarkdownUrl(url);
+      if (!urlCheck.ok) {
+        return isErrorResult(urlCheck.message + " [" + urlCheck.code + "]");
+      }
+      const fontCheck = validateFontFamily(fontFamily);
+      if (!fontCheck.ok) {
+        return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
+      }
+      const body = buildRemoteMarkdownBody(urlCheck.url, { fontFamily, ...style });
+      try {
+        const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
+        return { structuredContent: result };
+      } catch (e) {
+        return isErrorResult(sanitizeDetail(e.message || e));
+      }
+    },
+  );
+
+  return server;
+}
 
 // Per-request env. Captured at fetch time and read by tool handlers
 // (which can't take env as an argument).
@@ -372,6 +383,7 @@ export default {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
+    const mcp = createMcpServer();
 
     try {
       await mcp.connect(transport);
