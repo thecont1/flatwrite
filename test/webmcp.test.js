@@ -252,6 +252,77 @@ describe("webmcp.js — tool registration", () => {
       expect(orient.enum).toEqual(["portrait", "landscape"]);
     }
   });
+
+  test("both tools declare an outputSchema with required head and body", () => {
+    const tools = loadWebmcp();
+    for (const t of tools) {
+      expect(t.outputSchema).toBeDefined();
+      expect(t.outputSchema.type).toBe("object");
+      expect(t.outputSchema.required).toContain("head");
+      expect(t.outputSchema.required).toContain("body");
+      expect(t.outputSchema.properties.head.type).toBe("string");
+      expect(t.outputSchema.properties.body.type).toBe("string");
+    }
+  });
+
+  test("render_markdown_from_url shares the same rich style schema as render_markdown", () => {
+    const tools = loadWebmcp();
+    const a = findTool(tools, "render_markdown").inputSchema.properties;
+    const b = findTool(tools, "render_markdown_from_url").inputSchema.properties;
+    const styleFields = [
+      "framework",
+      "fontFamily",
+      "fontSize",
+      "fontWeight",
+      "lineHeight",
+      "uiZoom",
+      "pageSize",
+      "orientation",
+      "marginsLR",
+      "marginsTB",
+      "footer",
+      "width",
+      "docEngine",
+      "surfaceMode",
+      "theme",
+    ];
+    for (const f of styleFields) {
+      expect(b[f]).toBeDefined();
+      expect(b[f].type || b[f].oneOf).toEqual(a[f].type || a[f].oneOf);
+      if (a[f].enum) expect(b[f].enum).toEqual(a[f].enum);
+      if (a[f].minimum !== undefined) expect(b[f].minimum).toBe(a[f].minimum);
+      if (a[f].maximum !== undefined) expect(b[f].maximum).toBe(a[f].maximum);
+    }
+  });
+
+  test("style fields carry enums and ranges", () => {
+    const tools = loadWebmcp();
+    for (const t of tools) {
+      const p = t.inputSchema.properties;
+      expect(p.fontFamily.enum).toEqual(
+        expect.arrayContaining(["Inter", "Comfortaa", "Unbounded"]),
+      );
+      expect(p.framework.enum).toEqual(
+        expect.arrayContaining(["spectre", "pico", "chota"]),
+      );
+      expect(p.pageSize.enum).toEqual(
+        expect.arrayContaining(["A4", "A3", "Letter", "Legal"]),
+      );
+      expect(p.marginsLR.enum).toEqual(["narrow", "normal", "wide"]);
+      expect(p.marginsTB.enum).toEqual(["narrow", "normal", "wide"]);
+      expect(p.docEngine.enum).toEqual(
+        expect.arrayContaining(["none", "pagedjs", "vivliostyle"]),
+      );
+      expect(p.surfaceMode.enum).toEqual(["doc", "app"]);
+      expect(p.orientation.enum).toEqual(["portrait", "landscape"]);
+      expect(p.fontSize.minimum).toBe(8);
+      expect(p.fontSize.maximum).toBe(72);
+      expect(p.width.minimum).toBe(400);
+      expect(p.width.maximum).toBe(1400);
+      expect(p.uiZoom.minimum).toBe(0.25);
+      expect(p.uiZoom.maximum).toBe(4.0);
+    }
+  });
 });
 
 describe("webmcp.js — render_markdown handler", () => {
@@ -501,23 +572,21 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     }
   });
 
-  test("every displayHints.inputFieldAliases value maps to a real canonical property", () => {
+  test("every displayHints.inputFieldAliases value maps to a real property in webmcp.js", () => {
     const m = loadManifest(MANIFEST_PATH);
+    const tools = loadWebmcp();
     for (const tool of m.tools) {
       const props = tool.inputSchema.properties;
-      // inputFieldAliases values are FRIENDLY names that should map
-      // back to a canonical property name. We assert the friendly
-      // alias (alias value) is consistent with webmcp.js's input
-      // schema property names.
-      const webmcpTool = findToolInWebmcpSource(tool.name);
-      const webmcpProps = webmcpTool.propertyNames;
+      const webmcpTool = tools.find((t) => t.name === tool.name);
+      expect(webmcpTool).toBeTruthy();
+      const webmcpProps = webmcpTool.inputSchema.properties;
       const aliases = Object.values(tool.displayHints.inputFieldAliases);
-      // Every friendly alias must appear in webmcp.js's properties.
+      // Every friendly alias must appear in webmcp.js's input schema.
       for (const friendly of aliases) {
-        expect(webmcpProps.has(friendly)).toBe(true);
+        expect(friendly in webmcpProps).toBe(true);
       }
       // Every canonical key in inputFieldAliases must be in the
-      // manifest's properties (it is — they came from RENDER_INPUT_FIELDS).
+      // manifest's properties.
       for (const canonical of Object.keys(tool.displayHints.inputFieldAliases)) {
         expect(canonical in props).toBe(true);
       }

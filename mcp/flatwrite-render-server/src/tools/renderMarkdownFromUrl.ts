@@ -9,6 +9,15 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
+  ALLOWED_APP_FRAMEWORKS,
+  ALLOWED_DOC_ENGINES,
+  ALLOWED_FONT_FAMILIES as ALLOWED_FONT_FAMILIES_ARRAY,
+  ALLOWED_MARGINS,
+  ALLOWED_ORIENTATIONS,
+  ALLOWED_PAGE_SIZES,
+  ALLOWED_SURFACE_MODES,
+} from '../shared/mcpShared.js';
+import {
   ALLOWED_FONT_FAMILIES,
   RenderStyle,
   buildRemoteMarkdownBody,
@@ -20,17 +29,13 @@ const InputSchema = z
   .object({
     url: z.string().url().describe('URL pointing to raw markdown content'),
     framework: z
-      .string()
+      .enum(ALLOWED_APP_FRAMEWORKS)
       .optional()
-      .describe('Optional UI framework — e.g. spectre, pico, oat, poshui, simple'),
+      .describe('Optional UI framework applied when surfaceMode="app".'),
     fontFamily: z
-      .string()
+      .enum(ALLOWED_FONT_FAMILIES_ARRAY)
       .optional()
-      .describe(
-        'Optional font family name. Must be one of the bundled families: ' +
-          [...ALLOWED_FONT_FAMILIES].join(', ') +
-          '. Defaults to Inter.',
-      ),
+      .describe('Optional font family — must be a bundled family. Defaults to Inter.'),
     fontSize: z
       .union([z.string(), z.number()])
       .optional()
@@ -46,23 +51,23 @@ const InputSchema = z
     uiZoom: z
       .number()
       .optional()
-      .describe('Optional UI zoom level (1.0 = default)'),
+      .describe('Optional UI zoom level (1.0 = default; >1 zooms in, <1 zooms out)'),
     pageSize: z
-      .string()
+      .enum(ALLOWED_PAGE_SIZES)
       .optional()
-      .describe('Optional page size for paged output — e.g. A4, A3, Letter, Legal'),
+      .describe('Optional page size for paged output.'),
     orientation: z
-      .enum(['portrait', 'landscape'])
+      .enum(ALLOWED_ORIENTATIONS)
       .optional()
       .describe('Optional page orientation'),
     marginsLR: z
-      .string()
+      .enum(ALLOWED_MARGINS)
       .optional()
-      .describe('Optional left/right page margins — e.g. narrow, normal, wide'),
+      .describe('Optional left/right page margin preset.'),
     marginsTB: z
-      .string()
+      .enum(ALLOWED_MARGINS)
       .optional()
-      .describe('Optional top/bottom page margins — e.g. narrow, normal, wide'),
+      .describe('Optional top/bottom page margin preset.'),
     footer: z
       .boolean()
       .optional()
@@ -72,17 +77,17 @@ const InputSchema = z
       .optional()
       .describe('Optional content width in pixels (400..1400)'),
     docEngine: z
-      .string()
+      .enum(ALLOWED_DOC_ENGINES)
       .optional()
-      .describe('Optional document engine — "none" or "paged"'),
+      .describe('Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.'),
     surfaceMode: z
-      .string()
+      .enum(ALLOWED_SURFACE_MODES)
       .optional()
-      .describe('Optional surface mode — "doc" or "app"'),
+      .describe('Optional surface mode — "doc" or "app". "app" unlocks the framework picker.'),
     theme: z
       .string()
       .optional()
-      .describe('Optional theme identifier — e.g. light, dark'),
+      .describe('Optional theme identifier (e.g. "light" or "dark") rendered as body[data-theme="..."].'),
   })
   .strict();
 

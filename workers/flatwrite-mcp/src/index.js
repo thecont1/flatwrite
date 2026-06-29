@@ -32,6 +32,13 @@ import {
   validateFontFamily,
   verifyToken,
   validateMarkdownUrl,
+  ALLOWED_APP_FRAMEWORKS,
+  ALLOWED_DOC_ENGINES,
+  ALLOWED_FONT_FAMILIES,
+  ALLOWED_MARGINS,
+  ALLOWED_ORIENTATIONS,
+  ALLOWED_PAGE_SIZES,
+  ALLOWED_SURFACE_MODES,
 } from "../../../public/webmcp-shared.js";
 
 // Origins allowed to call this Worker over the browser-side path
@@ -50,20 +57,20 @@ const TRUSTED_ORIGINS = new Set([
 // === Tool schemas (mirror of mcp/flatwrite-render-server/src/tools/*.ts) ===
 const RenderStyleSchema = z
   .object({
-    framework: z.string().optional(),
-    fontFamily: z.string().optional(),
+    framework: z.enum(ALLOWED_APP_FRAMEWORKS).optional(),
+    fontFamily: z.enum(ALLOWED_FONT_FAMILIES).optional(),
     fontSize: z.union([z.string(), z.number()]).optional(),
     fontWeight: z.union([z.string(), z.number()]).optional(),
     lineHeight: z.union([z.string(), z.number()]).optional(),
     uiZoom: z.number().optional(),
-    pageSize: z.string().optional(),
-    orientation: z.enum(["portrait", "landscape"]).optional(),
-    marginsLR: z.string().optional(),
-    marginsTB: z.string().optional(),
+    pageSize: z.enum(ALLOWED_PAGE_SIZES).optional(),
+    orientation: z.enum(ALLOWED_ORIENTATIONS).optional(),
+    marginsLR: z.enum(ALLOWED_MARGINS).optional(),
+    marginsTB: z.enum(ALLOWED_MARGINS).optional(),
     footer: z.boolean().optional(),
     width: z.number().optional(),
-    docEngine: z.string().optional(),
-    surfaceMode: z.string().optional(),
+    docEngine: z.enum(ALLOWED_DOC_ENGINES).optional(),
+    surfaceMode: z.enum(ALLOWED_SURFACE_MODES).optional(),
     theme: z.string().optional(),
   })
   .strict();

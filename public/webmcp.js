@@ -23,6 +23,14 @@ import {
   buildRemoteMarkdownBody,
   validateFontFamily,
   validateMarkdownUrl,
+  RENDER_OUTPUT_SCHEMA,
+  ALLOWED_FONT_FAMILIES,
+  ALLOWED_APP_FRAMEWORKS,
+  ALLOWED_DOC_ENGINES,
+  ALLOWED_SURFACE_MODES,
+  ALLOWED_PAGE_SIZES,
+  ALLOWED_ORIENTATIONS,
+  ALLOWED_MARGINS,
 } from './webmcp-shared.js';
 
 // navigator.modelContext is the WebMCP entry point. If absent (older
@@ -33,6 +41,102 @@ if (typeof navigator === 'undefined' || !navigator.modelContext) {
 else {
   var RENDER_URL = 'https://render.flatwrite.md/render';
   var TOKEN_URL = 'https://render.flatwrite.md/mcp-token';
+
+  // ---- Shared schema definitions ----
+  //
+  // Both tools return the same { head, body } envelope and accept the same
+  // style options. Define the shape once so the two page-side schemas stay
+  // in sync and mirror the .well-known/model-context.docs.json manifest.
+  var OUTPUT_SCHEMA = RENDER_OUTPUT_SCHEMA;
+  var STYLE_SCHEMA = {
+    framework: {
+      type: 'string',
+      enum: [...ALLOWED_APP_FRAMEWORKS],
+      description: 'Optional UI framework applied when surfaceMode="app".',
+    },
+    fontFamily: {
+      type: 'string',
+      enum: [...ALLOWED_FONT_FAMILIES],
+      description: 'Optional font family — must be a bundled family. Defaults to Inter.',
+    },
+    fontSize: {
+      oneOf: [
+        { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
+        { type: 'number', description: 'Absolute pixel value (8..72)' },
+      ],
+      description: 'Optional font size',
+      minimum: 8,
+      maximum: 72,
+    },
+    fontWeight: {
+      oneOf: [
+        { type: 'string', description: 'Scale token (e.g. "-1", "0")' },
+        { type: 'number', description: 'Absolute weight (100..900, multiples of 100)' },
+      ],
+      description: 'Optional font weight',
+      minimum: 100,
+      maximum: 900,
+    },
+    lineHeight: {
+      oneOf: [
+        { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
+        { type: 'number', description: 'Absolute multiplier (0.8..4.0)' },
+      ],
+      description: 'Optional line height',
+      minimum: 0.8,
+      maximum: 4.0,
+    },
+    uiZoom: {
+      type: 'number',
+      description: 'Optional UI zoom level (1.0 = default; >1 zooms in, <1 zooms out)',
+      minimum: 0.25,
+      maximum: 4.0,
+    },
+    pageSize: {
+      type: 'string',
+      enum: [...ALLOWED_PAGE_SIZES],
+      description: 'Optional page size for paged output.',
+    },
+    orientation: {
+      type: 'string',
+      enum: [...ALLOWED_ORIENTATIONS],
+      description: 'Optional page orientation',
+    },
+    marginsLR: {
+      type: 'string',
+      enum: [...ALLOWED_MARGINS],
+      description: 'Optional left/right page margin preset.',
+    },
+    marginsTB: {
+      type: 'string',
+      enum: [...ALLOWED_MARGINS],
+      description: 'Optional top/bottom page margin preset.',
+    },
+    footer: {
+      type: 'boolean',
+      description: 'Optional: include a page-number footer in paged output',
+    },
+    width: {
+      type: 'number',
+      description: 'Optional content width in pixels (400..1400)',
+      minimum: 400,
+      maximum: 1400,
+    },
+    docEngine: {
+      type: 'string',
+      enum: [...ALLOWED_DOC_ENGINES],
+      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
+    },
+    surfaceMode: {
+      type: 'string',
+      enum: [...ALLOWED_SURFACE_MODES],
+      description: 'Optional surface mode — "doc" or "app". "app" unlocks the framework picker.',
+    },
+    theme: {
+      type: 'string',
+      description: 'Optional theme identifier (e.g. "light" or "dark") rendered as body[data-theme="..."].',
+    },
+  };
 
   // ---- Token management ----
   //
@@ -120,49 +224,18 @@ else {
   navigator.modelContext.registerTool({
     name: 'render_markdown',
     description:
-      'Render raw markdown into FlatWrite-styled HTML head and body fragments. ' +
-      'Same render pipeline as the editor (flatwrite.md) and the flatwrite-render MCP server. ' +
-      'Returns { head, body }: head is CSS to inject, body is the document fragment.',
+      'Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments, ' +
+      'with optional typography and page-layout controls. Returns { head, body } — ' +
+      'head is CSS to inject, body is the document fragment.',
     inputSchema: {
       type: 'object',
       properties: {
         markdown: { type: 'string', description: 'Raw markdown content to render' },
-        framework: { type: 'string', description: 'Optional UI framework (spectre, pico, oat, poshui, simple)' },
-        fontFamily: { type: 'string', description: 'Optional font family — must be a bundled family: Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded. Defaults to Inter.' },
-        fontSize: {
-          oneOf: [
-            { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
-            { type: 'number', description: 'Absolute pixel value (8..72)' },
-          ],
-          description: 'Optional font size',
-        },
-        fontWeight: {
-          oneOf: [
-            { type: 'string', description: 'Scale token (e.g. "-1", "0")' },
-            { type: 'number', description: 'Absolute weight (100..900)' },
-          ],
-          description: 'Optional font weight',
-        },
-        lineHeight: {
-          oneOf: [
-            { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
-            { type: 'number', description: 'Absolute multiplier (0.8..4.0)' },
-          ],
-          description: 'Optional line height',
-        },
-        uiZoom: { type: 'number', description: 'Optional UI zoom level (1.0 = default)' },
-        pageSize: { type: 'string', description: 'Optional page size — A4, A3, Letter, Legal' },
-        orientation: { type: 'string', enum: ['portrait', 'landscape'], description: 'Optional orientation' },
-        marginsLR: { type: 'string', description: 'Optional left/right margins — narrow, normal, wide' },
-        marginsTB: { type: 'string', description: 'Optional top/bottom margins — narrow, normal, wide' },
-        footer: { type: 'boolean', description: 'Optional: include a page-number footer in paged output' },
-        width: { type: 'number', description: 'Optional content width in pixels (400..1400)' },
-        docEngine: { type: 'string', description: 'Optional document engine — "none" or "paged"' },
-        surfaceMode: { type: 'string', description: 'Optional surface mode — "doc" or "app"' },
-        theme: { type: 'string', description: 'Optional theme identifier' },
+        ...STYLE_SCHEMA,
       },
       required: ['markdown'],
     },
+    outputSchema: OUTPUT_SCHEMA,
     annotations: {
       readOnlyHint: true,
     },
@@ -184,8 +257,9 @@ else {
     name: 'render_markdown_from_url',
     description:
       'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org) ' +
-      'and render it into FlatWrite-styled HTML head and body fragments. ' +
-      'Same render pipeline as the editor and the flatwrite-render MCP server.',
+      'and render it into FlatWrite-styled HTML <head> and <body> fragments, ' +
+      'with the same optional typography and page-layout controls as render_markdown. ' +
+      'Returns { head, body }.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -197,24 +271,11 @@ else {
           format: 'uri',
           description: 'URL pointing to raw markdown content. Must be on an allowlisted host (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org). The deprecated alias `url` is still accepted.',
         },
-        framework: { type: 'string', description: 'Optional UI framework' },
-        fontFamily: { type: 'string', description: 'Optional font family (must be a bundled family)' },
-        fontSize: { oneOf: [{ type: 'string' }, { type: 'number' }], description: 'Optional font size' },
-        fontWeight: { oneOf: [{ type: 'string' }, { type: 'number' }], description: 'Optional font weight' },
-        lineHeight: { oneOf: [{ type: 'string' }, { type: 'number' }], description: 'Optional line height' },
-        uiZoom: { type: 'number', description: 'Optional UI zoom level' },
-        pageSize: { type: 'string', description: 'Optional page size' },
-        orientation: { type: 'string', enum: ['portrait', 'landscape'], description: 'Optional orientation' },
-        marginsLR: { type: 'string', description: 'Optional left/right margins' },
-        marginsTB: { type: 'string', description: 'Optional top/bottom margins' },
-        footer: { type: 'boolean', description: 'Optional: page-number footer' },
-        width: { type: 'number', description: 'Optional content width in pixels' },
-        docEngine: { type: 'string', description: 'Optional document engine' },
-        surfaceMode: { type: 'string', description: 'Optional surface mode' },
-        theme: { type: 'string', description: 'Optional theme identifier' },
+        ...STYLE_SCHEMA,
       },
       required: ['markdownUrl'],
     },
+    outputSchema: OUTPUT_SCHEMA,
     annotations: {
       readOnlyHint: true,
     },
