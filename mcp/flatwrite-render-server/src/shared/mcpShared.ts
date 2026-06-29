@@ -41,6 +41,93 @@ export const ALLOWED_MARKDOWN_HOSTS = [
 export type AllowedMarkdownHost = (typeof ALLOWED_MARKDOWN_HOSTS)[number];
 
 /**
+ * UI frameworks offered by the editor's "App surface" mode. Mirrors
+ * the APP_FRAMEWORKS registry in public/app.js. When you add or
+ * remove a framework there, mirror it here so the tool schema stays
+ * accurate — callers see a hard validation error for unknown values
+ * instead of a silent fallback.
+ */
+export const ALLOWED_APP_FRAMEWORKS = [
+  'spectre',
+  'poshui',
+  'pico',
+  'milligram',
+  'chota',
+] as const;
+
+export type AllowedAppFramework = (typeof ALLOWED_APP_FRAMEWORKS)[number];
+
+/**
+ * Document engines. Mirrors the DOC_ENGINES registry in public/app.js
+ * (none / pagedjs / vivliostyle). The Worker / MCP layer historically
+ * collapsed pagedjs+vivliostyle into a single "paged" bucket; today
+ * callers can pick any of the three explicitly.
+ */
+export const ALLOWED_DOC_ENGINES = ['none', 'pagedjs', 'vivliostyle'] as const;
+export type AllowedDocEngine = (typeof ALLOWED_DOC_ENGINES)[number];
+
+/**
+ * Surface modes. Today the render pipeline is identical between doc
+ * and app; the difference is which downstream tooling consumes the
+ * output. The "app" surfaceMode unlocks the appFramework picker.
+ */
+export const ALLOWED_SURFACE_MODES = ['doc', 'app'] as const;
+export type AllowedSurfaceMode = (typeof ALLOWED_SURFACE_MODES)[number];
+
+/**
+ * Page sizes exposed by the editor's Page Size selector. Some of
+ * these (A0/A1/A2) are rendered as letterboxed canvases in the
+ * editor preview but still emit valid CSS @page rules.
+ */
+export const ALLOWED_PAGE_SIZES = [
+  'A0',
+  'A1',
+  'A2',
+  'A3',
+  'A4',
+  'A5',
+  'Letter',
+  'Legal',
+] as const;
+export type AllowedPageSize = (typeof ALLOWED_PAGE_SIZES)[number];
+
+/** Page orientations. */
+export const ALLOWED_ORIENTATIONS = ['portrait', 'landscape'] as const;
+export type AllowedOrientation = (typeof ALLOWED_ORIENTATIONS)[number];
+
+/** Page-margin presets. Mirrors the MARGIN_MAP in core/doc-engines.js. */
+export const ALLOWED_MARGINS = ['narrow', 'normal', 'wide'] as const;
+export type AllowedMargin = (typeof ALLOWED_MARGINS)[number];
+
+/**
+ * Output shape every render tool returns. Mirrors what
+ * core/render.js → renderToDocument emits and what /api/render
+ * responds with (api/render.js line 146). Both tools return the same
+ * `{ head, body }` envelope — the only difference between them is the
+ * input source (inline markdown vs allowlisted URL).
+ */
+export const RENDER_OUTPUT_SCHEMA = {
+  type: 'object',
+  required: ['head', 'body'],
+  properties: {
+    head: {
+      type: 'string',
+      description:
+        'Self-contained <head> fragment: inlined @font-face declarations, document CSS, ' +
+        'and an optional <script defer> tag for the chosen docEngine. Inject verbatim ' +
+        'into the consumer page\'s <head>.',
+    },
+    body: {
+      type: 'string',
+      description:
+        'Self-contained <body> fragment: the rendered markdown wrapped in ' +
+        '<body class="fw-render" data-theme="..."><main>...</main></body>. Inject ' +
+        'verbatim into the consumer page\'s <body>.',
+    },
+  },
+} as const;
+
+/**
  * Translate the public RenderStyle (fontFamily / framework / fontSize / ...)
  * to the canonical FlatWrite render frontmatter (font / appFramework / size
  * / ...). Strings are scale tokens; numbers are absolute values.
@@ -275,16 +362,34 @@ export interface InputFieldSpec {
    * fontSize/fontWeight/lineHeight (see toCanonicalStyle).
    */
   readonly oneOf?: ReadonlyArray<{ type: 'string' | 'number'; description: string }>;
+  /** Numeric range (inclusive) — wire into JSON-Schema minimum/maximum. */
+  readonly minimum?: number;
+  readonly maximum?: number;
 }
 
 /**
  * Canonical input fields shared across Docs render tools. Order here
  * is the order the manifest will emit them in (some agents are
  * order-sensitive in their UI).
+ *
+ * Enum/range hints mirror the runtime allowlists (see the
+ * ALLOWED_* constants above) so callers see a structured validation
+ * error before round-tripping to the server. Keep these in sync with
+ * public/app.js and core/* when those registries change.
  */
 export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
-  { name: 'font', type: 'string', description: 'Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES.' },
-  { name: 'appFramework', type: 'string', description: 'UI framework (spectre, pico, oat, poshui, simple).' },
+  {
+    name: 'font',
+    type: 'string',
+    description: 'Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES.',
+    enum: ALLOWED_FONT_FAMILIES,
+  },
+  {
+    name: 'appFramework',
+    type: 'string',
+    description: 'UI framework applied when surfaceMode="app". One of the bundled frameworks below.',
+    enum: ALLOWED_APP_FRAMEWORKS,
+  },
   {
     name: 'size',
     type: 'string',
@@ -293,6 +398,8 @@ export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
       { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
       { type: 'number', description: 'Absolute pixel value (8..72)' },
     ],
+    minimum: 8,
+    maximum: 72,
   },
   {
     name: 'weight',
@@ -300,8 +407,10 @@ export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
     description: 'Font weight as a scale token (e.g. "-1", "0").',
     oneOf: [
       { type: 'string', description: 'Scale token (e.g. "-1", "0")' },
-      { type: 'number', description: 'Absolute weight (100..900)' },
+      { type: 'number', description: 'Absolute weight (100..900, multiples of 100)' },
     ],
+    minimum: 100,
+    maximum: 900,
   },
   {
     name: 'line',
@@ -311,17 +420,71 @@ export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
       { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
       { type: 'number', description: 'Absolute multiplier (0.8..4.0)' },
     ],
+    minimum: 0.8,
+    maximum: 4.0,
   },
-  { name: 'uiZoom', type: 'number', description: 'UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).' },
-  { name: 'pageSize', type: 'string', description: 'Page size for paged output (A4, A3, Letter, Legal).' },
-  { name: 'orientation', type: 'string', description: 'Page orientation.', enum: ['portrait', 'landscape'] },
-  { name: 'marginsLR', type: 'string', description: 'Left/right page margins (narrow, normal, wide).' },
-  { name: 'marginsTB', type: 'string', description: 'Top/bottom page margins (narrow, normal, wide).' },
-  { name: 'footer', type: 'boolean', description: 'Include a page-number footer in paged output.' },
-  { name: 'width', type: 'number', description: 'Content width in pixels (400..1400).' },
-  { name: 'docEngine', type: 'string', description: 'Document engine ("none" or "paged").' },
-  { name: 'surfaceMode', type: 'string', description: 'Surface mode ("doc" or "app").' },
-  { name: 'theme', type: 'string', description: 'Theme identifier (e.g. "light", "dark").' },
+  {
+    name: 'uiZoom',
+    type: 'number',
+    description: 'UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).',
+    minimum: 0.25,
+    maximum: 4.0,
+  },
+  {
+    name: 'pageSize',
+    type: 'string',
+    description: 'Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.',
+    enum: ALLOWED_PAGE_SIZES,
+  },
+  {
+    name: 'orientation',
+    type: 'string',
+    description: 'Page orientation.',
+    enum: ALLOWED_ORIENTATIONS,
+  },
+  {
+    name: 'marginsLR',
+    type: 'string',
+    description: 'Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.',
+    enum: ALLOWED_MARGINS,
+  },
+  {
+    name: 'marginsTB',
+    type: 'string',
+    description: 'Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.',
+    enum: ALLOWED_MARGINS,
+  },
+  {
+    name: 'footer',
+    type: 'boolean',
+    description: 'Include a page-number footer in paged output.',
+  },
+  {
+    name: 'width',
+    type: 'number',
+    description: 'Content width in pixels (400..1400). Only effective when docEngine="none".',
+    minimum: 400,
+    maximum: 1400,
+  },
+  {
+    name: 'docEngine',
+    type: 'string',
+    description: 'Document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
+    enum: ALLOWED_DOC_ENGINES,
+  },
+  {
+    name: 'surfaceMode',
+    type: 'string',
+    description: 'Surface mode hint. "app" unlocks the appFramework picker; otherwise this is metadata only.',
+    enum: ALLOWED_SURFACE_MODES,
+  },
+  {
+    name: 'theme',
+    type: 'string',
+    description:
+      'Theme identifier rendered as body[data-theme="..."] so consumer CSS can theme via attribute selectors. ' +
+      'Free-form (alphanumeric, dash, underscore) — common values are "light" and "dark".',
+  },
 ] as const;
 
 /**
@@ -355,6 +518,13 @@ export interface ToolSpec {
   readonly inputFields: ReadonlyArray<string | InputFieldSpec>;
   /** Canonical field names that are required. */
   readonly requiredFields: readonly string[];
+  /**
+   * JSON-Schema describing the tool's success response shape. When
+   * omitted the manifest leaves `outputSchema` absent (legacy
+   * behaviour). Tools without a declared output shape still work,
+   * but agents reading the manifest can't pre-validate returned data.
+   */
+  readonly outputSchema?: Record<string, unknown>;
   /** Behavioural annotations (MCP standard). */
   readonly annotations: { readonly readOnlyHint?: boolean };
   /**
@@ -372,9 +542,12 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown',
     description:
-      'Render raw markdown into FlatWrite-styled HTML head and body fragments. ' +
-      'Same render pipeline as the editor (flatwrite.md) and the flatwrite-render MCP server. ' +
-      'Returns { head, body }: head is CSS to inject, body is the document fragment.',
+      'Render an inline markdown string into FlatWrite-styled HTML head and body fragments. ' +
+      'Use this when the markdown source is already available to the caller (a string in the ' +
+      'agent context, a user-pasted blob, or a programmatic snippet). For sources fetched ' +
+      'from raw.githubusercontent.com / raw.gitlab.com / bitbucket.org, prefer ' +
+      'render_markdown_from_url so the Worker does the fetch + host allowlist check on your behalf. ' +
+      'Returns { head, body } — head is CSS to inject, body is the document fragment.',
     surfaceMode: 'doc',
     inputFields: [
       // Tool-local primary payload (not a style option).
@@ -383,6 +556,7 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
       ...RENDER_INPUT_FIELDS.map((f) => f.name as string),
     ],
     requiredFields: ['markdown'],
+    outputSchema: RENDER_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {
@@ -399,8 +573,10 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     name: 'render_markdown_from_url',
     description:
       'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, ' +
-      'bitbucket.org) and render it into FlatWrite-styled HTML head and body fragments. ' +
-      'Same render pipeline as the editor and the flatwrite-render MCP server.',
+      'bitbucket.org — only raw-text hosts, no HTML scrapers) and render it through the same ' +
+      'FlatWrite pipeline as render_markdown. Use this when the source lives on a public raw ' +
+      'gist / repo and you want the Worker to validate the host + size cap. For sources you ' +
+      'already have in memory, use render_markdown instead. Returns { head, body }.',
     surfaceMode: 'doc',
     inputFields: [
       // Tool-local primary payload.
@@ -409,11 +585,13 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
         type: 'string',
         description:
           'URL pointing to raw markdown content. Must be on an allowlisted host ' +
-          '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org).',
+          '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org), http(s) only, ' +
+          'and <=1 MB. Host validation is enforced server-side.',
       },
       ...RENDER_INPUT_FIELDS.map((f) => f.name as string),
     ],
     requiredFields: ['markdownUrl'],
+    outputSchema: RENDER_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {
@@ -529,6 +707,12 @@ export interface ModelContextManifest {
       readonly properties: Readonly<Record<string, unknown>>;
       readonly required: readonly string[];
     };
+    /**
+     * JSON-Schema for the tool's success response. Absent for tools
+     * that haven't declared an output shape yet — readers should
+     * treat `outputSchema === undefined` as "unknown shape".
+     */
+    readonly outputSchema?: Record<string, unknown>;
     readonly annotations: { readonly readOnlyHint?: boolean };
     readonly displayHints: ToolSpec['displayHints'];
   }>;
@@ -575,13 +759,18 @@ function buildProperties(inputFields: ReadonlyArray<string | InputFieldSpec>): R
 
 function fieldToJsonSchema(f: InputFieldSpec): Record<string, unknown> {
   if (f.oneOf) {
-    return {
+    const out: Record<string, unknown> = {
       oneOf: f.oneOf.map((v) => ({ type: v.type, description: v.description })),
       description: f.description,
     };
+    if (f.minimum !== undefined) out.minimum = f.minimum;
+    if (f.maximum !== undefined) out.maximum = f.maximum;
+    return out;
   }
   const out: Record<string, unknown> = { type: f.type, description: f.description };
   if (f.enum) out.enum = f.enum;
+  if (f.minimum !== undefined) out.minimum = f.minimum;
+  if (f.maximum !== undefined) out.maximum = f.maximum;
   return out;
 }
 
@@ -635,6 +824,7 @@ export function generateManifest(
         properties,
         required: t.requiredFields,
       },
+      ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
       annotations: t.annotations,
       displayHints: t.displayHints,
     };
