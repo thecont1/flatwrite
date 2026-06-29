@@ -201,6 +201,226 @@ export function sanitizeRenderErrorPayload(payload) {
     }
     return payload;
 }
+/**
+ * Canonical input fields shared across Docs render tools. Order here
+ * is the order the manifest will emit them in (some agents are
+ * order-sensitive in their UI).
+ */
+export const RENDER_INPUT_FIELDS = [
+    { name: 'font', type: 'string', description: 'Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES.' },
+    { name: 'appFramework', type: 'string', description: 'UI framework (spectre, pico, oat, poshui, simple).' },
+    {
+        name: 'size',
+        type: 'string',
+        description: 'Font size as a scale token (e.g. "-1", "0", "1").',
+        oneOf: [
+            { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
+            { type: 'number', description: 'Absolute pixel value (8..72)' },
+        ],
+    },
+    {
+        name: 'weight',
+        type: 'string',
+        description: 'Font weight as a scale token (e.g. "-1", "0").',
+        oneOf: [
+            { type: 'string', description: 'Scale token (e.g. "-1", "0")' },
+            { type: 'number', description: 'Absolute weight (100..900)' },
+        ],
+    },
+    {
+        name: 'line',
+        type: 'string',
+        description: 'Line height as a scale token (e.g. "-1", "0", "1").',
+        oneOf: [
+            { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
+            { type: 'number', description: 'Absolute multiplier (0.8..4.0)' },
+        ],
+    },
+    { name: 'uiZoom', type: 'number', description: 'UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).' },
+    { name: 'pageSize', type: 'string', description: 'Page size for paged output (A4, A3, Letter, Legal).' },
+    { name: 'orientation', type: 'string', description: 'Page orientation.', enum: ['portrait', 'landscape'] },
+    { name: 'marginsLR', type: 'string', description: 'Left/right page margins (narrow, normal, wide).' },
+    { name: 'marginsTB', type: 'string', description: 'Top/bottom page margins (narrow, normal, wide).' },
+    { name: 'footer', type: 'boolean', description: 'Include a page-number footer in paged output.' },
+    { name: 'width', type: 'number', description: 'Content width in pixels (400..1400).' },
+    { name: 'docEngine', type: 'string', description: 'Document engine ("none" or "paged").' },
+    { name: 'surfaceMode', type: 'string', description: 'Surface mode ("doc" or "app").' },
+    { name: 'theme', type: 'string', description: 'Theme identifier (e.g. "light", "dark").' },
+];
+export const RENDER_TOOLS_DOCS = [
+    {
+        name: 'render_markdown',
+        description: 'Render raw markdown into FlatWrite-styled HTML head and body fragments. ' +
+            'Same render pipeline as the editor (flatwrite.md) and the flatwrite-render MCP server. ' +
+            'Returns { head, body }: head is CSS to inject, body is the document fragment.',
+        surfaceMode: 'doc',
+        inputFields: [
+            // Tool-local primary payload (not a style option).
+            { name: 'markdown', type: 'string', description: 'Raw markdown content to render.' },
+            // Shared style fields, referenced by canonical name.
+            ...RENDER_INPUT_FIELDS.map((f) => f.name),
+        ],
+        requiredFields: ['markdown'],
+        annotations: { readOnlyHint: true },
+        displayHints: {
+            inputFieldAliases: {
+                font: 'fontFamily',
+                appFramework: 'framework',
+                size: 'fontSize',
+                weight: 'fontWeight',
+                line: 'lineHeight',
+            },
+            outputHints: { head: 'head', body: 'body' },
+        },
+    },
+    {
+        name: 'render_markdown_from_url',
+        description: 'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, ' +
+            'bitbucket.org) and render it into FlatWrite-styled HTML head and body fragments. ' +
+            'Same render pipeline as the editor and the flatwrite-render MCP server.',
+        surfaceMode: 'doc',
+        inputFields: [
+            // Tool-local primary payload.
+            {
+                name: 'markdownUrl',
+                type: 'string',
+                description: 'URL pointing to raw markdown content. Must be on an allowlisted host ' +
+                    '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org).',
+            },
+            ...RENDER_INPUT_FIELDS.map((f) => f.name),
+        ],
+        requiredFields: ['markdownUrl'],
+        annotations: { readOnlyHint: true },
+        displayHints: {
+            inputFieldAliases: {
+                font: 'fontFamily',
+                appFramework: 'framework',
+                size: 'fontSize',
+                weight: 'fontWeight',
+                line: 'lineHeight',
+            },
+            outputHints: { head: 'head', body: 'body' },
+        },
+    },
+];
+export const REGISTERED_SURFACES = [
+    { id: 'doc', status: 'ready', manifestFile: '.well-known/model-context.docs.json' },
+    // Apps surface is registered as "preview" so clients can render a
+    // "coming soon" affordance before the actual tools ship. The id is
+    // 'app' (singular) to match the canonical surfaceMode enum used by
+    // toCanonicalStyle and the renderer; the filename uses the plural
+    // product name for the well-known namespace.
+    { id: 'app', status: 'preview', manifestFile: '.well-known/model-context.apps.json' },
+];
+export const HANDLER_DOCS = {
+    url: 'https://render.flatwrite.md/render',
+    transport: 'http',
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': '<server-to-server key — clients mint X-Mcp-Token instead>',
+    },
+    authNote: 'Browser clients mint a short-lived X-Mcp-Token from ' +
+        'https://render.flatwrite.md/mcp-token first. Server-to-server clients ' +
+        'may use X-Api-Key directly.',
+};
+export const HANDLER_APPS = {
+    url: 'https://render.flatwrite.md/render?surface=app',
+    transport: 'http',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    authNote: 'Apps surface not yet available. Reserved for future use.',
+};
+const MANIFEST_SCHEMA_URL = 'https://webmcp.org/schemas/model-context-v1.json';
+const MANIFEST_VERSION = '1.0.0';
+/** Look up an InputFieldSpec by canonical name. Throws on miss (catches typos at build time). */
+function fieldByName(name) {
+    const found = RENDER_INPUT_FIELDS.find((f) => f.name === name);
+    if (!found) {
+        throw new Error(`generateManifest: tool references unknown canonical field "${name}". ` +
+            `Add it to RENDER_INPUT_FIELDS first.`);
+    }
+    return found;
+}
+/**
+ * Build the JSON-Schema `properties` block for a tool. Each input
+ * entry is either a canonical field name (looked up in
+ * RENDER_INPUT_FIELDS) or an inline InputFieldSpec (tool-local). The
+ * tool's explicitly-listed fields come first in order, then any
+ * unlisted canonical fields are appended defensively so drift surfaces
+ * in tests rather than silently dropping fields.
+ */
+function buildProperties(inputFields) {
+    const out = {};
+    const seen = new Set();
+    for (const entry of inputFields) {
+        const f = typeof entry === 'string' ? fieldByName(entry) : entry;
+        out[f.name] = fieldToJsonSchema(f);
+        seen.add(f.name);
+    }
+    for (const f of RENDER_INPUT_FIELDS) {
+        if (!seen.has(f.name)) {
+            out[f.name] = fieldToJsonSchema(f);
+        }
+    }
+    return out;
+}
+function fieldToJsonSchema(f) {
+    if (f.oneOf) {
+        return {
+            oneOf: f.oneOf.map((v) => ({ type: v.type, description: v.description })),
+            description: f.description,
+        };
+    }
+    const out = { type: f.type, description: f.description };
+    if (f.enum)
+        out.enum = f.enum;
+    return out;
+}
+/**
+ * Generate the manifest JSON for one surface. The output is a pure
+ * data structure — the caller (build-manifest.mjs) writes it to disk.
+ *
+ * Throws if any tool references a canonical field that isn't in
+ * RENDER_INPUT_FIELDS, or if a tool's requiredFields references a
+ * field not in its inputFields. Both are build-time errors.
+ */
+export function generateManifest(surface, tools, handler, options = {}) {
+    const status = options.status ?? 'ready';
+    const serverName = options.serverName ?? `FlatWrite Render — ${surface === 'doc' ? 'Docs' : 'Apps'}`;
+    const manifestTools = tools.map((t) => {
+        if (t.surfaceMode !== surface) {
+            throw new Error(`generateManifest: tool "${t.name}" declares surfaceMode="${t.surfaceMode}" ` +
+                `but is being included in the "${surface}" manifest. Fix the registration.`);
+        }
+        const properties = buildProperties(t.inputFields);
+        for (const req of t.requiredFields) {
+            if (!(req in properties)) {
+                throw new Error(`generateManifest: tool "${t.name}" requires "${req}" but it's not in inputFields.`);
+            }
+        }
+        return {
+            name: t.name,
+            description: t.description,
+            inputSchema: {
+                type: 'object',
+                properties,
+                required: t.requiredFields,
+            },
+            annotations: t.annotations,
+            displayHints: t.displayHints,
+        };
+    });
+    return {
+        $schema: MANIFEST_SCHEMA_URL,
+        name: serverName,
+        version: MANIFEST_VERSION,
+        surfaceMode: surface,
+        status,
+        handler,
+        tools: manifestTools,
+    };
+}
 /* ── Token helpers ─────────────────────────────────────────────────────── */
 /**
  * Constant-time string comparison. Prevents timing attacks on signature

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://webmcp.org/schemas/model-context-v1.json",
+  "name": "FlatWrite Render — Apps",
+  "version": "1.0.0",
+  "surfaceMode": "app",
+  "status": "preview",
+  "handler": {
+    "url": "https://render.flatwrite.md/render?surface=app",
+    "transport": "http",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "authNote": "Apps surface not yet available. Reserved for future use."
+  },
+  "tools": []
+}

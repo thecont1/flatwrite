@@ -189,7 +189,14 @@ else {
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', format: 'uri', description: 'URL pointing to raw markdown content' },
+        // Canonical name: matches the MCP server contract and the
+        // manifest. The deprecated `url` alias is still accepted by
+        // the handler for backward compatibility with older agents.
+        markdownUrl: {
+          type: 'string',
+          format: 'uri',
+          description: 'URL pointing to raw markdown content. Must be on an allowlisted host (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org). The deprecated alias `url` is still accepted.',
+        },
         framework: { type: 'string', description: 'Optional UI framework' },
         fontFamily: { type: 'string', description: 'Optional font family (must be a bundled family)' },
         fontSize: { oneOf: [{ type: 'string' }, { type: 'number' }], description: 'Optional font size' },
@@ -206,16 +213,21 @@ else {
         surfaceMode: { type: 'string', description: 'Optional surface mode' },
         theme: { type: 'string', description: 'Optional theme identifier' },
       },
-      required: ['url'],
+      required: ['markdownUrl'],
     },
     annotations: {
       readOnlyHint: true,
     },
     handler: function (args) {
-      if (!args || typeof args.url !== 'string' || args.url.length === 0) {
-        return Promise.reject(new Error('url is required [INVALID_INPUT]'));
+      // Accept either the canonical `markdownUrl` or the deprecated
+      // `url` alias. Canonical wins if both are sent.
+      var rawUrl = (args && typeof args.markdownUrl === 'string' && args.markdownUrl.length > 0)
+        ? args.markdownUrl
+        : (args && typeof args.url === 'string' ? args.url : '');
+      if (!rawUrl) {
+        return Promise.reject(new Error('markdownUrl is required [INVALID_INPUT]'));
       }
-      var urlCheck = validateMarkdownUrl(args.url);
+      var urlCheck = validateMarkdownUrl(rawUrl);
       if (!urlCheck.ok) {
         return Promise.reject(new Error(urlCheck.message + ' [' + urlCheck.code + ']'));
       }

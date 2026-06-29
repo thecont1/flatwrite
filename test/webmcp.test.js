@@ -169,10 +169,12 @@ describe("webmcp.js — tool registration", () => {
     expect(t.inputSchema.properties.pageSize.type).toBe("string");
   });
 
-  test("render_markdown_from_url input schema requires url", () => {
+  test("render_markdown_from_url input schema requires markdownUrl (canonical)", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown_from_url");
-    expect(t.inputSchema.required).toContain("url");
+    // The canonical name is `markdownUrl`. The deprecated alias `url`
+    // is still accepted by the handler for backward compatibility.
+    expect(t.inputSchema.required).toContain("markdownUrl");
   });
 
   test("tools are marked read-only", () => {
@@ -369,7 +371,37 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     ).rejects.toThrow(/DISALLOWED_HOST/);
   });
 
-  test("rejects ftp:// URL with UNSUPPORTED_SCHEME", async () => {
+  test("render_markdown_from_url accepts the deprecated `url` alias for backward compat", async () => {
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
+    const tools = sandboxWithFetch(fakeFetch);
+    const t = findTool(tools, "render_markdown_from_url");
+    // Older agents send `url`; the handler must still translate it to
+    // the canonical `markdownUrl` on the wire.
+    const result = await t.handler({
+      url: "https://raw.githubusercontent.com/foo/bar/main/README.md",
+    });
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.markdownUrl).toBe(
+      "https://raw.githubusercontent.com/foo/bar/main/README.md",
+    );
+    expect(result.body).toBe("<h1>Hi</h1>");
+  });
+
+  test("canonical markdownUrl wins when both url and markdownUrl are sent", async () => {
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
+    const tools = sandboxWithFetch(fakeFetch);
+    const t = findTool(tools, "render_markdown_from_url");
+    await t.handler({
+      url: "https://wrong-host.example.com/rejected.md",
+      markdownUrl: "https://raw.githubusercontent.com/foo/bar/main/README.md",
+    });
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.markdownUrl).toBe(
+      "https://raw.githubusercontent.com/foo/bar/main/README.md",
+    );
+  });
+
+  test("render_markdown_from_url rejects ftp:// URL with UNSUPPORTED_SCHEME", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown_from_url");
     await expect(
@@ -402,4 +434,123 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     expect(renderCall.init.headers["X-Api-Key"]).toBeUndefined();
     expect(result.body).toBe("<h1>Hi</h1>");
   });
+});
+
+/**
+ * Manifest parity tests. The `.well-known/model-context.docs.json`
+ * manifest is generated from `mcpShared.ts` at build time, and
+ * `webmcp.js` is hand-written (it predates the manifest generator).
+ * These tests catch drift between the two surfaces — adding a tool,
+ * renaming a field, or changing a required-flag must be reflected in
+ * BOTH places or the manifest becomes a lie.
+ */
+
+describe("manifest parity — public/.well-known/model-context.docs.json vs webmcp.js", () => {
+  const MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.docs.json",
+  );
+  const APPS_MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.apps.json",
+  );
+
+  function loadManifest(p) {
+    return JSON.parse(readFileSync(p, "utf-8"));
+  }
+
+  test("docs manifest exists and is well-formed", () => {
+    const m = loadManifest(MANIFEST_PATH);
+    expect(m.$schema).toBeTruthy();
+    expect(m.name).toBe("FlatWrite Render — Docs");
+    expect(m.surfaceMode).toBe("doc");
+    expect(m.status).toBe("ready");
+    expect(Array.isArray(m.tools)).toBe(true);
+    expect(m.tools.length).toBeGreaterThan(0);
+  });
+
+  test("apps manifest exists with preview status and zero tools", () => {
+    const m = loadManifest(APPS_MANIFEST_PATH);
+    expect(m.surfaceMode).toBe("app");
+    expect(m.status).toBe("preview");
+    expect(m.tools).toEqual([]);
+  });
+
+  test("manifest and webmcp.js declare the same tool set", () => {
+    const m = loadManifest(MANIFEST_PATH);
+    const manifestNames = new Set(m.tools.map((t) => t.name));
+    // Extract tool names from webmcp.js by finding both
+    // `name: 'render_*'` occurrences.
+    const webmcpNames = new Set();
+    const re = /name:\s*['"](render_[a-z_]+)['"]/g;
+    let match;
+    while ((match = re.exec(WEBMCP_JS)) !== null) {
+      webmcpNames.add(match[1]);
+    }
+    expect([...manifestNames].sort()).toEqual([...webmcpNames].sort());
+  });
+
+  test("manifest required fields match webmcp.js required fields per tool", () => {
+    const m = loadManifest(MANIFEST_PATH);
+    for (const tool of m.tools) {
+      const webmcpTool = findToolInWebmcpSource(tool.name);
+      expect(webmcpTool).toBeTruthy();
+      expect([...tool.inputSchema.required].sort()).toEqual(
+        [...webmcpTool.required].sort(),
+      );
+    }
+  });
+
+  test("every displayHints.inputFieldAliases value maps to a real canonical property", () => {
+    const m = loadManifest(MANIFEST_PATH);
+    for (const tool of m.tools) {
+      const props = tool.inputSchema.properties;
+      // inputFieldAliases values are FRIENDLY names that should map
+      // back to a canonical property name. We assert the friendly
+      // alias (alias value) is consistent with webmcp.js's input
+      // schema property names.
+      const webmcpTool = findToolInWebmcpSource(tool.name);
+      const webmcpProps = webmcpTool.propertyNames;
+      const aliases = Object.values(tool.displayHints.inputFieldAliases);
+      // Every friendly alias must appear in webmcp.js's properties.
+      for (const friendly of aliases) {
+        expect(webmcpProps.has(friendly)).toBe(true);
+      }
+      // Every canonical key in inputFieldAliases must be in the
+      // manifest's properties (it is — they came from RENDER_INPUT_FIELDS).
+      for (const canonical of Object.keys(tool.displayHints.inputFieldAliases)) {
+        expect(canonical in props).toBe(true);
+      }
+    }
+  });
+
+  /**
+   * Re-parse webmcp.js to extract a single tool's input schema and
+   * required-field list. The script is hand-written, so we can't
+   * rely on JSON.parse; instead we find the matching `name: 'foo'`
+   * and walk forward to `required: [ ... ]`.
+   */
+  function findToolInWebmcpSource(toolName) {
+    const re = new RegExp(
+      "name:\\s*['\"]" + toolName + "['\"][\\s\\S]*?required:\\s*\\[([^\\]]*)\\]",
+      "m",
+    );
+    const m = WEBMCP_JS.match(re);
+    if (!m) return null;
+    const requiredStr = m[1];
+    const required = [...requiredStr.matchAll(/['"]([^'"]+)['"]/g)].map(
+      (x) => x[1],
+    );
+    // Extract property names by finding the next `properties: { ... }`
+    // block and pulling quoted keys.
+    const toolSlice = m[0];
+    const propsMatch = toolSlice.match(/properties:\s*\{([\s\S]*?)\},\s*required:/);
+    const propertyNames = new Set();
+    if (propsMatch) {
+      for (const k of propsMatch[1].matchAll(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/gm)) {
+        propertyNames.add(k[1]);
+      }
+    }
+    return { required, propertyNames };
+  }
 });

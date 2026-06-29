@@ -41,10 +41,15 @@
   <!-- Base app styles -->
   <link rel="stylesheet" href="styles.css?v=96" />
 
+  <!-- WebMCP tool discovery — declarative manifest pointers so agents
+       can enumerate this site's tools without executing webmcp.js. -->
+  <link rel="model-context" href="/.well-known/model-context.docs.json" title="FlatWrite Render — Docs" />
+  <link rel="model-context" href="/.well-known/model-context.apps.json" title="FlatWrite Render — Apps (preview)" />
+
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
-  <script type="module" src="webmcp.js?v=1"></script>
+  <script type="module" src="webmcp.js?v=2"></script>
   <script src="app.js?v=97" defer></script>
 
   <!-- Google AdSense -->

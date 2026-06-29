@@ -1,0 +1,265 @@
+{
+  "$schema": "https://webmcp.org/schemas/model-context-v1.json",
+  "name": "FlatWrite Render — Docs",
+  "version": "1.0.0",
+  "surfaceMode": "doc",
+  "status": "ready",
+  "handler": {
+    "url": "https://render.flatwrite.md/render",
+    "transport": "http",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Api-Key": "<server-to-server key — clients mint X-Mcp-Token instead>"
+    },
+    "authNote": "Browser clients mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first. Server-to-server clients may use X-Api-Key directly."
+  },
+  "tools": [
+    {
+      "name": "render_markdown",
+      "description": "Render raw markdown into FlatWrite-styled HTML head and body fragments. Same render pipeline as the editor (flatwrite.md) and the flatwrite-render MCP server. Returns { head, body }: head is CSS to inject, body is the document fragment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "description": "Raw markdown content to render."
+          },
+          "font": {
+            "type": "string",
+            "description": "Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES."
+          },
+          "appFramework": {
+            "type": "string",
+            "description": "UI framework (spectre, pico, oat, poshui, simple)."
+          },
+          "size": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute pixel value (8..72)"
+              }
+            ],
+            "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\")."
+          },
+          "weight": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute weight (100..900)"
+              }
+            ],
+            "description": "Font weight as a scale token (e.g. \"-1\", \"0\")."
+          },
+          "line": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute multiplier (0.8..4.0)"
+              }
+            ],
+            "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\")."
+          },
+          "uiZoom": {
+            "type": "number",
+            "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out)."
+          },
+          "pageSize": {
+            "type": "string",
+            "description": "Page size for paged output (A4, A3, Letter, Legal)."
+          },
+          "orientation": {
+            "type": "string",
+            "description": "Page orientation.",
+            "enum": [
+              "portrait",
+              "landscape"
+            ]
+          },
+          "marginsLR": {
+            "type": "string",
+            "description": "Left/right page margins (narrow, normal, wide)."
+          },
+          "marginsTB": {
+            "type": "string",
+            "description": "Top/bottom page margins (narrow, normal, wide)."
+          },
+          "footer": {
+            "type": "boolean",
+            "description": "Include a page-number footer in paged output."
+          },
+          "width": {
+            "type": "number",
+            "description": "Content width in pixels (400..1400)."
+          },
+          "docEngine": {
+            "type": "string",
+            "description": "Document engine (\"none\" or \"paged\")."
+          },
+          "surfaceMode": {
+            "type": "string",
+            "description": "Surface mode (\"doc\" or \"app\")."
+          },
+          "theme": {
+            "type": "string",
+            "description": "Theme identifier (e.g. \"light\", \"dark\")."
+          }
+        },
+        "required": [
+          "markdown"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "displayHints": {
+        "inputFieldAliases": {
+          "font": "fontFamily",
+          "appFramework": "framework",
+          "size": "fontSize",
+          "weight": "fontWeight",
+          "line": "lineHeight"
+        },
+        "outputHints": {
+          "head": "head",
+          "body": "body"
+        }
+      }
+    },
+    {
+      "name": "render_markdown_from_url",
+      "description": "Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org) and render it into FlatWrite-styled HTML head and body fragments. Same render pipeline as the editor and the flatwrite-render MCP server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "markdownUrl": {
+            "type": "string",
+            "description": "URL pointing to raw markdown content. Must be on an allowlisted host (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org)."
+          },
+          "font": {
+            "type": "string",
+            "description": "Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES."
+          },
+          "appFramework": {
+            "type": "string",
+            "description": "UI framework (spectre, pico, oat, poshui, simple)."
+          },
+          "size": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute pixel value (8..72)"
+              }
+            ],
+            "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\")."
+          },
+          "weight": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute weight (100..900)"
+              }
+            ],
+            "description": "Font weight as a scale token (e.g. \"-1\", \"0\")."
+          },
+          "line": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute multiplier (0.8..4.0)"
+              }
+            ],
+            "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\")."
+          },
+          "uiZoom": {
+            "type": "number",
+            "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out)."
+          },
+          "pageSize": {
+            "type": "string",
+            "description": "Page size for paged output (A4, A3, Letter, Legal)."
+          },
+          "orientation": {
+            "type": "string",
+            "description": "Page orientation.",
+            "enum": [
+              "portrait",
+              "landscape"
+            ]
+          },
+          "marginsLR": {
+            "type": "string",
+            "description": "Left/right page margins (narrow, normal, wide)."
+          },
+          "marginsTB": {
+            "type": "string",
+            "description": "Top/bottom page margins (narrow, normal, wide)."
+          },
+          "footer": {
+            "type": "boolean",
+            "description": "Include a page-number footer in paged output."
+          },
+          "width": {
+            "type": "number",
+            "description": "Content width in pixels (400..1400)."
+          },
+          "docEngine": {
+            "type": "string",
+            "description": "Document engine (\"none\" or \"paged\")."
+          },
+          "surfaceMode": {
+            "type": "string",
+            "description": "Surface mode (\"doc\" or \"app\")."
+          },
+          "theme": {
+            "type": "string",
+            "description": "Theme identifier (e.g. \"light\", \"dark\")."
+          }
+        },
+        "required": [
+          "markdownUrl"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "displayHints": {
+        "inputFieldAliases": {
+          "font": "fontFamily",
+          "appFramework": "framework",
+          "size": "fontSize",
+          "weight": "fontWeight",
+          "line": "lineHeight"
+        },
+        "outputHints": {
+          "head": "head",
+          "body": "body"
+        }
+      }
+    }
+  ]
+}
