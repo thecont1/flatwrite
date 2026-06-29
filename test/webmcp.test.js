@@ -10,6 +10,9 @@
  *   4. Pre-flight validate fontFamily against the bundled inventory
  *   5. Pre-flight validate the markdown URL against the allowlist
  *   6. Return the rendered { head, body } JSON on success
+ *   7. Mint a short-lived token from /mcp-token and send it as
+ *      X-Mcp-Token (NOT X-Api-Key) — the long-lived key must never
+ *      appear in shipped JS.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -23,8 +26,26 @@ const WEBMCP_JS = readFileSync(
 );
 
 /**
+ * Build a Response-like object that satisfies the Fetch API the
+ * webmcp.js script actually uses: `.ok`, `.status`, `.text()`,
+ * `.json()`. We return this from the fake fetch in tests.
+ */
+function fakeResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+    json: async () => body,
+  };
+}
+
+/**
  * Build a sandbox with a stubbed navigator.modelContext that records
  * every registered tool, then evaluate webmcp.js inside it.
+ *
+ * The fakeFetch here is the "minimal" version: it returns a SENTINEL
+ * error on any URL. Tests that need real token/render behavior use
+ * sandboxWithFetch() below.
  */
 function loadWebmcp() {
   const tools = [];
@@ -36,30 +57,24 @@ function loadWebmcp() {
         },
       },
     },
-    fetch: async () => {
-      throw new Error("fetch should be mocked in the calling test");
-    },
+    // Pre-warm fetch (runs at page load): return a valid token.
+    // Subsequent tool-call fetches that don't override this will
+    // hit the SENTINEL — tests that need real behavior should use
+    // sandboxWithFetch() instead.
+    fetch: async () =>
+      fakeResponse(200, { token: "fake.token", expiresAt: Math.floor(Date.now() / 1000) + 60 }),
     URL,
     console,
     Promise,
     Object,
   };
   const fn = new Function(
-    "navigator",
-    "fetch",
-    "URL",
-    "console",
-    "Promise",
-    "Object",
+    "navigator", "fetch", "URL", "console", "Promise", "Object",
     WEBMCP_JS,
   );
   fn(
-    sandbox.navigator,
-    sandbox.fetch,
-    sandbox.URL,
-    sandbox.console,
-    sandbox.Promise,
-    sandbox.Object,
+    sandbox.navigator, sandbox.fetch, sandbox.URL,
+    sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
 }
@@ -84,14 +99,33 @@ function sandboxWithFetch(fetchImpl) {
     WEBMCP_JS,
   );
   fn(
-    sandbox.navigator,
-    sandbox.fetch,
-    sandbox.URL,
-    sandbox.console,
-    sandbox.Promise,
-    sandbox.Object,
+    sandbox.navigator, sandbox.fetch, sandbox.URL,
+    sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
+}
+
+/**
+ * A fakeFetch that mints a fake token on /mcp-token and otherwise
+ * captures the request to /render and returns a successful render.
+ */
+function fakeFetchWithTokenMint() {
+  const calls = [];
+  const fakeFetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(init.body) : null;
+    calls.push({ url, init, body });
+    if (url.endsWith("/mcp-token")) {
+      return fakeResponse(200, {
+        token: "fake.token",
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+      });
+    }
+    if (url.endsWith("/render")) {
+      return fakeResponse(200, { head: "<style/>", body: "<h1>Hi</h1>" });
+    }
+    throw new Error("unexpected URL: " + url);
+  };
+  return { fakeFetch, calls };
 }
 
 describe("webmcp.js — tool registration", () => {
@@ -134,6 +168,16 @@ describe("webmcp.js — tool registration", () => {
     fn(sandbox, URL, console, Promise, Object);
     expect(sandbox.tools).toBeUndefined();
   });
+
+  test("does not embed a 64-char hex API key in the source", () => {
+    // The shipped JS must not contain a 64-char hex blob — that's
+    // the shape of the long-lived API key. This is a belt-and-braces
+    // check; the auth test below is the stronger guarantee.
+    const hex = WEBMCP_JS.match(/[0-9a-f]{60,}/g) || [];
+    for (const blob of hex) {
+      expect(blob).not.toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
 });
 
 describe("webmcp.js — render_markdown handler", () => {
@@ -168,16 +212,8 @@ describe("webmcp.js — render_markdown handler", () => {
     }
   });
 
-  test("translates friendly aliases to canonical frontmatter and POSTs JSON to render.flatwrite.md", async () => {
-    let captured = null;
-    const fakeFetch = async (url, init) => {
-      captured = { url: url, init: init, body: JSON.parse(init.body) };
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ head: "<style/>", body: "<h1>Hi</h1>" }),
-      };
-    };
+  test("mints a token from /mcp-token and uses X-Mcp-Token (not X-Api-Key)", async () => {
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
     const result = await t.handler({
@@ -188,35 +224,32 @@ describe("webmcp.js — render_markdown handler", () => {
       fontSize: 18,
       lineHeight: 1.6,
     });
-    expect(captured.url).toBe("https://render.flatwrite.md/render");
-    expect(captured.init.method).toBe("POST");
-    expect(captured.init.headers["Content-Type"]).toBe("application/json");
-    expect(typeof captured.init.headers["X-Api-Key"]).toBe("string");
-    expect(captured.init.headers["X-Api-Key"].length).toBeGreaterThanOrEqual(64);
+    // First call: token mint.
+    expect(calls[0].url).toContain("/mcp-token");
+    expect(calls[0].init.method).toBe("POST");
+    // Second call: render with the minted token.
+    expect(calls[1].url).toBe("https://render.flatwrite.md/render");
+    expect(calls[1].init.method).toBe("POST");
+    expect(calls[1].init.headers["Content-Type"]).toBe("application/json");
+    expect(calls[1].init.headers["X-Mcp-Token"]).toBe("fake.token");
+    // CRITICAL: the long-lived key header must NOT be sent.
+    expect(calls[1].init.headers["X-Api-Key"]).toBeUndefined();
     // Friendly aliases translated to canonical names
-    expect(captured.body.font).toBe("Comfortaa");
-    expect(captured.body.appFramework).toBe("spectre");
-    expect(captured.body.fontSize).toBe(18);
-    expect(captured.body.lineHeight).toBe(1.6);
-    expect(captured.body.pageSize).toBe("A3");
-    expect(captured.body.markdown).toBe("# Hi");
+    expect(calls[1].body.font).toBe("Comfortaa");
+    expect(calls[1].body.appFramework).toBe("spectre");
+    expect(calls[1].body.fontSize).toBe(18);
+    expect(calls[1].body.lineHeight).toBe(1.6);
+    expect(calls[1].body.pageSize).toBe("A3");
+    expect(calls[1].body.markdown).toBe("# Hi");
     // Public alias `fontFamily` should NOT leak onto the wire
-    expect("fontFamily" in captured.body).toBe(false);
+    expect("fontFamily" in calls[1].body).toBe(false);
     // Result returns the head/body pair
     expect(result.head).toBe("<style/>");
     expect(result.body).toBe("<h1>Hi</h1>");
   });
 
   test("translates string scale tokens to canonical size/weight/line fields", async () => {
-    let captured = null;
-    const fakeFetch = async (_url, init) => {
-      captured = JSON.parse(init.body);
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ head: "", body: "" }),
-      };
-    };
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
     await t.handler({
@@ -226,13 +259,14 @@ describe("webmcp.js — render_markdown handler", () => {
       fontWeight: "-3",
       lineHeight: "0",
     });
-    expect(captured.font).toBe("Playfair Display");
-    expect(captured.size).toBe("-1");
-    expect(captured.weight).toBe("-3");
-    expect(captured.line).toBe("0");
-    expect(captured.fontSize).toBeUndefined();
-    expect(captured.fontWeight).toBeUndefined();
-    expect(captured.lineHeight).toBeUndefined();
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.font).toBe("Playfair Display");
+    expect(renderCall.body.size).toBe("-1");
+    expect(renderCall.body.weight).toBe("-3");
+    expect(renderCall.body.line).toBe("0");
+    expect(renderCall.body.fontSize).toBeUndefined();
+    expect(renderCall.body.fontWeight).toBeUndefined();
+    expect(renderCall.body.lineHeight).toBeUndefined();
   });
 });
 
@@ -261,26 +295,21 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     ).rejects.toThrow(/INVALID_URL/);
   });
 
-  test("accepts an allowlisted URL and forwards markdownUrl", async () => {
-    let captured = null;
-    const fakeFetch = async (_url, init) => {
-      captured = JSON.parse(init.body);
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ head: "", body: "<p>ok</p>" }),
-      };
-    };
+  test("accepts an allowlisted URL, mints a token, and forwards markdownUrl", async () => {
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown_from_url");
     const result = await t.handler({
       url: "https://raw.githubusercontent.com/foo/bar/main/README.md",
       fontFamily: "Comfortaa",
     });
-    expect(captured.markdownUrl).toBe(
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.markdownUrl).toBe(
       "https://raw.githubusercontent.com/foo/bar/main/README.md",
     );
-    expect(captured.font).toBe("Comfortaa");
-    expect(result.body).toBe("<p>ok</p>");
+    expect(renderCall.body.font).toBe("Comfortaa");
+    expect(renderCall.init.headers["X-Mcp-Token"]).toBe("fake.token");
+    expect(renderCall.init.headers["X-Api-Key"]).toBeUndefined();
+    expect(result.body).toBe("<h1>Hi</h1>");
   });
 });
