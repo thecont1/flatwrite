@@ -45,10 +45,22 @@ import yaml from 'js-yaml';
 
 const TOKEN_TTL_SECONDS = 60;
 
-const TRUSTED_ORIGINS = [
+const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
-  'https://*.flatwrite.md',
-];
+]);
+
+/**
+ * True if the request's Origin is in the trusted-origin allowlist
+ * (exact match or suffix match for `*.flatwrite.md` subdomains).
+ * Mirrors the MCP Worker's isTrustedOrigin() implementation.
+ */
+function isTrustedOrigin(origin) {
+  if (!origin) return false;
+  if (TRUSTED_ORIGINS.has(origin)) return true;
+  // Suffix match: https://anything.flatwrite.md
+  if (/^https:\/\/[a-z0-9-]+\.flatwrite\.md$/i.test(origin)) return true;
+  return false;
+}
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -68,7 +80,7 @@ const FORWARDED_RATE_LIMIT_HEADERS = [
 function corsFor(req) {
   const origin = req.headers.get('Origin');
   if (!origin) return {}; // no Origin = non-browser = no CORS needed
-  if (!TRUSTED_ORIGINS.includes(origin)) return {};
+  if (!isTrustedOrigin(origin)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
     'Vary': 'Origin',
@@ -392,7 +404,7 @@ async function handleMintToken(req, env) {
   // Non-browser clients (curl, MCP server) should use the long-lived key.
   const cors = corsFor(req);
   const origin = req.headers.get('Origin');
-  if (!origin || !TRUSTED_ORIGINS.includes(origin)) {
+  if (!origin || !isTrustedOrigin(origin)) {
     return jsonResponse(
       403,
       { error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' },

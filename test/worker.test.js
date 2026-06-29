@@ -111,6 +111,16 @@ describe("Worker auth + method", () => {
     expect(allow.toLowerCase()).toContain("x-mcp-token");
   });
 
+  test("OPTIONS preflight returns 204 for *.flatwrite.md subdomain", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://mcp.flatwrite.md" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(204);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("https://mcp.flatwrite.md");
+  });
+
   test("OPTIONS preflight omits CORS for untrusted origin", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(
@@ -119,6 +129,16 @@ describe("Worker auth + method", () => {
     );
     expect(resp.status).toBe(204);
     // Untrusted origin: no ACAO header at all.
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  test("OPTIONS preflight omits CORS for malformed flatwrite.md origin", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://evil.flatwrite.md.attacker.example" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(204);
     expect(resp.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
