@@ -237,9 +237,9 @@ ${engineScript}
   // that the consuming page (flatwrite.md, a downstream export, or
   // a future theme system) can style the document via CSS attribute
   // selectors — e.g. `body[data-theme="dark"] { background: #1a1a1a; }`.
-  // resolveRenderOptions() already restricts the value to a safe
-  // character set; escapeHTML() adds defense-in-depth for the attribute.
-  const theme = escapeHTML(opts.theme || 'light');
+  // opts.theme is always the sanitized result from resolveRenderOptions();
+  // escapeHTML() adds defense-in-depth for the attribute.
+  const theme = escapeHTML(opts.theme);
   const bodyTag = `<body class="fw-render" data-theme="${theme}">\n  <main>\n${body}\n  </main>\n</body>`;
 
   return { head, body: bodyTag };
