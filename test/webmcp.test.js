@@ -178,6 +178,55 @@ describe("webmcp.js — tool registration", () => {
       expect(blob).not.toMatch(/^[0-9a-f]{64}$/);
     }
   });
+
+  test("inputSchema uses only valid JSON Schema types", () => {
+    // WebMCP / JSON Schema don't have a top-level "enum" type. The
+    // "enum" keyword is a sibling of "type", not a value for it.
+    // Walking the schema we register, the only values that may appear
+    // after "type:" are: "string", "number", "boolean", "object",
+    // "array", "integer", "null". Anything else (especially "enum")
+    // is invalid and may cause strict clients to reject the tool.
+    const tools = loadWebmcp();
+    const validTypes = new Set([
+      "string", "number", "boolean", "object", "array", "integer", "null",
+    ]);
+    function walkSchema(node) {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const item of node) walkSchema(item);
+        return;
+      }
+      if (typeof node.type === "string" && !validTypes.has(node.type)) {
+        throw new Error("invalid JSON Schema type: " + node.type + " (expected one of " + Array.from(validTypes).join(", ") + ")");
+      }
+      // The "enum" keyword is valid as a sibling of "type" but only
+      // on string/number/integer types. We use it only on the
+      // orientation field, so the value list must be strings.
+      if (Array.isArray(node.enum)) {
+        for (const v of node.enum) {
+          if (typeof v !== "string" && typeof v !== "number") {
+            throw new Error("enum values must be strings or numbers");
+          }
+        }
+      }
+      for (const key of Object.keys(node)) walkSchema(node[key]);
+    }
+    for (const t of tools) walkSchema(t.inputSchema);
+  });
+
+  test("orientation enum is declared as type:string + enum (not type:enum)", () => {
+    // Regression: an earlier version had `type: "enum"`, which is
+    // not valid JSON Schema. Strict clients may reject the tool
+    // registration. The orientation field must use
+    // `type: "string"` with an `enum: [...]` sibling.
+    const tools = loadWebmcp();
+    for (const t of tools) {
+      const orient = t.inputSchema.properties.orientation;
+      expect(orient).toBeDefined();
+      expect(orient.type).toBe("string");
+      expect(orient.enum).toEqual(["portrait", "landscape"]);
+    }
+  });
 });
 
 describe("webmcp.js — render_markdown handler", () => {
