@@ -129,18 +129,37 @@ async function callRpc(
 }
 
 describe("streamableHttpServer — basic transport", () => {
-  test("CORS preflight returns 204 with full headers", async () => {
+  test("CORS preflight returns 204 with restricted allow-headers for a trusted origin", async () => {
     const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "OPTIONS",
       headers: {
-        Origin: "https://example.com",
+        Origin: "https://flatwrite.md",
         "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type, x-api-key",
+        "Access-Control-Request-Headers": "content-type, x-mcp-token, x-api-key",
       },
     });
     expect(r.status).toBe(204);
-    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://flatwrite.md");
     expect(r.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    // The X-Api-Key header is intentionally NOT advertised to browsers.
+    // Only X-Mcp-Token (and the standard browser-safe headers) are.
+    const allow = r.headers.get("Access-Control-Allow-Headers") || "";
+    expect(allow.toLowerCase()).not.toContain("x-api-key");
+    expect(allow.toLowerCase()).toContain("x-mcp-token");
+  });
+
+  test("CORS preflight omits headers for untrusted origins", async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example.com",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    expect(r.status).toBe(204);
+    // Untrusted origin: no Access-Control-Allow-Origin emitted at all.
+    // The browser will block the response from being read by JS.
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   test("non-/mcp path returns 404", async () => {
@@ -276,5 +295,70 @@ describe("streamableHttpServer — auth", () => {
     expect(r.status).toBe(401);
     const body = await r.json();
     expect(body.code).toBe("UNAUTHORIZED");
+  });
+
+  test("rejects X-Api-Key from a browser (server-to-server only)", async () => {
+    // X-Api-Key is a long-lived secret. Even if a browser could guess it,
+    // the server should refuse to accept it from any caller that looks
+    // browser-shaped (carries an Origin header). Browser callers must
+    // use the short-lived X-Mcp-Token flow instead.
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": API_KEY,
+        Origin: "https://flatwrite.md",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(r.status).toBe(401);
+    const body = await r.json();
+    expect(body.code).toBe("API_KEY_NOT_ALLOWED_FROM_BROWSER");
+  });
+
+  test("accepts X-Mcp-Token from a browser", async () => {
+    // The token path is the only one browsers should use. Test that
+    // an X-Mcp-Token value is accepted (the upstream Worker is
+    // responsible for actually validating the signature).
+    // First initialize a session via the token, then verify it
+    // returns 200 (not 401 UNAUTHORIZED).
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "X-Mcp-Token": "any-non-empty-value",
+        Origin: "https://flatwrite.md",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test", version: "0" },
+        },
+      }),
+    });
+    // Initialize succeeds (not 401 UNAUTHORIZED, not 403 ORIGIN).
+    expect(r.status).toBe(200);
+  });
+
+  test("omits CORS headers for untrusted origin", async () => {
+    // A request from a non-allowlisted origin still gets a 401, but
+    // with NO Access-Control-Allow-Origin header — the browser will
+    // block the response from being read by JS.
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": API_KEY,
+        Origin: "https://attacker.example",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(r.status).toBe(401);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
