@@ -131,7 +131,7 @@ The endpoint accepts **two content types**:
 
 #### JSON (primary, recommended for new callers)
 
-- Auth: `X-Api-Key: *** header.
+- Auth: server-to-server callers (curl, MCP servers, backend services) use the long-lived `X-Api-Key` header. Browser callers use the short-lived `X-Mcp-Token` header, obtained from `POST /mcp-token` (which requires an `Origin` in the trusted-origin allowlist — `https://flatwrite.md` and subdomains). **`X-Api-Key` is rejected from any request that carries an `Origin` header.**
 - Body: `application/json` with `{ markdown?, markdownUrl?, framework?, fontFamily?, theme?, fontSize?, lineHeight?, uiZoom? }`.
   - `markdown` and `markdownUrl` are mutually optional, but at least one is required.
   - If both are supplied, `markdown` wins and `markdownUrl` is used as the base URL for resolving relative links.
@@ -139,7 +139,7 @@ The endpoint accepts **two content types**:
 
 #### YAML (legacy, used by `scripts/render_remote.py` and the existing share-pipeline callers)
 
-- Auth: `X-Api-Key: *** header.
+- Auth: server-to-server callers (curl, MCP servers, backend services) use the long-lived `X-Api-Key` header. Browser callers use the short-lived `X-Mcp-Token` header, obtained from `POST /mcp-token` (which requires an `Origin` in the trusted-origin allowlist — `https://flatwrite.md` and subdomains). **`X-Api-Key` is rejected from any request that carries an `Origin` header.**
 - Body: `text/yaml` (or `application/x-yaml`, `application/yaml`) with `{ url: <markdownUrl>, ...frontmatter }`.
 - The Worker fetches `url`, merges `frontmatter` (font, size, weight, line, width, pageSize, orientation, appFramework, surfaceMode, etc.) into the render, and forwards to `/api/render`.
 - This is the same shape FlatWrite's editor writes when you save a sidecar `.yaml` next to a markdown file.
@@ -147,7 +147,7 @@ The endpoint accepts **two content types**:
 #### Errors, CORS, and rate limits
 
 - Errors: `{ error, code, retryAfter? }` JSON with codes like `MISSING_CONTENT`, `INVALID_JSON`, `INVALID_YAML`, `UNAUTHORIZED`, `METHOD_NOT_ALLOWED`, `PAYLOAD_TOO_LARGE`, `RATE_LIMIT`, `UPSTREAM_FETCH_FAILED`, `RENDER_FAILED`.
-- CORS: preflight `OPTIONS` returns 204 with `Access-Control-Allow-*` headers; responses set `Access-Control-Allow-Origin: *`.
+- CORS: preflight `OPTIONS` returns 204 with `Access-Control-Allow-*` headers for trusted origins (`https://flatwrite.md` and subdomains). Responses set `Access-Control-Allow-Origin` to the request's `Origin` (echoed, not `*`) so the browser permits the page to read the response with credentialed custom headers. Untrusted origins receive no `Access-Control-Allow-Origin` header — the browser blocks the response.
 - Rate-limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`) are forwarded from `/api/render` on every response.
 
 #### Examples
@@ -199,6 +199,11 @@ constraints.
 
 - **`render_markdown_from_url`** rejects the call with a structured `isError: true` (and a `[DISALLOWED_HOST]`, `[UNSUPPORTED_SCHEME]`, or `[INVALID_URL]` code) when the URL is malformed, uses a non-http(s) scheme, or points at a host outside the markdown URL allowlist (`raw.githubusercontent.com`, `raw.gitlab.com`, `bitbucket.org` — kept in sync with `api/render.js`'s canonical allowlist). That avoids waiting for a 502 roundtrip when the caller passes something the upstream was always going to reject.
 - **Both tools** validate `fontFamily` against the bundled font inventory (`Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded` — kept in sync with `core/font-inventory.js`) and reject with `[INVALID_FONT_FAMILY]` immediately if the requested family has no bundled woff2.
+
+The MCP server supports two transports:
+
+- **stdio** (default) — local process, started via `npm start` in `mcp/flatwrite-render-server/`. Used by Hermes when configured with `command: node ...`.
+- **Streamable HTTP** — long-running HTTP server exposing `/mcp`. Set `FLATWRITE_TRANSPORT=streamable-http` (and optionally `FLATWRITE_PORT`) and start the same way. Clients connect via `type: streamable-http` in their MCP config. A Cloudflare Worker deployment of this transport lives at `workers/flatwrite-mcp/` and is intended to be served at `mcp.flatwrite.md/mcp`.
 
 All error details returned to MCP callers are scrubbed through
 `sanitizeDetail()` before they leave the server: bearer tokens, API keys,

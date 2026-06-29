@@ -95,15 +95,49 @@ describe("Worker auth + method", () => {
     expect(body.code).toBe("UNAUTHORIZED");
   });
 
-  test("OPTIONS preflight returns 204 with CORS headers", async () => {
+  test("OPTIONS preflight returns 204 with restricted CORS for trusted origin", async () => {
     const { default: worker } = await loadWorker();
-    const resp = await worker.fetch(req({ method: "OPTIONS" }), {
-      API_KEY: KEY,
-      INTERNAL_RENDER_KEY: SECRET,
-    });
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://flatwrite.md" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
     expect(resp.status).toBe(204);
-    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    // Trusted origin: ACAO echoes the request origin, NOT "*".
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("https://flatwrite.md");
     expect(resp.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    // The X-Api-Key header is intentionally NOT advertised to browsers.
+    const allow = resp.headers.get("Access-Control-Allow-Headers") || "";
+    expect(allow.toLowerCase()).not.toContain("x-api-key");
+    expect(allow.toLowerCase()).toContain("x-mcp-token");
+  });
+
+  test("OPTIONS preflight omits CORS for untrusted origin", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://attacker.example" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(204);
+    // Untrusted origin: no ACAO header at all.
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  test("POST rejects X-Api-Key from a browser (server-to-server only)", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": KEY,
+          Origin: "https://flatwrite.md",
+        },
+        body: { markdown: "# hi" },
+      }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(401);
+    const body = await resp.json();
+    expect(body.code).toBe("API_KEY_NOT_ALLOWED_FROM_BROWSER");
   });
 });
 

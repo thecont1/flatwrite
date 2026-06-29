@@ -1,0 +1,25 @@
+name = "flatwrite-mcp"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+route = { pattern = "mcp.flatwrite.md/*", zone_name = "flatwrite.md" }
+
+# Secrets (set via `wrangler secret put`):
+#   API_KEY              — public-facing key clients send in X-Api-Key.
+#                          Same value as the render.flatwrite.md Worker.
+#   UPSTREAM_RENDER_URL  — optional override; defaults to
+#                          https://render.flatwrite.md/render.
+
+[vars]
+UPSTREAM_RENDER_URL = "https://render.flatwrite.md/render"
+
+# Workers Logs (free tier).
+[observability]
+enabled = true
+
+# Local development: no route restrictions so wrangler dev serves
+# everything on localhost.
+[dev]
+port = 8787
+ip = "127.0.0.1"
+local = true
