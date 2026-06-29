@@ -7,6 +7,9 @@ route = { pattern = "mcp.flatwrite.md/*", zone_name = "flatwrite.md" }
 # Secrets (set via `wrangler secret put`):
 #   API_KEY              — public-facing key clients send in X-Api-Key.
 #                          Same value as the render.flatwrite.md Worker.
+#                          NEVER commit the actual value here — store it
+#                          via `wrangler secret put API_KEY` (interactive)
+#                          or `wrangler secret put API_KEY -- <file>` (CI).
 #   UPSTREAM_RENDER_URL  — optional override; defaults to
 #                          https://render.flatwrite.md/render.
 

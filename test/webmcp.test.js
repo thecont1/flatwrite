@@ -524,6 +524,29 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     }
   });
 
+  test("docs manifest declares the MCP Streamable HTTP handler as the preferred (first) entry", () => {
+    const m = loadManifest(MANIFEST_PATH);
+    // Schema uses `handlers` (array) — the old `handler` (singular)
+    // is intentionally absent.
+    expect(m.handler).toBeUndefined();
+    expect(Array.isArray(m.handlers)).toBe(true);
+    expect(m.handlers.length).toBeGreaterThanOrEqual(2);
+    // First entry is the Streamable HTTP MCP handler.
+    expect(m.handlers[0].transport).toBe("streamable-http");
+    expect(m.handlers[0].url).toBe("https://mcp.flatwrite.md/mcp");
+    // Second entry is the plain HTTP /render fallback.
+    expect(m.handlers[1].transport).toBe("http");
+    expect(m.handlers[1].url).toBe("https://render.flatwrite.md/render");
+  });
+
+  test("apps manifest declares zero tools and the placeholder handler", () => {
+    const m = loadManifest(APPS_MANIFEST_PATH);
+    expect(m.handler).toBeUndefined();
+    expect(Array.isArray(m.handlers)).toBe(true);
+    expect(m.handlers.length).toBe(1);
+    expect(m.tools).toEqual([]);
+  });
+
   /**
    * Re-parse webmcp.js to extract a single tool's input schema and
    * required-field list. The script is hand-written, so we can't

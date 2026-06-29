@@ -2,3 +2,11 @@ name = "flatwrite-render"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 route = { pattern = "render.flatwrite.md/*", zone_name = "flatwrite.md" }
+
+# Secrets (set via `wrangler secret put`):
+#   API_KEY              — public-facing key clients send in X-Api-Key.
+#                          NEVER commit the actual value here — store it
+#                          via `wrangler secret put API_KEY` (interactive)
+#                          or `wrangler secret put API_KEY -- <file>` (CI).
+#   INTERNAL_RENDER_KEY  — HMAC secret used to sign upstream requests to
+#                          the canonical /api/render handler. NEVER commit.

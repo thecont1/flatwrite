@@ -4,16 +4,28 @@
   "version": "1.0.0",
   "surfaceMode": "doc",
   "status": "ready",
-  "handler": {
-    "url": "https://render.flatwrite.md/render",
-    "transport": "http",
-    "method": "POST",
-    "headers": {
-      "Content-Type": "application/json",
-      "X-Api-Key": "<server-to-server key — clients mint X-Mcp-Token instead>"
+  "handlers": [
+    {
+      "url": "https://mcp.flatwrite.md/mcp",
+      "transport": "streamable-http",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream"
+      },
+      "authNote": "MCP Streamable HTTP transport. Server-to-server callers (no Origin header) can use X-Api-Key. Browser callers MUST mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first."
     },
-    "authNote": "Browser clients mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first. Server-to-server clients may use X-Api-Key directly."
-  },
+    {
+      "url": "https://render.flatwrite.md/render",
+      "transport": "http",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Api-Key": "<server-to-server key — clients mint X-Mcp-Token instead>"
+      },
+      "authNote": "Browser clients mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first. Server-to-server clients may use X-Api-Key directly."
+    }
+  ],
   "tools": [
     {
       "name": "render_markdown",

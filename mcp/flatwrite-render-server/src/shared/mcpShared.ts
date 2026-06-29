@@ -476,6 +476,27 @@ export const HANDLER_DOCS: HandlerConfig = {
     'may use X-Api-Key directly.',
 };
 
+/**
+ * Streamable HTTP MCP handler for the Docs surface. Exposed at
+ * https://mcp.flatwrite.md/mcp and fronts the same render Worker
+ * that the HTTP handler fronts, so a tool call here produces
+ * byte-identical output to a call via the HTTP handler. Preferred
+ * by MCP-aware clients (Claude, Hermes, MCP Inspector).
+ */
+export const HANDLER_DOCS_MCP: HandlerConfig = {
+  url: 'https://mcp.flatwrite.md/mcp',
+  transport: 'streamable-http',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  },
+  authNote:
+    'MCP Streamable HTTP transport. Server-to-server callers (no Origin ' +
+    'header) can use X-Api-Key. Browser callers MUST mint a short-lived ' +
+    'X-Mcp-Token from https://render.flatwrite.md/mcp-token first.',
+};
+
 export const HANDLER_APPS: HandlerConfig = {
   url: 'https://render.flatwrite.md/render?surface=app',
   transport: 'http',
@@ -487,6 +508,11 @@ export const HANDLER_APPS: HandlerConfig = {
 /**
  * The shape of a generated manifest. Emitted by `generateManifest()`,
  * one file per surface, written to `public/.well-known/`.
+ *
+ * `handlers` is an array (not a single object) so a surface can be
+ * reachable via multiple transports. The first entry is treated as
+ * the preferred/default handler; consumers should iterate the array
+ * to discover alternatives.
  */
 export interface ModelContextManifest {
   readonly $schema: string;
@@ -494,7 +520,7 @@ export interface ModelContextManifest {
   readonly version: string;
   readonly surfaceMode: SurfaceMode;
   readonly status: 'ready' | 'preview' | 'disabled';
-  readonly handler: HandlerConfig;
+  readonly handlers: ReadonlyArray<HandlerConfig>;
   readonly tools: ReadonlyArray<{
     readonly name: string;
     readonly description: string;
@@ -566,13 +592,23 @@ function fieldToJsonSchema(f: InputFieldSpec): Record<string, unknown> {
  * Throws if any tool references a canonical field that isn't in
  * RENDER_INPUT_FIELDS, or if a tool's requiredFields references a
  * field not in its inputFields. Both are build-time errors.
+ *
+ * `handlers` is an array; the first entry is treated as the
+ * preferred/default by consumers. Pass at least one handler per
+ * surface — empty handlers throws at build time.
  */
 export function generateManifest(
   surface: SurfaceMode,
   tools: readonly ToolSpec[],
-  handler: HandlerConfig,
+  handlers: ReadonlyArray<HandlerConfig>,
   options: { status?: SurfaceRegistration['status']; serverName?: string } = {},
 ): ModelContextManifest {
+  if (handlers.length === 0) {
+    throw new Error(
+      `generateManifest: surface "${surface}" has zero handlers. ` +
+        `At minimum, register one HANDLER_<SURFACE> in mcpShared.ts.`,
+    );
+  }
   const status = options.status ?? 'ready';
   const serverName = options.serverName ?? `FlatWrite Render — ${surface === 'doc' ? 'Docs' : 'Apps'}`;
 
@@ -610,7 +646,7 @@ export function generateManifest(
     version: MANIFEST_VERSION,
     surfaceMode: surface,
     status,
-    handler,
+    handlers,
     tools: manifestTools,
   };
 }

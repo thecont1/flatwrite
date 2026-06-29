@@ -53,12 +53,13 @@ const captured = {};
 // eslint-disable-next-line no-new-func
 new Function(
   "captured",
-  `${stripped}\n;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
+  `${stripped}\n;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_DOCS_MCP=HANDLER_DOCS_MCP;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
 )(captured);
 
 const {
   RENDER_TOOLS_DOCS,
   HANDLER_DOCS,
+  HANDLER_DOCS_MCP,
   HANDLER_APPS,
   REGISTERED_SURFACES,
   generateManifest,
@@ -78,9 +79,15 @@ const TOOLS_BY_SURFACE = {
   app: [],
 };
 
+/**
+ * Handlers per surface, in preferred-first order. The first entry
+ * becomes the manifest's "default" handler; consumers should iterate
+ * the array to discover alternatives. Adding a new transport for an
+ * existing surface is a one-line edit here.
+ */
 const HANDLERS_BY_SURFACE = {
-  doc: HANDLER_DOCS,
-  app: HANDLER_APPS,
+  doc: [HANDLER_DOCS_MCP, HANDLER_DOCS].filter(Boolean),
+  app: [HANDLER_APPS].filter(Boolean),
 };
 
 mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
@@ -88,15 +95,15 @@ mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
 let written = 0;
 for (const surface of REGISTERED_SURFACES) {
   const tools = TOOLS_BY_SURFACE[surface.id] ?? [];
-  const handler = HANDLERS_BY_SURFACE[surface.id];
-  if (!handler) {
+  const handlers = HANDLERS_BY_SURFACE[surface.id];
+  if (!handlers || handlers.length === 0) {
     console.error(
-      `build-manifest: no HANDLER for surface "${surface.id}". ` +
-        `Add HANDLER_${surface.id.toUpperCase()} to mcpShared.ts.`,
+      `build-manifest: no handlers registered for surface "${surface.id}". ` +
+        `Add at least one HANDLER_${surface.id.toUpperCase()}* to mcpShared.ts.`,
     );
     process.exit(1);
   }
-  const manifest = generateManifest(surface.id, tools, handler, {
+  const manifest = generateManifest(surface.id, tools, handlers, {
     status: surface.status,
   });
   // manifestFile is `.well-known/model-context.<surface>.json`; strip
