@@ -1,4 +1,10 @@
 import yaml from 'js-yaml';
+import {
+  mintToken,
+  verifyToken,
+  constantTimeEqual,
+  sign,
+} from '../../../public/webmcp-shared.js';
 
 /**
  * Cloudflare Worker: render.flatwrite.md
@@ -45,10 +51,55 @@ import yaml from 'js-yaml';
 
 const TOKEN_TTL_SECONDS = 60;
 
-const TRUSTED_ORIGINS = [
+// Per-IP rate limiting for the /mcp-token endpoint. Production deploys
+// should eventually back this with Cloudflare KV or Durable Objects so
+// the limit is shared across Worker instances; the in-memory map below
+// is a local guard that still mitigates single-instance bursts.
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+const RATE_LIMIT_MAX_TOKENS_PER_IP = 10;
+const tokenRequestLog = new Map(); // ip -> array of timestamps
+
+const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
-  'https://*.flatwrite.md',
-];
+]);
+
+/**
+ * Check whether a client IP has exceeded the /mcp-token rate limit.
+ * Uses a simple sliding-window counter kept in memory. Returns true
+ * if the request is allowed, false if it should be throttled.
+ */
+function isTokenRateLimited(ip) {
+  if (!ip) return false; // can't rate-limit without an IP
+  const now = Date.now();
+  const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
+  let log = tokenRequestLog.get(ip);
+  if (!log) {
+    log = [];
+    tokenRequestLog.set(ip, log);
+  }
+  // Evict entries outside the sliding window.
+  const cutoff = now - windowMs;
+  const withinWindow = log.filter((ts) => ts > cutoff);
+  if (withinWindow.length >= RATE_LIMIT_MAX_TOKENS_PER_IP) {
+    return true;
+  }
+  withinWindow.push(now);
+  tokenRequestLog.set(ip, withinWindow);
+  return false;
+}
+
+/**
+ * True if the request's Origin is in the trusted-origin allowlist
+ * (exact match or suffix match for `*.flatwrite.md` subdomains).
+ * Mirrors the MCP Worker's isTrustedOrigin() implementation.
+ */
+function isTrustedOrigin(origin) {
+  if (!origin) return false;
+  if (TRUSTED_ORIGINS.has(origin)) return true;
+  // Suffix match: https://anything.flatwrite.md
+  if (/^https:\/\/[a-z0-9-]+\.flatwrite\.md$/i.test(origin)) return true;
+  return false;
+}
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -68,7 +119,7 @@ const FORWARDED_RATE_LIMIT_HEADERS = [
 function corsFor(req) {
   const origin = req.headers.get('Origin');
   if (!origin) return {}; // no Origin = non-browser = no CORS needed
-  if (!TRUSTED_ORIGINS.includes(origin)) return {};
+  if (!isTrustedOrigin(origin)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
     'Vary': 'Origin',
@@ -89,66 +140,6 @@ function pickForwardedHeaders(upstream) {
     if (v) out[name] = v;
   }
   return out;
-}
-
-/**
- * Compute HMAC-SHA256 signature using Web Crypto API (CF Worker compatible).
- */
-async function sign(secret, payload) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Mint a short-lived token: base64url(exp).base64url(sig) where
- *   exp  = unix seconds at which the token expires
- *   sig  = hex(HMAC-SHA256(env.API_KEY, exp + '.' + scope))
- */
-async function mintToken(secret, ttlSeconds, scope) {
-  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const sig = await sign(secret, exp + '.' + scope);
-  const expB64 = b64url(exp.toString());
-  const sigB64 = b64url(sig);
-  return { token: expB64 + '.' + sigB64, exp };
-}
-
-async function verifyToken(secret, token, scope) {
-  if (!token || typeof token !== 'string') return { ok: false, reason: 'malformed' };
-  const parts = token.split('.');
-  if (parts.length !== 2) return { ok: false, reason: 'malformed' };
-  const [expB64, sigB64] = parts;
-  let expStr;
-  try {
-    expStr = atob(expB64.replace(/-/g, '+').replace(/_/g, '/'));
-  } catch {
-    return { ok: false, reason: 'malformed' };
-  }
-  const exp = parseInt(expStr, 10);
-  if (!Number.isFinite(exp)) return { ok: false, reason: 'malformed' };
-  if (exp <= Math.floor(Date.now() / 1000)) return { ok: false, reason: 'expired' };
-  let expectedSig;
-  try {
-    expectedSig = atob(sigB64.replace(/-/g, '+').replace(/_/g, '/'));
-  } catch {
-    return { ok: false, reason: 'malformed' };
-  }
-  const actualSig = await sign(secret, expStr + '.' + scope);
-  if (expectedSig !== actualSig) return { ok: false, reason: 'bad_signature' };
-  return { ok: true, exp };
-}
-
-function b64url(input) {
-  const bytes = new TextEncoder().encode(input);
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function isJsonContentType(ct) {
@@ -202,7 +193,7 @@ async function authenticateRequest(req, env) {
     };
   }
   const apiKey = req.headers.get('X-Api-Key');
-  if (apiKey === env.API_KEY) return { ok: true, kind: 'key' };
+  if (constantTimeEqual(apiKey || '', env.API_KEY || '')) return { ok: true, kind: 'key' };
   return { ok: false, status: 401, body: { error: 'Unauthorized', code: 'UNAUTHORIZED' } };
 }
 
@@ -392,10 +383,20 @@ async function handleMintToken(req, env) {
   // Non-browser clients (curl, MCP server) should use the long-lived key.
   const cors = corsFor(req);
   const origin = req.headers.get('Origin');
-  if (!origin || !TRUSTED_ORIGINS.includes(origin)) {
+  if (!origin || !isTrustedOrigin(origin)) {
     return jsonResponse(
       403,
       { error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' },
+      cors,
+    );
+  }
+
+  // Rate-limit token minting per IP to prevent exhaustion attacks.
+  const ip = req.headers.get('CF-Connecting-IP') || 'unknown';
+  if (isTokenRateLimited(ip)) {
+    return jsonResponse(
+      429,
+      { error: 'Rate limit exceeded', code: 'RATE_LIMIT' },
       cors,
     );
   }

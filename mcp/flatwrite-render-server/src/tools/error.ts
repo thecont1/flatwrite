@@ -7,7 +7,7 @@
  */
 
 import { RenderApiError } from '../renderClient.js';
-import { sanitizeDetail } from './sanitize.js';
+import { sanitizeDetail } from '../shared/mcpShared.js';
 
 export interface ToolErrorResult extends Record<string, unknown> {
   isError: true;

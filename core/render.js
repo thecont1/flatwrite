@@ -150,6 +150,13 @@ function resolveRenderOptions(fm) {
     marginsTB: String(f.marginsTB || 'normal'),
     footer: f.footer === true || f.footer === 'true' || f.footer === 'on',
     contentWidth: safeNumber(f.width, 1100, 400, 1400),
+    // Theme is a free-form identifier that the document CSS
+    // interprets (e.g. via [data-theme="dark"]). We don't validate
+    // against an allowlist here because the editor / WebMCP / public
+    // HTTP API all just forward the string and the downstream
+    // document-css.js consumes it. Coerce to a safe string with a
+    // default of "light" so a missing theme still renders predictably.
+    theme: String(f.theme || 'light').slice(0, 64).replace(/[^a-zA-Z0-9_-]/g, '-'),
   };
 }
 
@@ -226,11 +233,14 @@ ${docCss}
 ${engineScript}
 </head>`;
 
-  const bodyTag = `<body class="fw-render">
-  <main>
-${body}
-  </main>
-</body>`;
+  // Theme is exposed as a data-theme attribute on the body element so
+  // that the consuming page (flatwrite.md, a downstream export, or
+  // a future theme system) can style the document via CSS attribute
+  // selectors — e.g. `body[data-theme="dark"] { background: #1a1a1a; }`.
+  // opts.theme is always the sanitized result from resolveRenderOptions();
+  // escapeHTML() adds defense-in-depth for the attribute.
+  const theme = escapeHTML(opts.theme);
+  const bodyTag = `<body class="fw-render" data-theme="${theme}">\n  <main>\n${body}\n  </main>\n</body>`;
 
   return { head, body: bodyTag };
 }

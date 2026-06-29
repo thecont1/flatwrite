@@ -18,106 +18,21 @@
 // its subdomains), validates the X-Mcp-Token HMAC signature, and
 // rejects any browser request that tries to send X-Api-Key directly.
 
-(function () {
-  'use strict';
+import {
+  buildRawMarkdownBody,
+  buildRemoteMarkdownBody,
+  validateFontFamily,
+  validateMarkdownUrl,
+} from './webmcp-shared.js';
 
-  // navigator.modelContext is the WebMCP entry point. If absent (older
-  // browsers, or the DevTrial flag is off), gracefully bail.
-  if (typeof navigator === 'undefined' || !navigator.modelContext) {
-    return;
-  }
-
+// navigator.modelContext is the WebMCP entry point. If absent (older
+// browsers, or the DevTrial flag is off), gracefully bail.
+if (typeof navigator === 'undefined' || !navigator.modelContext) {
+  // Module top-level; no further work.
+}
+else {
   var RENDER_URL = 'https://render.flatwrite.md/render';
   var TOKEN_URL = 'https://render.flatwrite.md/mcp-token';
-
-  /**
-   * Translate the public RenderStyle (fontFamily / framework / fontSize /
-   * ...) to the canonical FlatWrite render frontmatter (font /
-   * appFramework / size / ...). Mirrors the translator in
-   * mcp/flatwrite-render-server/src/renderClient.ts so the page-side
-   * tool produces identical output to the MCP server. Strings are
-   * scale tokens; numbers are absolute pixel values.
-   */
-  function toCanonicalStyle(publicStyle) {
-    var out = {};
-    if (publicStyle == null) return out;
-    if (publicStyle.fontFamily != null) out.font = String(publicStyle.fontFamily);
-    if (publicStyle.framework != null) out.appFramework = String(publicStyle.framework);
-    if (publicStyle.fontSize != null) {
-      if (typeof publicStyle.fontSize === 'string') out.size = publicStyle.fontSize;
-      else out.fontSize = publicStyle.fontSize;
-    }
-    if (publicStyle.fontWeight != null) {
-      if (typeof publicStyle.fontWeight === 'string') out.weight = publicStyle.fontWeight;
-      else out.fontWeight = publicStyle.fontWeight;
-    }
-    if (publicStyle.lineHeight != null) {
-      if (typeof publicStyle.lineHeight === 'string') out.line = publicStyle.lineHeight;
-      else out.lineHeight = publicStyle.lineHeight;
-    }
-    var passthrough = [
-      'docEngine', 'surfaceMode', 'pageSize', 'orientation',
-      'marginsLR', 'marginsTB', 'footer', 'width',
-    ];
-    for (var i = 0; i < passthrough.length; i++) {
-      var k = passthrough[i];
-      if (publicStyle[k] != null) out[k] = publicStyle[k];
-    }
-    // uiZoom is editor-only for now; not forwarded.
-    return out;
-  }
-
-  var ALLOWED_FONTS = {
-    'Inter': true,
-    'JetBrains Mono': true,
-    'Lato': true,
-    'Lora': true,
-    'Merriweather': true,
-    'Playfair Display': true,
-    'Comfortaa': true,
-    'Unbounded': true,
-  };
-
-  var ALLOWED_MARKDOWN_HOSTS = {
-    'raw.githubusercontent.com': true,
-    'raw.gitlab.com': true,
-    'bitbucket.org': true,
-  };
-
-  function validateFontFamily(fontFamily) {
-    if (fontFamily == null) return { ok: true };
-    if (ALLOWED_FONTS[fontFamily]) return { ok: true };
-    return {
-      ok: false,
-      code: 'INVALID_FONT_FAMILY',
-      message: "fontFamily '" + fontFamily + "' is not one of the bundled fonts (Inter, JetBrains Mono, Lato, Lora, Merriweather, Playfair Display, Comfortaa, Unbounded)",
-    };
-  }
-
-  function validateMarkdownUrl(rawUrl) {
-    var parsed;
-    try {
-      parsed = new URL(rawUrl);
-    } catch (_) {
-      return { ok: false, code: 'INVALID_URL', message: 'url is not a valid URL' };
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return {
-        ok: false,
-        code: 'UNSUPPORTED_SCHEME',
-        message: 'url must use http or https (got ' + parsed.protocol + ')',
-      };
-    }
-    var host = parsed.hostname.toLowerCase();
-    if (!ALLOWED_MARKDOWN_HOSTS[host]) {
-      return {
-        ok: false,
-        code: 'DISALLOWED_HOST',
-        message: "host '" + host + "' is not on the markdown URL allowlist",
-      };
-    }
-    return { ok: true, url: parsed.toString() };
-  }
 
   // ---- Token management ----
   //
@@ -259,7 +174,7 @@
       if (!fontCheck.ok) {
         return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
       }
-      var body = Object.assign({ markdown: args.markdown }, toCanonicalStyle(args));
+      var body = buildRawMarkdownBody(args.markdown, args);
       return callRender(body);
     },
   });
@@ -308,8 +223,8 @@
       if (!fontCheck.ok) {
         return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
       }
-      var body = Object.assign({ markdownUrl: urlCheck.url }, toCanonicalStyle(args));
+      var body = buildRemoteMarkdownBody(urlCheck.url, args);
       return callRender(body);
     },
   });
-})();
+}

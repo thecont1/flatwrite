@@ -24,6 +24,29 @@ const WEBMCP_JS = readFileSync(
   resolve(REPO_ROOT, "public/webmcp.js"),
   "utf-8",
 );
+const WEBMCP_SHARED_JS = readFileSync(
+  resolve(REPO_ROOT, "public/webmcp-shared.js"),
+  "utf-8",
+);
+
+/**
+ * Build a single evaluable script from the ES-module webmcp.js and its
+ * shared dependency. The shared module is stripped of `export` so it
+ * works as a script, and webmcp.js's import line is removed.
+ */
+function bundleWebmcpForEval() {
+  const shared = WEBMCP_SHARED_JS
+    .replace(/export const /g, "const ")
+    .replace(/export async function /g, "async function ")
+    .replace(/export function /g, "function ");
+  const webmcp = WEBMCP_JS.replace(
+    /import\s+\{[^}]+\}\s+from\s+['"]\.\/webmcp-shared\.js['"]\s*;?\n/,
+    "",
+  );
+  return shared + "\n" + webmcp;
+}
+
+const EVALUABLE_WEBMCP_JS = bundleWebmcpForEval();
 
 /**
  * Build a Response-like object that satisfies the Fetch API the
@@ -70,7 +93,7 @@ function loadWebmcp() {
   };
   const fn = new Function(
     "navigator", "fetch", "URL", "console", "Promise", "Object",
-    WEBMCP_JS,
+    EVALUABLE_WEBMCP_JS,
   );
   fn(
     sandbox.navigator, sandbox.fetch, sandbox.URL,
@@ -96,7 +119,7 @@ function sandboxWithFetch(fetchImpl) {
   };
   const fn = new Function(
     "navigator", "fetch", "URL", "console", "Promise", "Object",
-    WEBMCP_JS,
+    EVALUABLE_WEBMCP_JS,
   );
   fn(
     sandbox.navigator, sandbox.fetch, sandbox.URL,
@@ -163,7 +186,7 @@ describe("webmcp.js — tool registration", () => {
     const sandbox = {};
     const fn = new Function(
       "navigator", "URL", "console", "Promise", "Object",
-      WEBMCP_JS,
+      EVALUABLE_WEBMCP_JS,
     );
     fn(sandbox, URL, console, Promise, Object);
     expect(sandbox.tools).toBeUndefined();
@@ -316,6 +339,24 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(renderCall.body.fontSize).toBeUndefined();
     expect(renderCall.body.fontWeight).toBeUndefined();
     expect(renderCall.body.lineHeight).toBeUndefined();
+  });
+
+  test("forwards theme to the canonical frontmatter", async () => {
+    // The theme field is advertised in the inputSchema and must be
+    // forwarded to the canonical renderer. The previous version of
+    // toCanonicalStyle() did NOT include theme in its passthrough
+    // list, so callers who set theme: "dark" believed it was applied
+    // when it was silently dropped. This test pins the fix.
+    let captured = null;
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
+    const tools = sandboxWithFetch(fakeFetch);
+    const t = findTool(tools, "render_markdown");
+    await t.handler({
+      markdown: "# Theme test",
+      theme: "dark",
+    });
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.theme).toBe("dark");
   });
 });
 

@@ -12,7 +12,7 @@ import { describe, test, expect } from "bun:test";
 import {
   sanitizeDetail,
   sanitizeRenderErrorPayload,
-} from "../src/tools/sanitize.js";
+} from "../src/shared/mcpShared.js";
 
 describe("sanitizeDetail — secret redaction", () => {
   test("redacts Bearer tokens", () => {

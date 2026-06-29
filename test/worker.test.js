@@ -111,6 +111,16 @@ describe("Worker auth + method", () => {
     expect(allow.toLowerCase()).toContain("x-mcp-token");
   });
 
+  test("OPTIONS preflight returns 204 for *.flatwrite.md subdomain", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://mcp.flatwrite.md" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(204);
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBe("https://mcp.flatwrite.md");
+  });
+
   test("OPTIONS preflight omits CORS for untrusted origin", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(
@@ -119,6 +129,16 @@ describe("Worker auth + method", () => {
     );
     expect(resp.status).toBe(204);
     // Untrusted origin: no ACAO header at all.
+    expect(resp.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  test("OPTIONS preflight omits CORS for malformed flatwrite.md origin", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      req({ method: "OPTIONS", headers: { Origin: "https://evil.flatwrite.md.attacker.example" } }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(204);
     expect(resp.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
@@ -138,6 +158,75 @@ describe("Worker auth + method", () => {
     expect(resp.status).toBe(401);
     const body = await resp.json();
     expect(body.code).toBe("API_KEY_NOT_ALLOWED_FROM_BROWSER");
+  });
+});
+
+describe("/mcp-token", () => {
+  test("mints a token for a trusted origin", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      new Request("https://render.flatwrite.md/mcp-token", {
+        method: "POST",
+        headers: { Origin: "https://flatwrite.md" },
+      }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.token).toMatch(/^[-_A-Za-z0-9]+\.[-_A-Za-z0-9]+$/);
+    expect(body.scope).toBe("mcp");
+    expect(typeof body.expiresAt).toBe("number");
+  });
+
+  test("rejects token minting from an untrusted origin", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      new Request("https://render.flatwrite.md/mcp-token", {
+        method: "POST",
+        headers: { Origin: "https://attacker.example" },
+      }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(resp.status).toBe(403);
+    expect((await resp.json()).code).toBe("ORIGIN_NOT_ALLOWED");
+  });
+
+  test("rate-limits /mcp-token per IP after the threshold", async () => {
+    const { default: worker } = await loadWorker();
+    const headers = {
+      Origin: "https://flatwrite.md",
+      "CF-Connecting-IP": "192.0.2.1",
+    };
+    let lastOk;
+    for (let i = 0; i < 10; i++) {
+      lastOk = await worker.fetch(
+        new Request("https://render.flatwrite.md/mcp-token", {
+          method: "POST",
+          headers,
+        }),
+        { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+      );
+      expect(lastOk.status).toBe(200);
+    }
+    const blocked = await worker.fetch(
+      new Request("https://render.flatwrite.md/mcp-token", {
+        method: "POST",
+        headers,
+      }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).code).toBe("RATE_LIMIT");
+
+    // A different IP should still be allowed.
+    const other = await worker.fetch(
+      new Request("https://render.flatwrite.md/mcp-token", {
+        method: "POST",
+        headers: { Origin: "https://flatwrite.md", "CF-Connecting-IP": "192.0.2.2" },
+      }),
+      { API_KEY: KEY, INTERNAL_RENDER_KEY: SECRET },
+    );
+    expect(other.status).toBe(200);
   });
 });
 
