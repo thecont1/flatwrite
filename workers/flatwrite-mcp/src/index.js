@@ -10,7 +10,7 @@
 // Stateless: each request gets a fresh transport instance. Sessions
 // are not preserved across Worker invocations. Tool definitions are
 // shared via a single McpServer imported once at module scope.
-//
+
 // Client config:
 //   {
 //     "mcpServers": {
@@ -36,6 +36,19 @@ const ALLOWED_MARKDOWN_HOSTS = new Set([
   "raw.githubusercontent.com",
   "raw.gitlab.com",
   "bitbucket.org",
+]);
+
+// Origins allowed to call this Worker over the browser-side path
+// (Streamable HTTP from a browser tab, not a server-to-server MCP
+// client). Server-to-server callers (MCP stdio clients, the Hermes
+// stdio server, etc.) do not send an Origin header and are not
+// affected by this allowlist. Add additional previews by extending
+// here (e.g. https://*.vercel.app for Vercel preview deploys).
+const TRUSTED_ORIGINS = new Set([
+  "https://flatwrite.md",
+  "https://www.flatwrite.md",
+  // *.flatwrite.md via suffix match (Cloudflare Workers lack native
+  // wildcard support; we check the suffix in corsFor()).
 ]);
 
 // === Tool schemas (mirror of mcp/flatwrite-render-server/src/tools/*.ts) ===
@@ -73,8 +86,6 @@ const RenderMarkdownFromUrlInput = z
   })
   .strict();
 
-// === Translator: public friendly style → canonical FlatWrite frontmatter ===
-// Strings are scale tokens, numbers are absolute pixel/weight/height values.
 function toCanonicalStyle(publicStyle) {
   const out = {};
   if (!publicStyle) return out;
@@ -140,8 +151,6 @@ function validateMarkdownUrl(rawUrl) {
   return { ok: true, url: parsed.toString() };
 }
 
-// Sanitize error details before they leave the server so bearer tokens,
-// API keys, hostnames, and stack frames don't leak through MCP errors.
 function sanitizeDetail(input) {
   if (input == null) return "";
   const s = String(input).slice(0, 160);
@@ -154,6 +163,66 @@ function sanitizeDetail(input) {
     .replace(/\/(?:Users|home)\/[^\s,;"'`<>]+/g, "[path]")
     .replace(/\.{0,2}\/[^\s,;"'`<>]+/g, "[path]")
     .replace(/\s+at\s+.+?(?=\s+at\s+|$)/g, "");
+}
+
+/**
+ * True if the request's Origin is in the trusted-origin allowlist
+ * (exact match or suffix match for `*.flatwrite.md` subdomains).
+ */
+function isTrustedOrigin(origin) {
+  if (!origin) return false;
+  if (TRUSTED_ORIGINS.has(origin)) return true;
+  // Suffix match: https://anything.flatwrite.md
+  if (/^https:\/\/[a-z0-9-]+\.flatwrite\.md$/i.test(origin)) return true;
+  return false;
+}
+
+/**
+ * CORS headers for the request. Returns the CORS object to merge in
+ * if the request's Origin is trusted, or `{}` (no CORS headers)
+ * otherwise. Untrusted origins get no ACAO header — the browser
+ * blocks the response from being read by JS.
+ */
+function corsFor(req) {
+  const origin = req.headers.get("Origin");
+  if (!origin) return {};
+  if (!isTrustedOrigin(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
+  };
+}
+
+/**
+ * Preflight headers. The Allow-Headers list is restricted to
+ * browser-safe headers — X-Api-Key is intentionally absent since
+ * the long-lived key is server-to-server only. Browser callers use
+ * X-Mcp-Token (the public Worker at render.flatwrite.md mints those
+ * via /mcp-token; the token is bound to a short TTL and an Origin
+ * check, then verified by HMAC).
+ */
+function preflightHeaders(cors, requested) {
+  const allowed = ["Content-Type", "X-Mcp-Token", "Accept", "Mcp-Session-Id", "Last-Event-Id"];
+  let allowHeaders = allowed.join(", ");
+  if (requested) {
+    const filtered = requested
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .map((h) => allowed.find((a) => a.toLowerCase() === h))
+      .filter((h) => Boolean(h));
+    if (filtered.length > 0) allowHeaders = filtered.join(", ");
+  }
+  return {
+    ...cors,
+    "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": allowHeaders,
+    "Access-Control-Max-Age": "600",
+    "Access-Control-Expose-Headers": "Mcp-Session-Id",
+  };
+}
+
+function isBrowserRequest(req) {
+  return Boolean(req.headers.get("Origin"));
 }
 
 // === Single shared McpServer (tool definitions are module-scope) ===
@@ -239,57 +308,134 @@ mcp.registerTool(
   },
 );
 
-// Per-request env: Workers env binding is only valid inside fetch().
-// We capture it on the request and the tool handlers read from the
-// request-scoped context.
+// Per-request env. Captured at fetch time and read by tool handlers
+// (which can't take env as an argument).
 let currentEnv = null;
 function UPSTREAM_RENDER_URL() { return currentEnv?.UPSTREAM_RENDER_URL || "https://render.flatwrite.md/render"; }
 function API_KEY() { return currentEnv?.API_KEY || ""; }
 
-// === Worker fetch handler ===
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Api-Key, Accept, Mcp-Session-Id",
-  "Access-Control-Expose-Headers": "Mcp-Session-Id",
-};
+/**
+ * Authenticate. Two paths:
+ *   - X-Mcp-Token — short-lived HMAC, browser-safe. The token
+ *     encodes `{ exp, sig }` where `sig = HMAC(env.API_KEY, exp + ".mcp")`.
+ *     The Worker verifies the signature itself rather than trusting
+ *     the upstream render Worker, so this Worker is the gate even
+ *     though the token format is the same as the render Worker.
+ *     (Both Workers share env.API_KEY; either can mint, either can
+ *     verify. The token is bound to scope "mcp" so a token minted
+ *     for a different scope — if we add one later — won't work here.)
+ *   - X-Api-Key — long-lived key, server-to-server only. Rejected
+ *     from any caller that carries an Origin header.
+ *
+ * Browser callers (those with an Origin header) MUST use X-Mcp-Token.
+ * The page-side script (public/webmcp.js) gets a fresh token by
+ * calling the public render Worker's /mcp-token endpoint.
+ */
+async function authenticateRequest(req, env) {
+  if (!env.API_KEY) {
+    return { ok: false, status: 500, body: { error: "Worker misconfigured", code: "MISCONFIGURED" } };
+  }
+  // Short-lived token — accepted from any caller.
+  const token = req.headers.get("X-Mcp-Token");
+  if (token) {
+    const v = await verifyToken(env.API_KEY, token, "mcp");
+    if (v.ok) return { ok: true, kind: "token" };
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "Invalid or expired token", code: "INVALID_TOKEN", detail: v.reason },
+    };
+  }
+  // Long-lived key — server-to-server only.
+  if (isBrowserRequest(req)) {
+    return {
+      ok: false,
+      status: 401,
+      body: {
+        error: "X-Api-Key cannot be used from a browser. Use X-Mcp-Token instead.",
+        code: "API_KEY_NOT_ALLOWED_FROM_BROWSER",
+      },
+    };
+  }
+  const apiKey = req.headers.get("X-Api-Key");
+  if (apiKey === env.API_KEY) return { ok: true, kind: "key" };
+  return { ok: false, status: 401, body: { error: "Unauthorized", code: "UNAUTHORIZED" } };
+}
+
+async function verifyToken(secret, token, scope) {
+  if (!token || typeof token !== "string") return { ok: false, reason: "malformed" };
+  const parts = token.split(".");
+  if (parts.length !== 2) return { ok: false, reason: "malformed" };
+  const [expB64, sigB64] = parts;
+  let expStr;
+  try {
+    expStr = atob(expB64.replace(/-/g, "+").replace(/_/g, "/"));
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
+  const exp = parseInt(expStr, 10);
+  if (!Number.isFinite(exp)) return { ok: false, reason: "malformed" };
+  if (exp <= Math.floor(Date.now() / 1000)) return { ok: false, reason: "expired" };
+  let expectedSig;
+  try {
+    expectedSig = atob(sigB64.replace(/-/g, "+").replace(/_/g, "/"));
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
+  const actualSig = await sign(secret, expStr + "." + scope);
+  if (expectedSig !== actualSig) return { ok: false, reason: "bad_signature" };
+  return { ok: true, exp };
+}
+
+async function sign(secret, payload) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export default {
   async fetch(req, env, ctx) {
-    // Cache env into module globals so tool handlers can read it.
-    globalThis.__FLATWRITE_API_KEY__ = env.API_KEY;
-    globalThis.__FLATWRITE_UPSTREAM__ = env.UPSTREAM_RENDER_URL || "https://render.flatwrite.md/render";
+    currentEnv = env;
 
     const url = new URL(req.url);
 
-    // CORS preflight
+    // CORS preflight — only emit headers for trusted origins, and
+    // never advertise X-Api-Key to browsers.
     if (req.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: CORS });
+      const cors = corsFor(req);
+      const requested = req.headers.get("Access-Control-Request-Headers");
+      return new Response(null, { status: 204, headers: preflightHeaders(cors, requested) });
     }
 
     // Only handle /mcp
     if (url.pathname !== "/mcp") {
+      const cors = corsFor(req);
       return new Response(
-        JSON.stringify({
-          error: "Not Found — use POST/GET /mcp",
-          code: "NOT_FOUND",
-        }),
-        { status: 404, headers: { "Content-Type": "application/json", ...CORS } },
+        JSON.stringify({ error: "Not Found — use POST/GET /mcp", code: "NOT_FOUND" }),
+        { status: 404, headers: { "Content-Type": "application/json", ...cors } },
       );
     }
 
-    // Public auth: X-Api-Key
-    if (!env.API_KEY || req.headers.get("X-Api-Key") !== env.API_KEY) {
+    // Auth — rejects X-Api-Key from browser callers.
+    const cors = corsFor(req);
+    const auth = await authenticateRequest(req, env);
+    if (!auth.ok) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized", code: "UNAUTHORIZED" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...CORS } },
+        JSON.stringify(auth.body),
+        { status: auth.status, headers: { "Content-Type": "application/json", ...cors } },
       );
     }
 
     if (req.method !== "POST" && req.method !== "GET" && req.method !== "DELETE") {
       return new Response(
         JSON.stringify({ error: "Method not allowed", code: "METHOD_NOT_ALLOWED" }),
-        { status: 405, headers: { "Content-Type": "application/json", ...CORS } },
+        { status: 405, headers: { "Content-Type": "application/json", ...cors } },
       );
     }
 
@@ -304,9 +450,9 @@ export default {
     try {
       await mcp.connect(transport);
       const response = await transport.handleRequest(req, ctx);
-      // Merge CORS headers into the response
+      // Merge CORS headers into the response.
       const headers = new Headers(response.headers);
-      for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
+      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -319,7 +465,7 @@ export default {
           code: "WORKER_ERROR",
           detail: sanitizeDetail(e.message || e),
         }),
-        { status: 500, headers: { "Content-Type": "application/json", ...CORS } },
+        { status: 500, headers: { "Content-Type": "application/json", ...cors } },
       );
     }
   },
