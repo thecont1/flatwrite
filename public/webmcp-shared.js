@@ -121,4 +121,83 @@ export function validateFontFamily(fontFamily) {
         message: `fontFamily '${name}' is not one of the bundled fonts (${ALLOWED_FONT_FAMILIES.join(', ')})`,
     };
 }
+/** Strip undefined fields so the wire payload stays clean. */
+export function compact(obj) {
+    const out = {};
+    for (const k of Object.keys(obj)) {
+        if (obj[k] !== undefined)
+            out[k] = obj[k];
+    }
+    return out;
+}
+/**
+ * Build the JSON body for a raw-markdown render, translating the
+ * public style to canonical names and stripping undefined fields.
+ */
+export function buildRawMarkdownBody(markdown, publicStyle = {}) {
+    return compact({ markdown, ...toCanonicalStyle(publicStyle) });
+}
+/**
+ * Build the JSON body for a remote-markdown render, translating the
+ * public style to canonical names and stripping undefined fields.
+ */
+export function buildRemoteMarkdownBody(markdownUrl, publicStyle = {}) {
+    return compact({ markdownUrl, ...toCanonicalStyle(publicStyle) });
+}
+const MAX_DETAIL_CHARS = 160;
+const REDACTED = '[redacted]';
+/** Run a single regex replacement and return the result. */
+function redact(input, re, replacement) {
+    return input.replace(re, replacement);
+}
+/**
+ * Scrub a string so it can safely be returned to an MCP client.
+ * Returns a sanitized summary; never throws.
+ */
+export function sanitizeDetail(input) {
+    if (input == null)
+        return '';
+    const raw = typeof input === 'string' ? input : String(input);
+    if (!raw)
+        return '';
+    let s = raw;
+    // 1. Authorization-style headers and inline secrets.
+    s = redact(s, /\b(Bearer|Basic|ApiKey|X-Api-Key|Authorization|Token)\s+[A-Za-z0-9._\-+/=]+/gi, `$1 ${REDACTED}`);
+    // 2. Long hex blobs (>=32 hex chars) — covers API keys, HMAC sigs, IDs.
+    s = redact(s, /\b[0-9a-f]{32,}\b/gi, REDACTED);
+    // 3. Long base64-looking blobs (>=40 chars of base64 alphabet).
+    s = redact(s, /\b[A-Za-z0-9+/]{40,}={0,2}\b/g, REDACTED);
+    // 4. URLs with query strings or fragments — often carry tokens/ids.
+    s = redact(s, /\bhttps?:\/\/[^\s)>'"]+[?#][^\s)>'"]+/gi, '[url]');
+    // 5. Bare IPv4 addresses.
+    s = redact(s, /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g, '[ip]');
+    // 6. Node-style stack frames.
+    s = redact(s, /\s+at\s+[^\n]+:\d+:\d+/g, '');
+    s = redact(s, /\s+at\s+[^\n]+\.(?:js|ts|mjs|cjs):\d+:\d+/g, '');
+    // 7. "Error:" prefix lines.
+    s = redact(s, /^[A-Za-z_][A-Za-z0-9_]*Error:\s*/gm, '');
+    // 8. Local filesystem path segments.
+    s = redact(s, /(?:\/Users\/|\/home\/|C:\\\\)[^\s'")\]]+/g, '[path]');
+    s = redact(s, /(?:\.\/|\.\.\/)[^\s'"\)\]]+\.(?:js|ts|mjs|cjs|json)\b/g, '[path]');
+    // 9. Collapse whitespace introduced by removals.
+    s = s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    // 10. Cap the final length.
+    if (s.length > MAX_DETAIL_CHARS) {
+        s = s.slice(0, MAX_DETAIL_CHARS).trimEnd() + '…';
+    }
+    return s;
+}
+/**
+ * Sanitize a JSON error payload coming back from the upstream renderer.
+ * Preserves `error`, `code`, and `retryAfter` (the public contract) but
+ * scrubs `detail` (which can carry upstream noise).
+ */
+export function sanitizeRenderErrorPayload(payload) {
+    if (payload && typeof payload === 'object' && 'detail' in payload) {
+        const rawDetail = payload.detail;
+        const cleanDetail = sanitizeDetail(rawDetail);
+        return { ...payload, detail: cleanDetail || undefined };
+    }
+    return payload;
+}
 //# sourceMappingURL=mcpShared.js.map

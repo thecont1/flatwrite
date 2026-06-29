@@ -14,8 +14,14 @@
  * render path remains a thin pass-through to the canonical renderer.
  */
 
-import { sanitizeDetail, sanitizeRenderErrorPayload } from './tools/sanitize.js';
-import { toCanonicalStyle as sharedToCanonicalStyle, ALLOWED_FONT_FAMILIES as SHARED_ALLOWED_FONTS } from './shared/mcpShared.js';
+import {
+  toCanonicalStyle as sharedToCanonicalStyle,
+  ALLOWED_FONT_FAMILIES as SHARED_ALLOWED_FONTS,
+  buildRawMarkdownBody as sharedBuildRawMarkdownBody,
+  buildRemoteMarkdownBody as sharedBuildRemoteMarkdownBody,
+  sanitizeDetail,
+  sanitizeRenderErrorPayload,
+} from './shared/mcpShared.js';
 
 export const DEFAULT_RENDER_URL = 'https://render.flatwrite.md/render';
 
@@ -107,15 +113,6 @@ function payloadErrorMessage(payload: RenderErrorPayload): string {
   return `${payload.error}${detail} [${payload.code}]`;
 }
 
-/** Strip undefined fields so the wire payload stays clean. */
-function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  const out: Partial<T> = {};
-  for (const k of Object.keys(obj) as (keyof T)[]) {
-    if (obj[k] !== undefined) out[k] = obj[k];
-  }
-  return out;
-}
-
 /**
  * Translate the public MCP-facing style into the canonical FlatWrite
  * renderer style. Delegates to the shared translator so the page-side
@@ -144,25 +141,27 @@ export const ALLOWED_FONT_FAMILIES: ReadonlySet<string> = new Set(SHARED_ALLOWED
 /**
  * Build the JSON body for a raw-markdown render, translating the
  * public style to canonical names and stripping undefined fields.
+ * Thin wrapper around the shared builder that re-asserts the public
+ * RenderStyle type.
  */
 export function buildRawMarkdownBody(
   markdown: string,
   style: RenderStyle = {},
 ): Record<string, unknown> {
-  const canonical = toCanonicalStyle(style);
-  return compact({ markdown, ...canonical });
+  return sharedBuildRawMarkdownBody(markdown, style);
 }
 
 /**
  * Build the JSON body for a remote-markdown render, translating the
  * public style to canonical names and stripping undefined fields.
+ * Thin wrapper around the shared builder that re-asserts the public
+ * RenderStyle type.
  */
 export function buildRemoteMarkdownBody(
   url: string,
   style: RenderStyle = {},
 ): Record<string, unknown> {
-  const canonical = toCanonicalStyle(style);
-  return compact({ markdownUrl: url, ...canonical });
+  return sharedBuildRemoteMarkdownBody(url, style);
 }
 
 /**

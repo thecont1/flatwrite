@@ -37,7 +37,9 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { callRender } from './renderClient.js';
 import {
-  toCanonicalStyle,
+  buildRawMarkdownBody,
+  buildRemoteMarkdownBody,
+  sanitizeDetail,
   validateFontFamily,
   validateMarkdownUrl,
 } from './shared/mcpShared.js';
@@ -121,7 +123,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       if (!fontCheck.ok) {
         return { isError: true, content: [{ type: 'text' as const, text: `${fontCheck.message} [${fontCheck.code}]` }] };
       }
-      const body = buildRawBody(markdown, toCanonicalStyle(style));
+      const body = buildRawMarkdownBody(markdown, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
         return {
@@ -129,7 +131,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
           structuredContent: { ...result },
         };
       } catch (e) {
-        return { isError: true, content: [{ type: 'text' as const, text: sanitizeError(e) }] };
+        return { isError: true, content: [{ type: 'text' as const, text: sanitizeDetail(e) }] };
       }
     },
   );
@@ -153,7 +155,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       if (!fontCheck.ok) {
         return { isError: true, content: [{ type: 'text' as const, text: `${fontCheck.message} [${fontCheck.code}]` }] };
       }
-      const body = buildRemoteBody(check.url, toCanonicalStyle(style));
+      const body = buildRemoteMarkdownBody(check.url, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
         return {
@@ -161,7 +163,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
           structuredContent: { ...result },
         };
       } catch (e) {
-        return { isError: true, content: [{ type: 'text' as const, text: sanitizeError(e) }] };
+        return { isError: true, content: [{ type: 'text' as const, text: sanitizeDetail(e) }] };
       }
     },
   );
@@ -408,28 +410,6 @@ export async function startStreamableHttp(opts: {
   }
 
   return { server, port: actualPort, close };
-}
-
-// === helpers (duplicated from tools/error.ts to keep this file self-contained) ===
-function buildRawBody(markdown: string, canonicalStyle: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { markdown };
-  for (const [k, v] of Object.entries(canonicalStyle)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out;
-}
-function buildRemoteBody(url: string, canonicalStyle: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { markdownUrl: url };
-  for (const [k, v] of Object.entries(canonicalStyle)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out;
-}
-function sanitizeError(e: unknown): string {
-  const s = (e instanceof Error ? e.message : String(e)).slice(0, 200);
-  return s
-    .replace(/(?:Authorization|Bearer|ApiKey|Token)[:=\s]+[^\s,;"'`<>]+/gi, '[redacted]')
-    .replace(/\b[a-f0-9]{32,}\b/gi, '[hex]');
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {

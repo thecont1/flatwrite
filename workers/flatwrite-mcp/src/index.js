@@ -25,7 +25,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import {
-  toCanonicalStyle,
+  buildRawMarkdownBody,
+  buildRemoteMarkdownBody,
+  sanitizeDetail,
   validateFontFamily,
   validateMarkdownUrl,
 } from "../../../public/webmcp-shared.js";
@@ -77,36 +79,6 @@ const RenderMarkdownFromUrlInput = z
     ...RenderStyleSchema.shape,
   })
   .strict();
-
-function compact(obj) {
-  const out = {};
-  for (const k of Object.keys(obj)) {
-    if (obj[k] !== undefined) out[k] = obj[k];
-  }
-  return out;
-}
-
-function buildRawBody(markdown, style) {
-  return compact({ markdown, ...toCanonicalStyle(style) });
-}
-
-function buildRemoteBody(url, style) {
-  return compact({ markdownUrl: url, ...toCanonicalStyle(style) });
-}
-
-function sanitizeDetail(input) {
-  if (input == null) return "";
-  const s = String(input).slice(0, 160);
-  return s
-    .replace(/(?:Authorization|Bearer|ApiKey|Token)[:=\s]+[^\s,;"'`<>]+/gi, "[redacted]")
-    .replace(/\b[a-f0-9]{32,}\b/gi, "[hex]")
-    .replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, "[base64]")
-    .replace(/https?:\/\/[^\s,;"'`<>]+/g, (m) => m.split("?")[0])
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[ip]")
-    .replace(/\/(?:Users|home)\/[^\s,;"'`<>]+/g, "[path]")
-    .replace(/\.{0,2}\/[^\s,;"'`<>]+/g, "[path]")
-    .replace(/\s+at\s+.+?(?=\s+at\s+|$)/g, "");
-}
 
 /**
  * True if the request's Origin is in the trusted-origin allowlist
@@ -212,7 +184,7 @@ mcp.registerTool(
     if (!fontCheck.ok) {
       return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
     }
-    const body = buildRawBody(markdown, toCanonicalStyle({ fontFamily, ...style }));
+    const body = buildRawMarkdownBody(markdown, { fontFamily, ...style });
     try {
       const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
       return { structuredContent: result };
@@ -239,7 +211,7 @@ mcp.registerTool(
     if (!fontCheck.ok) {
       return isErrorResult(fontCheck.message + " [" + fontCheck.code + "]");
     }
-    const body = buildRemoteBody(urlCheck.url, toCanonicalStyle({ fontFamily, ...style }));
+    const body = buildRemoteMarkdownBody(urlCheck.url, { fontFamily, ...style });
     try {
       const result = await callUpstream(UPSTREAM_RENDER_URL(), API_KEY(), body);
       return { structuredContent: result };

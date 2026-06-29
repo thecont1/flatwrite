@@ -18,7 +18,12 @@
 // its subdomains), validates the X-Mcp-Token HMAC signature, and
 // rejects any browser request that tries to send X-Api-Key directly.
 
-import { toCanonicalStyle, validateFontFamily, validateMarkdownUrl } from './webmcp-shared.js';
+import {
+  buildRawMarkdownBody,
+  buildRemoteMarkdownBody,
+  validateFontFamily,
+  validateMarkdownUrl,
+} from './webmcp-shared.js';
 
 // navigator.modelContext is the WebMCP entry point. If absent (older
 // browsers, or the DevTrial flag is off), gracefully bail.
@@ -169,7 +174,7 @@ else {
       if (!fontCheck.ok) {
         return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
       }
-      var body = Object.assign({ markdown: args.markdown }, toCanonicalStyle(args));
+      var body = buildRawMarkdownBody(args.markdown, args);
       return callRender(body);
     },
   });
@@ -218,7 +223,7 @@ else {
       if (!fontCheck.ok) {
         return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
       }
-      var body = Object.assign({ markdownUrl: urlCheck.url }, toCanonicalStyle(args));
+      var body = buildRemoteMarkdownBody(urlCheck.url, args);
       return callRender(body);
     },
   });
