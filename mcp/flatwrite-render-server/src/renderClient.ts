@@ -39,6 +39,7 @@ export type RenderStyle = {
   width?: number;
   docEngine?: string;
   surfaceMode?: string;
+  theme?: string;
 };
 
 /**
@@ -169,7 +170,7 @@ export function toCanonicalStyle(publicStyle: RenderStyle = {}): CanonicalRender
     }
   }
 
-  // Paged-media controls — same name on both sides.
+  // Paged-media controls and theme — same name on both sides.
   for (const k of [
     'pageSize',
     'orientation',
@@ -179,6 +180,7 @@ export function toCanonicalStyle(publicStyle: RenderStyle = {}): CanonicalRender
     'width',
     'docEngine',
     'surfaceMode',
+    'theme',
   ] as const) {
     if (isDefined(publicStyle[k])) out[k] = publicStyle[k] as never;
   }

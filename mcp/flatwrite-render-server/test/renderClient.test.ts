@@ -28,7 +28,7 @@ describe("toCanonicalStyle — public → canonical translation", () => {
     expect(out.appFramework).toBe("spectre");
   });
 
-  test("forwards pageSize, orientation, marginsLR, marginsTB, footer, width, docEngine, surfaceMode", () => {
+  test("forwards pageSize, orientation, marginsLR, marginsTB, footer, width, docEngine, surfaceMode, theme", () => {
     const publicStyle = {
       pageSize: "A3",
       orientation: "landscape",
@@ -38,6 +38,7 @@ describe("toCanonicalStyle — public → canonical translation", () => {
       width: 890,
       docEngine: "none",
       surfaceMode: "doc",
+      theme: "dark",
     };
     const out = toCanonicalStyle(publicStyle);
     expect(out).toMatchObject(publicStyle);
@@ -150,4 +151,5 @@ describe("ALLOWED_FONT_FAMILIES — bundled inventory", () => {
       "Unbounded",
     ]);
   });
+
 });
