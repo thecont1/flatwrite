@@ -58,6 +58,7 @@
     var passthrough = [
       'docEngine', 'surfaceMode', 'pageSize', 'orientation',
       'marginsLR', 'marginsTB', 'footer', 'width',
+      'theme',
     ];
     for (var i = 0; i < passthrough.length; i++) {
       var k = passthrough[i];

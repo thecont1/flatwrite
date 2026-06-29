@@ -106,6 +106,7 @@ function toCanonicalStyle(publicStyle) {
   for (const k of [
     "docEngine", "surfaceMode", "pageSize", "orientation",
     "marginsLR", "marginsTB", "footer", "width",
+    "theme",
   ]) {
     if (publicStyle[k] != null) out[k] = publicStyle[k];
   }

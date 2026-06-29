@@ -317,6 +317,24 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(renderCall.body.fontWeight).toBeUndefined();
     expect(renderCall.body.lineHeight).toBeUndefined();
   });
+
+  test("forwards theme to the canonical frontmatter", async () => {
+    // The theme field is advertised in the inputSchema and must be
+    // forwarded to the canonical renderer. The previous version of
+    // toCanonicalStyle() did NOT include theme in its passthrough
+    // list, so callers who set theme: "dark" believed it was applied
+    // when it was silently dropped. This test pins the fix.
+    let captured = null;
+    const { fakeFetch, calls } = fakeFetchWithTokenMint();
+    const tools = sandboxWithFetch(fakeFetch);
+    const t = findTool(tools, "render_markdown");
+    await t.handler({
+      markdown: "# Theme test",
+      theme: "dark",
+    });
+    const renderCall = calls.find((c) => c.url.endsWith("/render"));
+    expect(renderCall.body.theme).toBe("dark");
+  });
 });
 
 describe("webmcp.js — render_markdown_from_url handler", () => {
