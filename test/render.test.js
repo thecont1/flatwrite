@@ -727,4 +727,14 @@ test("theme: round-trips through buildRawBody translation", async () => {
   expect("fontFamily" in body).toBe(false);  // sanity: not leaking public alias
 });
 
+test("theme: data-theme attribute is HTML-escaped", async () => {
+  // Defense-in-depth: even if resolveRenderOptions() were relaxed,
+  // the value interpolated into the HTML attribute must be escaped so
+  // a theme like '" onload="alert(1)" cannot break out of the attribute.
+  const html = await renderToDocument("# title", { theme: 'dark" onload="alert(1)' });
+  expect(html.body).not.toContain('data-theme="dark" onload=');
+  expect(html.body).not.toContain("<script>");
+  expect(html.body).toMatch(/data-theme="[^"]*"/);
+});
+
 });

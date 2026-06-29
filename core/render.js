@@ -233,14 +233,13 @@ ${docCss}
 ${engineScript}
 </head>`;
 
-  const theme = opts.theme || 'light';
   // Theme is exposed as a data-theme attribute on the body element so
   // that the consuming page (flatwrite.md, a downstream export, or
   // a future theme system) can style the document via CSS attribute
   // selectors — e.g. `body[data-theme="dark"] { background: #1a1a1a; }`.
-  // The renderer itself does not ship hardcoded palettes; the
-  // document CSS that the consumer injects decides the look. We
-  // simply forward the value so it doesn't get lost in transit.
+  // resolveRenderOptions() already restricts the value to a safe
+  // character set; escapeHTML() adds defense-in-depth for the attribute.
+  const theme = escapeHTML(opts.theme || 'light');
   const bodyTag = `<body class="fw-render" data-theme="${theme}">\n  <main>\n${body}\n  </main>\n</body>`;
 
   return { head, body: bodyTag };
