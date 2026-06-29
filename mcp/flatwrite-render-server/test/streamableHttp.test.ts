@@ -89,9 +89,13 @@ async function http(
   const text = await r.text();
   let parsed: unknown = parseRpcResponse(text);
   if (parsed === null) parsed = text;
+  const responseHeaders: Record<string, string> = {};
+  for (const [k, v] of r.headers.entries()) {
+    responseHeaders[k.toLowerCase()] = v;
+  }
   return {
     status: r.status,
-    headers: Object.fromEntries(r.headers.entries()),
+    headers: responseHeaders,
     body: parsed,
   };
 }
@@ -108,8 +112,7 @@ async function initialize(): Promise<string> {
     },
   });
   expect(r.status).toBe(200);
-  const sid = (r.headers["mcp-session-id"] ||
-    r.headers["Mcp-Session-Id"]) as string | undefined;
+  const sid = r.headers["mcp-session-id"];
   if (!sid) throw new Error("no session id in initialize response");
   return sid;
 }
@@ -386,9 +389,13 @@ describe("streamableHttpServer — session TTL eviction", () => {
       body: JSON.stringify(body),
     });
     const text = await r.text();
+    const responseHeaders: Record<string, string> = {};
+    for (const [k, v] of r.headers.entries()) {
+      responseHeaders[k.toLowerCase()] = v;
+    }
     return {
       status: r.status,
-      headers: Object.fromEntries(r.headers.entries()),
+      headers: responseHeaders,
       body: text.startsWith("{") ? JSON.parse(text) : text,
     };
   }
@@ -408,7 +415,7 @@ describe("streamableHttpServer — session TTL eviction", () => {
         },
       });
       expect(init.status).toBe(200);
-      const sid = init.headers["mcp-session-id"] || init.headers["Mcp-Session-Id"];
+      const sid = init.headers["mcp-session-id"];
       expect(sid).toBeTruthy();
 
       // Wait for TTL + one cleanup interval to pass.
@@ -441,7 +448,7 @@ describe("streamableHttpServer — session TTL eviction", () => {
         },
       });
       expect(init.status).toBe(200);
-      const sid = init.headers["mcp-session-id"] || init.headers["Mcp-Session-Id"];
+      const sid = init.headers["mcp-session-id"];
 
       // Wait almost long enough for the session to expire, then bump it.
       await new Promise((resolve) => setTimeout(resolve, 100));
