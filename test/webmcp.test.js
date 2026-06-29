@@ -37,6 +37,7 @@ const WEBMCP_SHARED_JS = readFileSync(
 function bundleWebmcpForEval() {
   const shared = WEBMCP_SHARED_JS
     .replace(/export const /g, "const ")
+    .replace(/export async function /g, "async function ")
     .replace(/export function /g, "function ");
   const webmcp = WEBMCP_JS.replace(
     /import\s+\{[^}]+\}\s+from\s+['"]\.\/webmcp-shared\.js['"]\s*;?\n/,

@@ -1,4 +1,10 @@
 import yaml from 'js-yaml';
+import {
+  mintToken,
+  verifyToken,
+  constantTimeEqual,
+  sign,
+} from '../../../public/webmcp-shared.js';
 
 /**
  * Cloudflare Worker: render.flatwrite.md
@@ -101,79 +107,6 @@ function pickForwardedHeaders(upstream) {
     if (v) out[name] = v;
   }
   return out;
-}
-
-/**
- * Compute HMAC-SHA256 signature using Web Crypto API (CF Worker compatible).
- */
-async function sign(secret, payload) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Constant-time string comparison. Prevents timing attacks on signature
- * or secret comparisons by always scanning every byte.
- */
-function constantTimeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
-/**
- * Mint a short-lived token: base64url(exp).base64url(sig) where
- *   exp  = unix seconds at which the token expires
- *   sig  = hex(HMAC-SHA256(env.API_KEY, exp + '.' + scope))
- */
-async function mintToken(secret, ttlSeconds, scope) {
-  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const sig = await sign(secret, exp + '.' + scope);
-  const expB64 = b64url(exp.toString());
-  const sigB64 = b64url(sig);
-  return { token: expB64 + '.' + sigB64, exp };
-}
-
-async function verifyToken(secret, token, scope) {
-  if (!token || typeof token !== 'string') return { ok: false, reason: 'malformed' };
-  const parts = token.split('.');
-  if (parts.length !== 2) return { ok: false, reason: 'malformed' };
-  const [expB64, sigB64] = parts;
-  let expStr;
-  try {
-    expStr = atob(expB64.replace(/-/g, '+').replace(/_/g, '/'));
-  } catch {
-    return { ok: false, reason: 'malformed' };
-  }
-  const exp = parseInt(expStr, 10);
-  if (!Number.isFinite(exp)) return { ok: false, reason: 'malformed' };
-  if (exp <= Math.floor(Date.now() / 1000)) return { ok: false, reason: 'expired' };
-  let expectedSig;
-  try {
-    expectedSig = atob(sigB64.replace(/-/g, '+').replace(/_/g, '/'));
-  } catch {
-    return { ok: false, reason: 'malformed' };
-  }
-  const actualSig = await sign(secret, expStr + '.' + scope);
-  if (!constantTimeEqual(expectedSig, actualSig)) return { ok: false, reason: 'bad_signature' };
-  return { ok: true, exp };
-}
-
-function b64url(input) {
-  const bytes = new TextEncoder().encode(input);
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function isJsonContentType(ct) {

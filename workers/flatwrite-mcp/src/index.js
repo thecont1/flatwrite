@@ -27,8 +27,10 @@ import { z } from "zod";
 import {
   buildRawMarkdownBody,
   buildRemoteMarkdownBody,
+  constantTimeEqual,
   sanitizeDetail,
   validateFontFamily,
+  verifyToken,
   validateMarkdownUrl,
 } from "../../../public/webmcp-shared.js";
 
@@ -284,56 +286,6 @@ async function authenticateRequest(req, env) {
   const apiKey = req.headers.get("X-Api-Key");
   if (constantTimeEqual(apiKey || "", env.API_KEY || "")) return { ok: true, kind: "key" };
   return { ok: false, status: 401, body: { error: "Unauthorized", code: "UNAUTHORIZED" } };
-}
-
-/**
- * Constant-time string comparison. Prevents timing attacks on signature
- * or secret comparisons by always scanning every byte.
- */
-function constantTimeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
-async function verifyToken(secret, token, scope) {
-  if (!token || typeof token !== "string") return { ok: false, reason: "malformed" };
-  const parts = token.split(".");
-  if (parts.length !== 2) return { ok: false, reason: "malformed" };
-  const [expB64, sigB64] = parts;
-  let expStr;
-  try {
-    expStr = atob(expB64.replace(/-/g, "+").replace(/_/g, "/"));
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
-  const exp = parseInt(expStr, 10);
-  if (!Number.isFinite(exp)) return { ok: false, reason: "malformed" };
-  if (exp <= Math.floor(Date.now() / 1000)) return { ok: false, reason: "expired" };
-  let expectedSig;
-  try {
-    expectedSig = atob(sigB64.replace(/-/g, "+").replace(/_/g, "/"));
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
-  const actualSig = await sign(secret, expStr + "." + scope);
-  if (!constantTimeEqual(expectedSig, actualSig)) return { ok: false, reason: "bad_signature" };
-  return { ok: true, exp };
-}
-
-async function sign(secret, payload) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export default {
