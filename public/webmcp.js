@@ -9,6 +9,14 @@
 // render.flatwrite.md/render Worker — same endpoint the MCP server uses
 // — so the page output is byte-identical to what an MCP/HTTP client gets
 // from outside the browser.
+//
+// Auth model: we do NOT embed a long-lived API key in this script.
+// Instead, the script mints short-lived HMAC tokens from
+// render.flatwrite.md/mcp-token at page load (and on demand when the
+// cached token is about to expire) and sends them as X-Mcp-Token. The
+// Worker mints these tokens only for trusted origins (flatwrite.md and
+// its subdomains), validates the X-Mcp-Token HMAC signature, and
+// rejects any browser request that tries to send X-Api-Key directly.
 
 (function () {
   'use strict';
@@ -19,18 +27,13 @@
     return;
   }
 
-  // The render endpoint and its public API key. The key is the same one
-  // documented in the README for direct curl access and is the public
-  // MCP server key. Per-IP rate limiting on the Worker caps abuse; this
-  // is the same trust model as any read-only public API.
   var RENDER_URL = 'https://render.flatwrite.md/render';
-  var API_KEY = '936ccdfcce785a164261f125de3f09460cfa0eb9f9bb49eac9f34e58f37210f6';
+  var TOKEN_URL = 'https://render.flatwrite.md/mcp-token';
 
   /**
    * Translate the public RenderStyle (fontFamily / framework / fontSize /
    * ...) to the canonical FlatWrite render frontmatter (font /
-   * appFramework / size / ...) before forwarding to the Worker.
-   * Mirrors the translator in
+   * appFramework / size / ...). Mirrors the translator in
    * mcp/flatwrite-render-server/src/renderClient.ts so the page-side
    * tool produces identical output to the MCP server. Strings are
    * scale tokens; numbers are absolute pixel values.
@@ -64,12 +67,6 @@
     return out;
   }
 
-  /**
-   * Bundled font inventory — must match core/font-inventory.js and
-   * core/document-css.js's COMFORT_FONTS exactly. Used to validate
-   * fontFamily at the page boundary so the agent gets a structured
-   * error before any HTTP roundtrip.
-   */
   var ALLOWED_FONTS = {
     'Inter': true,
     'JetBrains Mono': true,
@@ -87,11 +84,6 @@
     'bitbucket.org': true,
   };
 
-  /**
-   * Pre-flight validate fontFamily. Mirrors the MCP server's
-   * [INVALID_FONT_FAMILY] rejection so the agent sees the same error
-   * shape regardless of which surface (page, MCP, HTTP) it called.
-   */
   function validateFontFamily(fontFamily) {
     if (fontFamily == null) return { ok: true };
     if (ALLOWED_FONTS[fontFamily]) return { ok: true };
@@ -102,10 +94,6 @@
     };
   }
 
-  /**
-   * Pre-flight validate the markdown URL. Mirrors the MCP server's
-   * [DISALLOWED_HOST] / [UNSUPPORTED_SCHEME] / [INVALID_URL] codes.
-   */
   function validateMarkdownUrl(rawUrl) {
     var parsed;
     try {
@@ -131,41 +119,87 @@
     return { ok: true, url: parsed.toString() };
   }
 
+  // ---- Token management ----
+  //
+  // We mint short-lived tokens via the Worker's /mcp-token endpoint
+  // and cache them in memory. A token is good for ~60s; we refresh
+  // ~10s before expiry to keep tool calls fast. The Worker is the
+  // source of truth for the TTL — we just refresh defensively.
+  var cachedToken = null;
+  var inflightToken = null;
+
+  async function getToken() {
+    if (cachedToken && cachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
+      return cachedToken;
+    }
+    // Coalesce concurrent calls so we don't mint N tokens in parallel
+    // when a tool fires several render_markdown calls at once.
+    if (inflightToken) return inflightToken;
+    inflightToken = (async () => {
+      try {
+        var r = await fetch(TOKEN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!r.ok) {
+          var detail = '';
+          try { detail = (await r.text()).slice(0, 200); } catch (_) { /* ignore */ }
+          throw new Error('token mint failed: HTTP ' + r.status + ' ' + detail);
+        }
+        var body = await r.json();
+        if (!body || !body.token || !body.expiresAt) {
+          throw new Error('token mint returned malformed body');
+        }
+        cachedToken = body;
+        return body;
+      } finally {
+        inflightToken = null;
+      }
+    })();
+    return inflightToken;
+  }
+
   /**
    * POST to the render Worker. Resolves with the JSON response body
    * on 2xx, rejects with a structured Error (carrying .code and .detail)
    * otherwise. Mirrors the MCP server's renderClient.ts error contract.
    */
-  function callRender(body) {
-    return fetch(RENDER_URL, {
+  async function callRender(body) {
+    var t = await getToken();
+    var resp = await fetch(RENDER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-Key': API_KEY,
+        'X-Mcp-Token': t.token,
       },
       body: JSON.stringify(body),
-    }).then(function (resp) {
-      return resp.text().then(function (text) {
-        var parsed;
-        try { parsed = JSON.parse(text); }
-        catch (_) { parsed = null; }
-        if (!resp.ok) {
-          var err = parsed || { error: 'HTTP ' + resp.status, code: 'RENDER_FAILED' };
-          var e = new Error(err.error + ' [' + err.code + ']');
-          e.code = err.code;
-          e.detail = err.detail;
-          e.status = resp.status;
-          throw e;
-        }
-        if (!parsed || typeof parsed.head !== 'string' || typeof parsed.body !== 'string') {
-          var e2 = new Error('Malformed render response [RENDER_FAILED]');
-          e2.code = 'RENDER_FAILED';
-          throw e2;
-        }
-        return parsed;
-      });
     });
+    var text = await resp.text();
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (_) { parsed = null; }
+    if (!resp.ok) {
+      // If the token expired between mint and use (clock skew / 60s
+      // boundary), clear the cache and surface a clean error.
+      if (resp.status === 401) cachedToken = null;
+      var err = parsed || { error: 'HTTP ' + resp.status, code: 'RENDER_FAILED' };
+      var e = new Error(err.error + ' [' + err.code + ']');
+      e.code = err.code;
+      e.detail = err.detail;
+      e.status = resp.status;
+      throw e;
+    }
+    if (!parsed || typeof parsed.head !== 'string' || typeof parsed.body !== 'string') {
+      var e2 = new Error('Malformed render response [RENDER_FAILED]');
+      e2.code = 'RENDER_FAILED';
+      throw e2;
+    }
+    return parsed;
   }
+
+  // Pre-warm the token at page load so the first tool call is fast.
+  // Fire-and-forget — failure here is recoverable on the first tool call.
+  getToken().catch(() => {});  // fire-and-forget; failure recovered on first tool call
 
   // === render_markdown ===
   navigator.modelContext.registerTool({
