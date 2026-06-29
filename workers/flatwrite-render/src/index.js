@@ -51,9 +51,42 @@ import {
 
 const TOKEN_TTL_SECONDS = 60;
 
+// Per-IP rate limiting for the /mcp-token endpoint. Production deploys
+// should eventually back this with Cloudflare KV or Durable Objects so
+// the limit is shared across Worker instances; the in-memory map below
+// is a local guard that still mitigates single-instance bursts.
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+const RATE_LIMIT_MAX_TOKENS_PER_IP = 10;
+const tokenRequestLog = new Map(); // ip -> array of timestamps
+
 const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
 ]);
+
+/**
+ * Check whether a client IP has exceeded the /mcp-token rate limit.
+ * Uses a simple sliding-window counter kept in memory. Returns true
+ * if the request is allowed, false if it should be throttled.
+ */
+function isTokenRateLimited(ip) {
+  if (!ip) return false; // can't rate-limit without an IP
+  const now = Date.now();
+  const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
+  let log = tokenRequestLog.get(ip);
+  if (!log) {
+    log = [];
+    tokenRequestLog.set(ip, log);
+  }
+  // Evict entries outside the sliding window.
+  const cutoff = now - windowMs;
+  const withinWindow = log.filter((ts) => ts > cutoff);
+  if (withinWindow.length >= RATE_LIMIT_MAX_TOKENS_PER_IP) {
+    return true;
+  }
+  withinWindow.push(now);
+  tokenRequestLog.set(ip, withinWindow);
+  return false;
+}
 
 /**
  * True if the request's Origin is in the trusted-origin allowlist
@@ -354,6 +387,16 @@ async function handleMintToken(req, env) {
     return jsonResponse(
       403,
       { error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' },
+      cors,
+    );
+  }
+
+  // Rate-limit token minting per IP to prevent exhaustion attacks.
+  const ip = req.headers.get('CF-Connecting-IP') || 'unknown';
+  if (isTokenRateLimited(ip)) {
+    return jsonResponse(
+      429,
+      { error: 'Rate limit exceeded', code: 'RATE_LIMIT' },
       cors,
     );
   }
