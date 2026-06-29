@@ -80,7 +80,7 @@ describe("api/render.js", () => {
     expect(res._body).toHaveProperty("body");
     expect(res._body.head).toContain("<head>");
     expect(res._body.head).toContain("</head>");
-    expect(res._body.body).toContain('<body class="fw-render">');
+    expect(res._body.body).toContain('<body class="fw-render"');
     expect(res._body.body).toContain("</body>");
     expect(res._body.body).toContain("<main>");
     expect(res._body.head).toContain(".fw-render");
@@ -421,7 +421,7 @@ describe("renderToDocument", () => {
     expect(html).toHaveProperty("body");
     expect(html.head).toContain("<head>");
     expect(html.head).toContain("</head>");
-    expect(html.body).toContain('<body class="fw-render">');
+    expect(html.body).toContain('<body class="fw-render"');
     expect(html.body).toContain("</body>");
     expect(html.body).toContain("<main>");
     expect(html.head).toContain(".fw-render");
@@ -693,4 +693,38 @@ describe("renderToDocument with baseUrl", () => {
     expect(htmlJsonAbs.head).toContain("A3");
     expect(htmlJsonAbs.body).toContain("Title");
   });
+
+test("theme: forwarded as data-theme on the body element", async () => {
+  // The MCP and WebMCP tool schemas advertise a `theme` field.
+  // The canonical renderer should consume it and surface it as
+  // a `data-theme` attribute on the body element so that the
+  // consuming page can style the document via CSS attribute
+  // selectors. A missing theme defaults to "light".
+  const html = await renderToDocument("# title", { theme: "dark" });
+  expect(html.body).toContain('data-theme="dark"');
+
+  const htmlDefault = await renderToDocument("# title", {});
+  expect(htmlDefault.body).toContain('data-theme="light"');
+
+  // Theme strings with unsafe characters get sanitized to a
+  // safe CSS-attribute value (alphanumerics, underscore, hyphen).
+  const htmlUnsafe = await renderToDocument("# title", { theme: "dr/../ak" });
+  // Sanitizer keeps the alphanumerics and replaces unsafe chars with "-".
+  // Sanitizer replaces every non-alphanumeric char with "-" (no
+  // collapsing), so "dr/../ak" becomes "dr----ak".
+  expect(htmlUnsafe.body).toMatch(/data-theme="dr----ak"/);
+});
+
+test("theme: round-trips through buildRawBody translation", async () => {
+  // The MCP translator in renderClient.ts is the single source
+  // of truth for which public fields are forwarded. The
+  // theme field must make it through.
+  const { buildRawMarkdownBody } = await import(
+    "../mcp/flatwrite-render-server/dist/renderClient.js"
+  );
+  const body = buildRawMarkdownBody("# hi", { theme: "dark" });
+  expect(body.theme).toBe("dark");
+  expect("fontFamily" in body).toBe(false);  // sanity: not leaking public alias
+});
+
 });
