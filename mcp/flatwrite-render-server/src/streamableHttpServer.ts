@@ -52,6 +52,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { callRender } from './renderClient.js';
+import { RenderOutputSchema, buildRenderEnvelope } from './shared/renderOutputSchema.js';
 import {
   buildRawMarkdownBody,
   buildRemoteMarkdownBody,
@@ -132,6 +133,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       inputSchema: z
         .object({ markdown: z.string().min(1), ...RenderStyleSchema.shape })
         .strict(),
+      outputSchema: RenderOutputSchema,
     },
     async ({ markdown, ...style }) => {
       const fontFamily = (style as { fontFamily?: string }).fontFamily;
@@ -142,9 +144,10 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       const body = buildRawMarkdownBody(markdown, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
+        const envelope = buildRenderEnvelope(result, markdown);
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          structuredContent: { ...result },
+          content: [{ type: 'text' as const, text: JSON.stringify(envelope, null, 2) }],
+          structuredContent: envelope,
         };
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: sanitizeDetail(e) }] };
@@ -160,6 +163,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       inputSchema: z
         .object({ url: z.string().url(), ...RenderStyleSchema.shape })
         .strict(),
+      outputSchema: RenderOutputSchema,
     },
     async ({ url, ...style }) => {
       const check = validateMarkdownUrl(url);
@@ -174,9 +178,10 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       const body = buildRemoteMarkdownBody(check.url, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
+        const envelope = buildRenderEnvelope(result);
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          structuredContent: { ...result },
+          content: [{ type: 'text' as const, text: JSON.stringify(envelope, null, 2) }],
+          structuredContent: envelope,
         };
       } catch (e) {
         return { isError: true, content: [{ type: 'text' as const, text: sanitizeDetail(e) }] };

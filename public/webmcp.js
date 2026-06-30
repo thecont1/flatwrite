@@ -424,25 +424,6 @@ else {
       }
     },
 
-    // === get_export_status ===
-    get_export_status: async function (args) {
-      args = args || {};
-      if (!args.jobId) {
-        return errorResult('INVALID_INPUT', 'jobId is required', false);
-      }
-      // FlatWrite exports are synchronous — return completed immediately.
-      // downloadUrl is omitted (not empty string) because there is no
-      // async job to download from. This is a forward-looking placeholder
-      // for when async exports are implemented.
-      return {
-        content: [{ type: 'text', text: 'Export status: completed' }],
-        structuredContent: {
-          ok: true,
-          jobId: args.jobId,
-          status: 'completed',
-        },
-      };
-    },
   };
 
   // ====================================================================
