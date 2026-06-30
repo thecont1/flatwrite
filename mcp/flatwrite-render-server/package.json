@@ -4,6 +4,7 @@
   "description": "MCP server exposing FlatWrite's render API as two MCP tools.",
   "main": "dist/index.js",
   "type": "module",
+  "license": "AGPL-3.0",
   "private": true,
   "bin": {
     "flatwrite-mcp-render": "dist/index.js"

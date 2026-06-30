@@ -2,6 +2,7 @@
   "name": "flatwrite-mcp",
   "version": "0.1.0",
   "description": "MCP server with Streamable HTTP transport, exposed at mcp.flatwrite.md/mcp. Fronts the same render.flatwrite.md Worker as the public HTTP API and the MCP stdio server.",
+  "license": "AGPL-3.0",
   "private": true,
   "type": "module",
   "main": "src/index.js",
