@@ -1,21 +1,20 @@
 /**
  * flatwrite.md - Minimalist Markdown Editor
- * 
+ *
  * Copyright (C) 2026 Mahesh Shantaram
  * Sole Proprietary Owner. All Rights Reserved.
- * 
+ *
  * This file is part of flatwrite.md.
  * flatwrite.md is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published 
+ * it under the terms of the GNU Affero General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * For commercial, closed-source embedding, and SaaS deployment exemptions,
  * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
  */
-
 // Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
-// @version 1782831018
+// @version 1782845881
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 
@@ -198,15 +197,8 @@ export const DOC_TOOLS = [
       ]
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "RenderOutput",
-      "description": "Rendered markdown as self-contained HTML fragments with document metadata.",
-      "required": [
-        "ok",
-        "kind",
-        "artifacts"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -217,54 +209,59 @@ export const DOC_TOOLS = [
           "enum": [
             "html"
           ],
-          "description": "Result modality — always \"html\" for render_markdown."
+          "description": "Result modality — always \"html\"."
         },
         "document": {
           "type": "object",
-          "description": "Metadata about the rendered document.",
-          "additionalProperties": false,
           "properties": {
             "title": {
-              "type": "string",
-              "description": "Best-effort title extracted from the first H1 or filename."
+              "description": "Best-effort title from first H1 or filename.",
+              "type": "string"
             },
             "wordCount": {
-              "type": "number",
-              "description": "Approximate word count of the source markdown."
+              "description": "Approximate word count of source markdown.",
+              "type": "number"
             },
             "charCount": {
-              "type": "number",
-              "description": "Character count of the source markdown."
+              "description": "Character count of source markdown.",
+              "type": "number"
             }
-          }
+          },
+          "additionalProperties": false
         },
         "artifacts": {
           "type": "object",
-          "description": "Concrete render artifacts.",
+          "properties": {
+            "head": {
+              "type": "string",
+              "description": "Self-contained <head> fragment."
+            },
+            "body": {
+              "type": "string",
+              "description": "Self-contained <body> fragment."
+            }
+          },
           "required": [
             "head",
             "body"
           ],
-          "additionalProperties": false,
-          "properties": {
-            "head": {
-              "type": "string",
-              "description": "Self-contained <head> fragment: inlined @font-face declarations, document CSS, and an optional <script defer> tag for the chosen docEngine. Inject verbatim into the consumer page's <head>."
-            },
-            "body": {
-              "type": "string",
-              "description": "Self-contained <body> fragment: the rendered markdown wrapped in <body class=\"fw-render\" data-theme=\"...\"><main>...</main></body>. Inject verbatim into the consumer page's <body>."
-            }
-          }
+          "additionalProperties": false
         },
         "warnings": {
+          "description": "Non-fatal warnings.",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "Non-fatal warnings (e.g. unknown options ignored, URL size cap approached)."
+          }
         }
-      }
+      },
+      "required": [
+        "ok",
+        "kind",
+        "artifacts"
+      ],
+      "additionalProperties": false,
+      "description": "Rendered markdown as self-contained HTML fragments with document metadata."
     },
     "annotations": {
       "readOnlyHint": true
@@ -285,155 +282,7 @@ export const DOC_TOOLS = [
     "category": "discovery",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -557,155 +406,7 @@ export const DOC_TOOLS = [
     "category": "lifecycle",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -815,153 +516,6 @@ export const DOC_TOOLS = [
         "title": {
           "type": "string",
           "description": "Optional title for the new document."
-        },
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
         }
       },
       "required": []
@@ -1017,153 +571,6 @@ export const DOC_TOOLS = [
         "url": {
           "type": "string",
           "description": "URL of the markdown file or FlatWrite share link to open."
-        },
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
         }
       },
       "required": [
@@ -1226,153 +633,6 @@ export const DOC_TOOLS = [
         "markdown": {
           "type": "string",
           "description": "New markdown content for the document."
-        },
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
         }
       },
       "required": [
@@ -1426,155 +686,7 @@ export const DOC_TOOLS = [
     "category": "lifecycle",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -1628,7 +740,7 @@ export const DOC_TOOLS = [
   },
   {
     "name": "render_markdown_preview",
-    "description": "Render markdown into the FlatWrite editor preview pane, applying current style and layout settings. Use this to see the rendered output in the editor; use render_markdown when you need the HTML artifacts without the preview.",
+    "description": "Render markdown into the FlatWrite editor preview pane using the editor's current style and layout settings. Use this to see the rendered output in the editor; use render_markdown when you need the HTML artifacts without the preview.",
     "category": "render",
     "inputSchema": {
       "type": "object",
@@ -1636,153 +748,6 @@ export const DOC_TOOLS = [
         "markdown": {
           "type": "string",
           "description": "Optional markdown to preview. If omitted, previews the current editor content."
-        },
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
         }
       },
       "required": []
@@ -1825,170 +790,16 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {
-        "font": "fontFamily",
-        "appFramework": "framework",
-        "size": "fontSize",
-        "weight": "fontWeight",
-        "line": "lineHeight"
-      }
+      "inputFieldAliases": {}
     }
   },
   {
     "name": "export_document_html",
-    "description": "Export the active document as a self-contained HTML file and open it in a new tab. Use this when you need the full HTML document; use export_document_pdf for print-ready output.",
+    "description": "Export the active document as a self-contained HTML file. Completes synchronously and returns a downloadUrl. The export opens in a new browser tab for human users; agents should open the downloadUrl if they need the content. Use export_document_pdf for print-ready output.",
     "category": "export",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -2039,159 +850,11 @@ export const DOC_TOOLS = [
   },
   {
     "name": "export_document_pdf",
-    "description": "Export the active document as a PDF by triggering the browser print dialog with the rendered preview. Use this for print-ready output; use export_document_html for a downloadable HTML file.",
+    "description": "Export the active document as a PDF by triggering the browser print dialog with the rendered preview. Completes synchronously and returns a downloadUrl. The print dialog opens for human users; agents should open the downloadUrl if they need the content. Use export_document_html for a downloadable HTML file.",
     "category": "export",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -2246,155 +909,7 @@ export const DOC_TOOLS = [
     "category": "share",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
@@ -2428,210 +943,6 @@ export const DOC_TOOLS = [
     },
     "annotations": {
       "readOnlyHint": false
-    },
-    "displayHints": {
-      "inputFieldAliases": {}
-    }
-  },
-  {
-    "name": "get_export_status",
-    "description": "Return the status of an asynchronous export job. Use this after export_document_pdf or export_document_html if the export is queued or async; returns completed immediately for synchronous exports.",
-    "category": "export",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "jobId": {
-          "type": "string",
-          "description": "Identifier of the export job to check."
-        },
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
-      "required": [
-        "jobId"
-      ]
-    },
-    "outputSchema": {
-      "type": "object",
-      "title": "ExportStatusOutput",
-      "description": "Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always \"completed\" and downloadUrl is omitted.",
-      "required": [
-        "ok",
-        "jobId",
-        "status"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "ok": {
-          "type": "boolean",
-          "description": "Always true on success."
-        },
-        "jobId": {
-          "type": "string",
-          "description": "Identifier for the export job."
-        },
-        "status": {
-          "type": "string",
-          "enum": [
-            "pending",
-            "completed",
-            "failed"
-          ],
-          "description": "Current job status."
-        },
-        "downloadUrl": {
-          "type": "string",
-          "description": "Download URL when status is \"completed\" and an async artifact exists. Omitted for synchronous exports."
-        }
-      }
-    },
-    "annotations": {
-      "readOnlyHint": true
     },
     "displayHints": {
       "inputFieldAliases": {}
@@ -2818,15 +1129,8 @@ export const APP_TOOLS = [
       ]
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "RenderOutput",
-      "description": "Rendered markdown as self-contained HTML fragments with document metadata.",
-      "required": [
-        "ok",
-        "kind",
-        "artifacts"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -2837,54 +1141,59 @@ export const APP_TOOLS = [
           "enum": [
             "html"
           ],
-          "description": "Result modality — always \"html\" for render_markdown."
+          "description": "Result modality — always \"html\"."
         },
         "document": {
           "type": "object",
-          "description": "Metadata about the rendered document.",
-          "additionalProperties": false,
           "properties": {
             "title": {
-              "type": "string",
-              "description": "Best-effort title extracted from the first H1 or filename."
+              "description": "Best-effort title from first H1 or filename.",
+              "type": "string"
             },
             "wordCount": {
-              "type": "number",
-              "description": "Approximate word count of the source markdown."
+              "description": "Approximate word count of source markdown.",
+              "type": "number"
             },
             "charCount": {
-              "type": "number",
-              "description": "Character count of the source markdown."
+              "description": "Character count of source markdown.",
+              "type": "number"
             }
-          }
+          },
+          "additionalProperties": false
         },
         "artifacts": {
           "type": "object",
-          "description": "Concrete render artifacts.",
+          "properties": {
+            "head": {
+              "type": "string",
+              "description": "Self-contained <head> fragment."
+            },
+            "body": {
+              "type": "string",
+              "description": "Self-contained <body> fragment."
+            }
+          },
           "required": [
             "head",
             "body"
           ],
-          "additionalProperties": false,
-          "properties": {
-            "head": {
-              "type": "string",
-              "description": "Self-contained <head> fragment: inlined @font-face declarations, document CSS, and an optional <script defer> tag for the chosen docEngine. Inject verbatim into the consumer page's <head>."
-            },
-            "body": {
-              "type": "string",
-              "description": "Self-contained <body> fragment: the rendered markdown wrapped in <body class=\"fw-render\" data-theme=\"...\"><main>...</main></body>. Inject verbatim into the consumer page's <body>."
-            }
-          }
+          "additionalProperties": false
         },
         "warnings": {
+          "description": "Non-fatal warnings.",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "Non-fatal warnings (e.g. unknown options ignored, URL size cap approached)."
+          }
         }
-      }
+      },
+      "required": [
+        "ok",
+        "kind",
+        "artifacts"
+      ],
+      "additionalProperties": false,
+      "description": "Rendered markdown as self-contained HTML fragments with document metadata."
     },
     "annotations": {
       "readOnlyHint": true
@@ -2905,155 +1214,7 @@ export const APP_TOOLS = [
     "category": "discovery",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "font": {
-          "type": "string",
-          "description": "Font family — must be a bundled family.",
-          "enum": [
-            "Inter",
-            "JetBrains Mono",
-            "Lato",
-            "Lora",
-            "Merriweather",
-            "Playfair Display",
-            "Comfortaa",
-            "Unbounded"
-          ]
-        },
-        "appFramework": {
-          "type": "string",
-          "description": "UI framework applied when surfaceMode=\"app\".",
-          "enum": [
-            "spectre",
-            "poshui",
-            "pico",
-            "milligram",
-            "chota"
-          ]
-        },
-        "size": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute pixel value (8..72)"
-            }
-          ],
-          "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 8,
-          "maximum": 72
-        },
-        "weight": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute weight (100..900, multiples of 100)"
-            }
-          ],
-          "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-          "minimum": 100,
-          "maximum": 900
-        },
-        "line": {
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-            },
-            {
-              "type": "number",
-              "description": "Absolute multiplier (0.8..4.0)"
-            }
-          ],
-          "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-          "minimum": 0.8,
-          "maximum": 4
-        },
-        "uiZoom": {
-          "type": "number",
-          "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-          "minimum": 0.25,
-          "maximum": 4
-        },
-        "pageSize": {
-          "type": "string",
-          "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "Letter",
-            "Legal"
-          ]
-        },
-        "orientation": {
-          "type": "string",
-          "description": "Page orientation.",
-          "enum": [
-            "portrait",
-            "landscape"
-          ]
-        },
-        "marginsLR": {
-          "type": "string",
-          "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "marginsTB": {
-          "type": "string",
-          "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-          "enum": [
-            "narrow",
-            "normal",
-            "wide"
-          ]
-        },
-        "footer": {
-          "type": "boolean",
-          "description": "Include a page-number footer in paged output."
-        },
-        "width": {
-          "type": "number",
-          "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-          "minimum": 400,
-          "maximum": 1400
-        },
-        "docEngine": {
-          "type": "string",
-          "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-          "enum": [
-            "none",
-            "pagedjs",
-            "vivliostyle"
-          ]
-        },
-        "surfaceMode": {
-          "type": "string",
-          "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-          "enum": [
-            "doc",
-            "app"
-          ]
-        },
-        "theme": {
-          "type": "string",
-          "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-        }
-      },
+      "properties": {},
       "required": []
     },
     "outputSchema": {
