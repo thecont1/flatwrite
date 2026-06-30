@@ -45,6 +45,7 @@ import {
   callRender,
 } from '../renderClient.js';
 import { renderErrorResult } from './error.js';
+import { RenderOutputSchema } from '../shared/renderOutputSchema.js';
 
 const InputSchema = z
   .object({
@@ -123,10 +124,7 @@ export function registerRenderMarkdownTool(
       description:
         'Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional typography and page-layout controls.',
       inputSchema: InputSchema,
-      outputSchema: {
-        head: z.string().describe('HTML to inject in <head>'),
-        body: z.string().describe('HTML to inject in <body>'),
-      },
+      outputSchema: RenderOutputSchema,
     },
     async ({ markdown, fontFamily, ...style }) => {
       // Pre-flight validate fontFamily so the caller gets a structured
@@ -150,14 +148,25 @@ export function registerRenderMarkdownTool(
       });
       try {
         const result = await callRender(body, { apiKey, baseUrl });
+        const md = markdown || '';
+        const titleMatch = md.match(/^#\s+(.+)$/m);
+        const title = titleMatch ? titleMatch[1].trim() : '';
+        const wordCount = md.trim().split(/\s+/).filter(Boolean).length;
+        const envelope = {
+          ok: true,
+          kind: 'html' as const,
+          document: { title, wordCount, charCount: md.length },
+          artifacts: { head: result.head, body: result.body },
+          warnings: [] as string[],
+        };
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(envelope, null, 2),
             },
           ],
-          structuredContent: { ...result },
+          structuredContent: envelope,
         };
       } catch (e) {
         return renderErrorResult(e);

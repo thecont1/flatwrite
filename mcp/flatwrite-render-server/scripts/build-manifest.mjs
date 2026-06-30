@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
 const DIST_SHARED = resolve(__dirname, "../dist/shared/mcpShared.js");
+const DIST_RENDER_OUTPUT = resolve(__dirname, "../dist/shared/renderOutputSchema.js");
 const PUBLIC_WELL_KNOWN = resolve(REPO_ROOT, "public/.well-known");
 
 // ---------------------------------------------------------------------------
@@ -48,10 +49,20 @@ const PUBLIC_WELL_KNOWN = resolve(REPO_ROOT, "public/.well-known");
 if (!existsSync(DIST_SHARED)) {
   console.error(
     `build-manifest: ${DIST_SHARED} not found.\n` +
-      "Run `npm run build` (which runs `tsc` first) before this script.",
+      "Run `bun run build` (which runs `tsc` first) before this script.",
   );
   process.exit(1);
 }
+
+// ---------------------------------------------------------------------------
+// Load the compiled Zod RenderOutputSchema and derive a JSON-Schema object
+// from it. This is the single source of truth for the render tool output —
+// the server-side MCP tools import the Zod schema directly, and the
+// manifest gets the derived JSON-Schema injected at build time.
+// ---------------------------------------------------------------------------
+const { RenderOutputSchema } = await import(DIST_RENDER_OUTPUT);
+const { z } = await import("zod");
+const renderOutputJsonSchema = z.toJSONSchema(RenderOutputSchema);
 
 const sharedSrc = readFileSync(DIST_SHARED, "utf-8");
 
@@ -90,9 +101,23 @@ if (!RENDER_TOOLS_DOCS || !RENDER_TOOLS_APPS || !REGISTERED_SURFACES || !generat
   process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// Inject the derived JSON-Schema into render tool specs that have
+// outputSchema: undefined (set in mcpShared.ts). We create shallow copies
+// of the tools arrays with the outputSchema replaced so the originals are
+// not mutated.
+// ---------------------------------------------------------------------------
+function injectRenderOutputSchema(tools) {
+  return tools.map((t) =>
+    t.outputSchema === undefined && t.name.startsWith("render_")
+      ? { ...t, outputSchema: renderOutputJsonSchema }
+      : t,
+  );
+}
+
 const TOOLS_BY_SURFACE = {
-  doc: RENDER_TOOLS_DOCS,
-  app: RENDER_TOOLS_APPS,
+  doc: injectRenderOutputSchema(RENDER_TOOLS_DOCS),
+  app: injectRenderOutputSchema(RENDER_TOOLS_APPS),
 };
 
 /**
@@ -197,6 +222,20 @@ writeFileSync(
   "utf-8",
 );
 console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
+
+// ---------------------------------------------------------------------------
+// Post-build validation: verify every render tool has a non-empty
+// outputSchema in the generated manifest.
+// ---------------------------------------------------------------------------
+const DOC_MANIFEST_PATH = resolve(PUBLIC_WELL_KNOWN, "model-context.docs.json");
+const docManifest = JSON.parse(readFileSync(DOC_MANIFEST_PATH, "utf-8"));
+const renderTools = docManifest.tools.filter((t) => t.name.startsWith("render_"));
+for (const t of renderTools) {
+  if (!t.outputSchema || Object.keys(t.outputSchema).length === 0) {
+    throw new Error(`Missing outputSchema on ${t.name} in generated manifest`);
+  }
+}
+console.log("\u2713 All render tools have outputSchema");
 
 console.log(
   `build-manifest: ${written} manifest file${written === 1 ? "" : "s"} written + 1 runtime module.`,
