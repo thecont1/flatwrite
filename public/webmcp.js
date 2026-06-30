@@ -1,37 +1,26 @@
 // public/webmcp.js
 //
-// Registers the FlatWrite render tools via document.modelContext
+// Registers FlatWrite WebMCP tools via document.modelContext
 // (WebMCP, Chrome 146+ DevTrial) so an AI agent driving the browser
-// can call the same render pipeline that the editor uses internally.
+// can discover, render, inspect, export, and share documents.
 //
-// IMPORTANT: the WebMCP spec puts the entry point on `document`, not
-// `navigator`. A previous version of this file used
-// `navigator.modelContext`, which is always undefined and caused the
-// script to silently no-op on every Chrome build. The spec repo
-// (webmachinelearning/webmcp) confirms the namespace is
-// `document.modelContext`.
-//
-// This script runs client-side in the tab when flatwrite.md is loaded.
-// On browsers without WebMCP it does nothing. The execute function
-// calls the public render.flatwrite.md/render Worker — same endpoint
-// the MCP server uses — so the page output is byte-identical to what
-// an MCP/HTTP client gets from outside the browser.
+// Tool metadata (name, description, inputSchema, outputSchema, etc.)
+// is imported from webmcp-tools.js, which is auto-generated from
+// mcpShared.ts by build-manifest.mjs. This file only binds execute
+// handlers to each tool — eliminating hand-sync between the manifests
+// and the page-side registerTool() calls.
 //
 // Auth model: we do NOT embed a long-lived API key in this script.
 // Instead, the script mints short-lived HMAC tokens from
 // render.flatwrite.md/mcp-token at page load (and on demand when the
-// cached token is about to expire) and sends them as X-Mcp-Token. The
-// Worker mints these tokens only for trusted origins (flatwrite.md and
-// its subdomains), validates the X-Mcp-Token HMAC signature, and
-// rejects any browser request that tries to send X-Api-Key directly.
+// cached token is about to expire) and sends them as X-Mcp-Token.
 
+import { DOC_TOOLS } from './webmcp-tools.js?v=1';
 import {
   buildRawMarkdownBody,
   buildRemoteMarkdownBody,
   validateFontFamily,
   validateMarkdownUrl,
-  RENDER_OUTPUT_SCHEMA,
-  RENDER_OPTIONS_OUTPUT_SCHEMA,
   ALLOWED_FONT_FAMILIES,
   ALLOWED_APP_FRAMEWORKS,
   ALLOWED_DOC_ENGINES,
@@ -41,28 +30,11 @@ import {
   ALLOWED_MARGINS,
 } from './webmcp-shared.js?v=2';
 
-// WebMCP spec: the spec entry point is `document.modelContext`. The
-// current webmachinelearning/webmcp README documents that shape, and
-// Chrome 150+ implements it.
-//
-// Chrome 149 (the DevTrial release you may still be on) exposed the
-// API as `navigator.modelContext` instead — a now-deprecated shape
-// that the spec repo and Chrome 150+ both abandoned. We resolve
-// whichever is present, preferring the spec name first.
-//
-// Reference: webmachinelearning/webmcp README, "Imperative Tool
-// Registration" section. nekuda.ai/scripts/webmcp.js (Chrome 149–156
-// origin trial, dogfooded by nekuda themselves) probes both in the
-// same order — that's the working pattern.
-//
-// Regression history (FlatWrite, 2026-06-30):
-//   - `handler:` → `execute:` rename fixed a registerTool() throw
-//     on the Chrome 150+ spec shape.
-//   - single-namespace guard was a silent no-op on the OTHER Chrome
-//     build (whichever one we hadn't probed). Whichever we picked,
-//     the opposite version broke. The dual-probe below is robust to
-//     Chrome 149 (`navigator.modelContext`) AND Chrome 150+
-//     (`document.modelContext`) AND future renames.
+// WebMCP spec: the spec entry point is `document.modelContext`.
+// Chrome 149 (DevTrial) exposed it as `navigator.modelContext` (deprecated).
+// We probe both, preferring the spec name first.
+// Reference: webmachinelearning/webmcp README; nekuda.ai/scripts/webmcp.js
+// probes both in the same order.
 var mc = null;
 if (typeof document !== 'undefined' && document && document.modelContext
     && typeof document.modelContext.registerTool === 'function') {
@@ -78,102 +50,19 @@ else {
   var RENDER_URL = 'https://render.flatwrite.md/render';
   var TOKEN_URL = 'https://render.flatwrite.md/mcp-token';
 
-  // ---- Shared schema definitions ----
-  //
-  // The render tool returns a { head, body } envelope and accepts the same
-  // style options regardless of whether the markdown is inline or fetched
-  // from a URL. Define the shape once so the page-side schema stays in sync
-  // with the .well-known/model-context.docs.json manifest.
-  var OUTPUT_SCHEMA = RENDER_OUTPUT_SCHEMA;
-  var STYLE_SCHEMA = {
-    framework: {
-      type: 'string',
-      enum: [...ALLOWED_APP_FRAMEWORKS],
-      description: 'Optional UI framework applied when surfaceMode="app". Must be one of the bundled frameworks.',
-    },
-    fontFamily: {
-      type: 'string',
-      enum: [...ALLOWED_FONT_FAMILIES],
-      description: 'Optional font family — must be one of the bundled families. Defaults to Inter.',
-    },
-    fontSize: {
-      oneOf: [
-        { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
-        { type: 'number', description: 'Absolute pixel value (8..72)' },
-      ],
-      description: 'Optional font size',
-      minimum: 8,
-      maximum: 72,
-    },
-    fontWeight: {
-      oneOf: [
-        { type: 'string', description: 'Scale token (e.g. "-1", "0")' },
-        { type: 'number', description: 'Absolute weight (100..900, multiples of 100)' },
-      ],
-      description: 'Optional font weight',
-      minimum: 100,
-      maximum: 900,
-    },
-    lineHeight: {
-      oneOf: [
-        { type: 'string', description: 'Scale token (e.g. "-1", "0", "1")' },
-        { type: 'number', description: 'Absolute multiplier (0.8..4.0)' },
-      ],
-      description: 'Optional line height',
-      minimum: 0.8,
-      maximum: 4.0,
-    },
-    uiZoom: {
-      type: 'number',
-      description: 'Optional UI zoom level (1.0 = default; >1 zooms in, <1 zooms out)',
-      minimum: 0.25,
-      maximum: 4.0,
-    },
-    pageSize: {
-      type: 'string',
-      enum: [...ALLOWED_PAGE_SIZES],
-      description: 'Optional page size for paged output.',
-    },
-    orientation: {
-      type: 'string',
-      enum: [...ALLOWED_ORIENTATIONS],
-      description: 'Optional page orientation',
-    },
-    marginsLR: {
-      type: 'string',
-      enum: [...ALLOWED_MARGINS],
-      description: 'Optional left/right page margin preset.',
-    },
-    marginsTB: {
-      type: 'string',
-      enum: [...ALLOWED_MARGINS],
-      description: 'Optional top/bottom page margin preset.',
-    },
-    footer: {
-      type: 'boolean',
-      description: 'Optional: include a page-number footer in paged output',
-    },
-    width: {
-      type: 'number',
-      description: 'Optional content width in pixels (400..1400)',
-      minimum: 400,
-      maximum: 1400,
-    },
-    docEngine: {
-      type: 'string',
-      enum: [...ALLOWED_DOC_ENGINES],
-      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
-    },
-    surfaceMode: {
-      type: 'string',
-      enum: [...ALLOWED_SURFACE_MODES],
-      description: 'Optional surface mode — "doc" or "app". "app" unlocks the framework picker.',
-    },
-    theme: {
-      type: 'string',
-      description: 'Optional theme identifier (e.g. "light" or "dark") rendered as body[data-theme="..."].',
-    },
-  };
+  // ---- Error helper ----
+  // Returns a typed error in WebMCP structuredContent format so agents
+  // can branch on `ok` and read `error.code` without parsing text.
+  function errorResult(code, message, retryable) {
+    return {
+      content: [{ type: 'text', text: message + ' [' + code + ']' }],
+      structuredContent: {
+        ok: false,
+        error: { code: code, message: message, retryable: retryable || false },
+      },
+      isError: true,
+    };
+  }
 
   // ---- Token management ----
   //
@@ -216,11 +105,10 @@ else {
   }
 
   /**
-   * POST to the render Worker. Resolves with the JSON response body
-   * on 2xx, rejects with a structured Error (carrying .code and .detail)
-   * otherwise. Mirrors the MCP server's renderClient.ts error contract.
+   * POST to the render Worker. Resolves with a discriminated result
+   * envelope on 2xx, rejects with a structured Error otherwise.
    */
-  async function callRender(body) {
+  async function callRender(body, markdownSource) {
     var t = await getToken();
     var resp = await fetch(RENDER_URL, {
       method: 'POST',
@@ -235,8 +123,6 @@ else {
     try { parsed = JSON.parse(text); }
     catch (_) { parsed = null; }
     if (!resp.ok) {
-      // If the token expired between mint and use (clock skew / 60s
-      // boundary), clear the cache and surface a clean error.
       if (resp.status === 401) cachedToken = null;
       var err = parsed || { error: 'HTTP ' + resp.status, code: 'RENDER_FAILED' };
       var e = new Error(err.error + ' [' + err.code + ']');
@@ -250,115 +136,309 @@ else {
       e2.code = 'RENDER_FAILED';
       throw e2;
     }
-    // Return in the WebMCP structured-content format so the declared
-    // outputSchema is actually honored. Agents see the JSON in the text
-    // content block and the validated object in structuredContent.
+    // Wrap in discriminated envelope: { ok, kind, document, artifacts, warnings }
+    var md = markdownSource || '';
+    var titleMatch = md.match(/^#\s+(.+)$/m);
+    var title = titleMatch ? titleMatch[1].trim() : '';
+    var wordCount = md.trim().split(/\s+/).filter(Boolean).length;
     return {
       content: [{ type: 'text', text: 'Rendered markdown as HTML head/body fragments' }],
-      structuredContent: parsed,
+      structuredContent: {
+        ok: true,
+        kind: 'html',
+        document: { title: title, wordCount: wordCount, charCount: md.length },
+        artifacts: { head: parsed.head, body: parsed.body },
+        warnings: [],
+      },
     };
   }
 
-  // Pre-warm the token at page load so the first tool call is fast.
-  // Fire-and-forget — failure here is recoverable on the first tool call.
-  getToken().catch(() => {});  // fire-and-forget; failure recovered on first tool call
+  // ---- FlatWrite editor bridge ----
+  // Browser-side tools (lifecycle/export/share) interact with the
+  // editor via window.__flatwrite, which app.js exposes. If the bridge
+  // is not available (e.g. app.js hasn't loaded yet), tools return a
+  // typed error instead of crashing.
+  function fw() {
+    return (typeof window !== 'undefined') ? window.__flatwrite : null;
+  }
 
-  // === render_markdown ===
-  mc.registerTool({
-    name: 'render_markdown',
-    description:
-      'Render markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional ' +
-      'typography and page-layout controls. Provide either the raw markdown inline (`markdown`) ' +
-      'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. The Worker ' +
-      'validates URLs against raw.githubusercontent.com / raw.gitlab.com / bitbucket.org and ' +
-      'enforces a size cap. Returns { head, body } — head is CSS to inject, body is the document fragment.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        markdown: { type: 'string', description: 'Raw markdown content to render' },
-        markdownUrl: {
-          type: 'string',
-          format: 'uri',
-          description: 'URL pointing to raw markdown content. Must be on an allowlisted host (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org). The deprecated alias `url` is still accepted.',
-        },
-        ...STYLE_SCHEMA,
-      },
-      required: [],
-      oneOf: [
-        { required: ['markdown'] },
-        { required: ['markdownUrl'] },
-      ],
-    },
-    outputSchema: OUTPUT_SCHEMA,
-    annotations: {
-      readOnlyHint: true,
-    },
-    execute: function (args) {
-      // Accept either inline markdown or a markdown URL. Canonical
-      // markdownUrl wins if both are sent; the deprecated `url` alias
-      // is still accepted for backward compatibility with older agents.
-      var hasMarkdown = args && typeof args.markdown === 'string' && args.markdown.length > 0;
-      var rawUrl = (args && typeof args.markdownUrl === 'string' && args.markdownUrl.length > 0)
+  function requireBridge() {
+    var bridge = fw();
+    if (!bridge) {
+      throw { code: 'BRIDGE_UNAVAILABLE', message: 'FlatWrite editor bridge is not ready', retryable: true };
+    }
+    return bridge;
+  }
+
+  // Pre-warm the token at page load so the first tool call is fast.
+  getToken().catch(function(){});  // fire-and-forget
+
+  // ====================================================================
+  // Execute handlers — one per tool name.
+  // Tool metadata comes from DOC_TOOLS (generated); these handlers
+  // provide the runtime behaviour. Each returns a WebMCP structured
+  // content response with a discriminated { ok, ... } envelope.
+  // ====================================================================
+
+  var EXECUTORS = {
+    // === render_markdown ===
+    render_markdown: async function (args) {
+      args = args || {};
+      var hasMarkdown = typeof args.markdown === 'string' && args.markdown.length > 0;
+      var rawUrl = (typeof args.markdownUrl === 'string' && args.markdownUrl.length > 0)
         ? args.markdownUrl
-        : (args && typeof args.url === 'string' ? args.url : '');
+        : (typeof args.url === 'string' ? args.url : '');
       var hasUrl = rawUrl.length > 0;
 
       if (hasMarkdown && hasUrl) {
-        return Promise.reject(new Error('provide only one of markdown or markdownUrl, not both [INVALID_INPUT]'));
+        return errorResult('INVALID_INPUT', 'provide only one of markdown or markdownUrl, not both', false);
       }
       if (!hasMarkdown && !hasUrl) {
-        return Promise.reject(new Error('markdown or markdownUrl is required [INVALID_INPUT]'));
+        return errorResult('INVALID_INPUT', 'markdown or markdownUrl is required', false);
       }
 
-      var fontCheck = validateFontFamily(args.fontFamily);
+      // Accept both canonical (font) and friendly (fontFamily) names
+      var styleArg = args.fontFamily ? Object.assign({}, args, { fontFamily: args.fontFamily }) : args;
+      if (args.font) styleArg.fontFamily = args.font;
+      if (args.appFramework) styleArg.framework = args.appFramework;
+      if (args.size) styleArg.fontSize = args.size;
+      if (args.weight) styleArg.fontWeight = args.weight;
+      if (args.line) styleArg.lineHeight = args.line;
+
+      var fontCheck = validateFontFamily(styleArg.fontFamily);
       if (!fontCheck.ok) {
-        return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
+        return errorResult(fontCheck.code, fontCheck.message, false);
       }
 
-      var body;
+      var body, markdownSource;
       if (hasUrl) {
         var urlCheck = validateMarkdownUrl(rawUrl);
         if (!urlCheck.ok) {
-          return Promise.reject(new Error(urlCheck.message + ' [' + urlCheck.code + ']'));
+          return errorResult(urlCheck.code, urlCheck.message, false);
         }
-        body = buildRemoteMarkdownBody(urlCheck.url, args);
+        body = buildRemoteMarkdownBody(urlCheck.url, styleArg);
+        markdownSource = '';
       } else {
-        body = buildRawMarkdownBody(args.markdown, args);
+        body = buildRawMarkdownBody(args.markdown, styleArg);
+        markdownSource = args.markdown;
       }
-      return callRender(body);
+      try {
+        return await callRender(body, markdownSource);
+      } catch (e) {
+        return errorResult(e.code || 'RENDER_FAILED', e.message || String(e), e.status === 401);
+      }
     },
-  });
 
-  // === list_render_options ===
-  mc.registerTool({
-    name: 'list_render_options',
-    description:
-      'Return the supported fonts, UI frameworks, document engines, page sizes, orientations, ' +
-      'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
-      'you need to know which enum values are valid.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-      additionalProperties: false,
-    },
-    outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
-    annotations: {
-      readOnlyHint: true,
-    },
-    execute: function () {
+    // === list_render_options ===
+    list_render_options: async function () {
       return {
         content: [{ type: 'text', text: 'Supported render options' }],
         structuredContent: {
-          fonts: ALLOWED_FONT_FAMILIES,
-          frameworks: ALLOWED_APP_FRAMEWORKS,
-          docEngines: ALLOWED_DOC_ENGINES,
-          pageSizes: ALLOWED_PAGE_SIZES,
-          orientations: ALLOWED_ORIENTATIONS,
-          margins: ALLOWED_MARGINS,
-          surfaceModes: ALLOWED_SURFACE_MODES,
+          ok: true,
+          options: {
+            fonts: ALLOWED_FONT_FAMILIES,
+            frameworks: ALLOWED_APP_FRAMEWORKS,
+            docEngines: ALLOWED_DOC_ENGINES,
+            pageSizes: ALLOWED_PAGE_SIZES,
+            orientations: ALLOWED_ORIENTATIONS,
+            margins: ALLOWED_MARGINS,
+            surfaceModes: ALLOWED_SURFACE_MODES,
+          },
+          defaults: {
+            font: 'Inter',
+            docEngine: 'none',
+            surfaceMode: 'doc',
+            pageSize: 'A4',
+            orientation: 'portrait',
+          },
         },
       };
     },
-  });
+
+    // === get_document_state ===
+    get_document_state: async function () {
+      try {
+        var bridge = requireBridge();
+        var state = bridge.getDocumentState();
+        return {
+          content: [{ type: 'text', text: 'Document state: ' + state.title }],
+          structuredContent: Object.assign({ ok: true }, state),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'BRIDGE_ERROR', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === create_document ===
+    create_document: async function (args) {
+      args = args || {};
+      try {
+        var bridge = requireBridge();
+        var result = bridge.createDocument(args.markdown || '', args.title || '');
+        return {
+          content: [{ type: 'text', text: 'Created document: ' + result.title }],
+          structuredContent: Object.assign({ ok: true, nextSuggestedTool: 'update_document_content' }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'BRIDGE_ERROR', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === open_document ===
+    open_document: async function (args) {
+      args = args || {};
+      if (!args.url) {
+        return errorResult('INVALID_INPUT', 'url is required', false);
+      }
+      try {
+        var bridge = requireBridge();
+        var result = await bridge.openDocument(args.url);
+        return {
+          content: [{ type: 'text', text: 'Opened document: ' + result.title }],
+          structuredContent: Object.assign({ ok: true, active: true, nextSuggestedTool: 'get_document_state' }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'OPEN_FAILED', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === update_document_content ===
+    update_document_content: async function (args) {
+      args = args || {};
+      if (!args.markdown) {
+        return errorResult('INVALID_INPUT', 'markdown is required', false);
+      }
+      try {
+        var bridge = requireBridge();
+        var result = bridge.updateDocumentContent(args.markdown);
+        return {
+          content: [{ type: 'text', text: 'Updated document content' }],
+          structuredContent: Object.assign({ ok: true, nextSuggestedTool: 'render_markdown_preview' }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'BRIDGE_ERROR', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === list_recent_documents ===
+    list_recent_documents: async function () {
+      try {
+        var bridge = requireBridge();
+        var docs = await bridge.listRecentDocuments();
+        return {
+          content: [{ type: 'text', text: 'Recent documents (' + docs.length + ')' }],
+          structuredContent: { ok: true, documents: docs },
+        };
+      } catch (e) {
+        return errorResult(e.code || 'BRIDGE_ERROR', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === render_markdown_preview ===
+    render_markdown_preview: async function (args) {
+      args = args || {};
+      try {
+        var bridge = requireBridge();
+        if (args.markdown) {
+          bridge.updateDocumentContent(args.markdown);
+        }
+        bridge.renderPreview();
+        var state = bridge.getDocumentState();
+        return {
+          content: [{ type: 'text', text: 'Rendered preview for: ' + state.title }],
+          structuredContent: {
+            ok: true,
+            kind: 'preview',
+            documentId: state.documentId,
+            warnings: [],
+          },
+        };
+      } catch (e) {
+        return errorResult(e.code || 'BRIDGE_ERROR', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === export_document_html ===
+    export_document_html: async function () {
+      try {
+        var bridge = requireBridge();
+        var result = bridge.exportHTML();
+        return {
+          content: [{ type: 'text', text: 'Exported document as HTML' }],
+          structuredContent: Object.assign({ ok: true, format: 'html', warnings: [] }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'EXPORT_FAILED', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === export_document_pdf ===
+    export_document_pdf: async function () {
+      try {
+        var bridge = requireBridge();
+        var result = bridge.exportPDF();
+        return {
+          content: [{ type: 'text', text: 'Exported document as PDF (print dialog opened)' }],
+          structuredContent: Object.assign({ ok: true, format: 'pdf', warnings: [] }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'EXPORT_FAILED', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === create_share_link ===
+    create_share_link: async function () {
+      try {
+        var bridge = requireBridge();
+        var result = await bridge.createShareLink();
+        return {
+          content: [{ type: 'text', text: 'Share link created: ' + result.shareUrl }],
+          structuredContent: Object.assign({ ok: true }, result),
+        };
+      } catch (e) {
+        return errorResult(e.code || 'SHARE_FAILED', e.message || String(e), e.retryable);
+      }
+    },
+
+    // === get_export_status ===
+    get_export_status: async function (args) {
+      args = args || {};
+      if (!args.jobId) {
+        return errorResult('INVALID_INPUT', 'jobId is required', false);
+      }
+      // FlatWrite exports are synchronous — return completed immediately.
+      return {
+        content: [{ type: 'text', text: 'Export status: completed' }],
+        structuredContent: {
+          ok: true,
+          jobId: args.jobId,
+          status: 'completed',
+          downloadUrl: '',
+        },
+      };
+    },
+  };
+
+  // ====================================================================
+  // Register all tools from the generated DOC_TOOLS array.
+  // Each tool's metadata comes from mcpShared.ts (via build-manifest.mjs);
+  // the execute handler is looked up by name in EXECUTORS.
+  // ====================================================================
+  for (var i = 0; i < DOC_TOOLS.length; i++) {
+    var tool = DOC_TOOLS[i];
+    var executor = EXECUTORS[tool.name];
+    if (!executor) {
+      console.warn('webmcp.js: no executor for tool "' + tool.name + '", skipping');
+      continue;
+    }
+    mc.registerTool({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      outputSchema: tool.outputSchema,
+      annotations: tool.annotations,
+      displayHints: tool.displayHints,
+      execute: executor,
+    });
+  }
 }
