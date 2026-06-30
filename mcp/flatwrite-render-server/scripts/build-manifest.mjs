@@ -32,6 +32,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
@@ -61,7 +62,6 @@ if (!existsSync(DIST_SHARED)) {
 // manifest gets the derived JSON-Schema injected at build time.
 // ---------------------------------------------------------------------------
 const { RenderOutputSchema } = await import(DIST_RENDER_OUTPUT);
-const { z } = await import("zod");
 const renderOutputJsonSchema = z.toJSONSchema(RenderOutputSchema);
 
 const sharedSrc = readFileSync(DIST_SHARED, "utf-8");
@@ -102,14 +102,13 @@ if (!RENDER_TOOLS_DOCS || !RENDER_TOOLS_APPS || !REGISTERED_SURFACES || !generat
 }
 
 // ---------------------------------------------------------------------------
-// Inject the derived JSON-Schema into render tool specs that have
-// outputSchema: undefined (set in mcpShared.ts). We create shallow copies
-// of the tools arrays with the outputSchema replaced so the originals are
-// not mutated.
+// Inject the derived JSON-Schema into render tool specs marked with the
+// INJECT_RENDER_OUTPUT sentinel. We create shallow copies of the tools
+// arrays with the outputSchema replaced so the originals are not mutated.
 // ---------------------------------------------------------------------------
 function injectRenderOutputSchema(tools) {
   return tools.map((t) =>
-    t.outputSchema === undefined && t.name.startsWith("render_")
+    typeof t.outputSchema === "symbol" && t.name.startsWith("render_")
       ? { ...t, outputSchema: renderOutputJsonSchema }
       : t,
   );
@@ -225,17 +224,31 @@ console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
 
 // ---------------------------------------------------------------------------
 // Post-build validation: verify every render tool has a non-empty
-// outputSchema in the generated manifest.
+// outputSchema in both generated manifests.
 // ---------------------------------------------------------------------------
-const DOC_MANIFEST_PATH = resolve(PUBLIC_WELL_KNOWN, "model-context.docs.json");
-const docManifest = JSON.parse(readFileSync(DOC_MANIFEST_PATH, "utf-8"));
-const renderTools = docManifest.tools.filter((t) => t.name.startsWith("render_"));
-for (const t of renderTools) {
-  if (!t.outputSchema || Object.keys(t.outputSchema).length === 0) {
-    throw new Error(`Missing outputSchema on ${t.name} in generated manifest`);
+function validateRenderOutputSchemas(manifestPath, surfaceName) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  const renderTools = manifest.tools.filter((t) => t.name.startsWith("render_"));
+  const missing = renderTools.filter(
+    (t) => !t.outputSchema || Object.keys(t.outputSchema).length === 0,
+  );
+  if (missing.length > 0) {
+    const names = missing.map((t) => t.name).join(", ");
+    throw new Error(
+      `Missing outputSchema on ${names} in ${surfaceName} manifest (${relative(REPO_ROOT, manifestPath)})`,
+    );
   }
 }
-console.log("\u2713 All render tools have outputSchema");
+
+validateRenderOutputSchemas(
+  resolve(PUBLIC_WELL_KNOWN, "model-context.docs.json"),
+  "docs",
+);
+validateRenderOutputSchemas(
+  resolve(PUBLIC_WELL_KNOWN, "model-context.apps.json"),
+  "apps",
+);
+console.log("\u2713 All render tools have outputSchema (docs + apps)");
 
 console.log(
   `build-manifest: ${written} manifest file${written === 1 ? "" : "s"} written + 1 runtime module.`,
