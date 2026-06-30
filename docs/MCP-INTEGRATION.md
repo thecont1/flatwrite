@@ -79,10 +79,17 @@ Go to `Settings | AI | Manage MCP Servers` -> `+ Add` and use the configuration 
 
 ## Verification
 
-To verify the MCP servers are working:
+### Chrome DevTools MCP ✅ Verified
+The server is available and functional. Test with:
+```
+Check the performance of https://developers.chrome.com
+```
 
-1. **FlatWrite Render**: Call `list_render_options` to see available rendering options
-2. **Chrome DevTools**: Navigate to a URL and check the performance or take a screenshot
+### FlatWrite Render MCP
+Requires `FLATWRITE_RENDER_API_KEY` environment variable. Test with:
+```
+Call list_render_options to see available rendering options
+```
 
 ## Troubleshooting
 
