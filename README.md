@@ -64,3 +64,21 @@ The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 
 Because most editors either look like a code playground or a publishing pipeline. FlatWrite sits somewhere sweeter: close enough to the raw text that you still control it, but polished enough that you actually enjoy reading and sharing what you create.
 
+## License & Commercial Use
+
+`flatwrite.md` is dual-licensed to accommodate both open-source community use and commercial product integration. 
+
+### 1. Open Source (GNU AGPL v3.0)
+For open-source projects, community developers, and non-commercial setups, this software is licensed under the **GNU Affero General Public License v3.0**. 
+
+Under this license, if you modify `flatwrite.md` or embed it into a web application served over a network, **you must make your entire application's source code publicly available** under the same AGPL v3.0 terms. See the [LICENSE](./LICENSE) file for details.
+
+### 2. Commercial Licensing (Enterprise & SaaS)
+If you are a SaaS startup wanting to embed this editor into a closed-source proprietary platform, or a company hosting it internally without disclosing your infrastructure code, the AGPL v3.0 terms will not work for you.
+
+We offer a **Commercial License Exemption** that allows you to:
+* Embed the editor directly into commercial, proprietary SaaS products.
+* Run the tool on private corporate networks and intranets.
+* Keep all your proprietary wrapper, backend, and platform code completely private.
+
+Get in touch with <a href="https://thecontrarian.in/#contact">Mahesh Shantaram</a>.
