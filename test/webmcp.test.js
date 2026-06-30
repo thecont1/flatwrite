@@ -25,7 +25,7 @@
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
  *   5. Pre-flight validate the markdown URL against the allowlist
- *   6. Return a discriminated { ok, kind, artifacts, ... } envelope on success
+ *   6. Return a typed { ok, kind, artifacts, ... } envelope on success
  *   7. Mint a short-lived token from /mcp-token and send it as X-Mcp-Token
  *   8. Call the executor as `t.execute(args)` — Chrome's WebMCP API
  *      uses the `execute` property on a registered tool.
@@ -394,7 +394,7 @@ describe("webmcp.js — tool registration", () => {
     }
   });
 
-  test("render_markdown outputSchema uses discriminated envelope with ok, kind, artifacts", () => {
+  test("render_markdown outputSchema uses typed envelope with ok, kind, artifacts", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     expect(t.outputSchema.required).toContain("ok");
@@ -528,7 +528,7 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(calls[1].body.markdown).toBe("# Hi");
     // Public alias `fontFamily` should NOT leak onto the wire
     expect("fontFamily" in calls[1].body).toBe(false);
-    // Result is returned in WebMCP structuredContent format with discriminated envelope.
+    // Result is returned in WebMCP structuredContent format with typed envelope.
     expect(result.content).toEqual([
       { type: "text", text: "Rendered markdown as HTML head/body fragments" },
     ]);
@@ -651,7 +651,7 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(result.structuredContent.artifacts.body).toBe("<h1>Hi</h1>");
   });
 
-  test("list_render_options returns bundled allowlists in discriminated envelope", async () => {
+  test("list_render_options returns bundled allowlists in typed envelope", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "list_render_options");
     const result = await t.execute({});
@@ -870,11 +870,16 @@ describe("scan-oriented — grader-facing schema assertions", () => {
 
   test("only render_markdown includes canonical render-param fields in inputSchema", () => {
     const m = loadManifest();
-    const renderParamFields = new Set([
-      "font", "appFramework", "size", "weight", "line", "uiZoom",
-      "pageSize", "orientation", "marginsLR", "marginsTB", "footer",
-      "width", "docEngine", "surfaceMode", "theme",
-    ]);
+    // Derive the render-param field set from render_markdown's own
+    // inputSchema, minus its tool-specific fields (markdown, markdownUrl).
+    // This stays in sync with RENDER_INPUT_FIELDS automatically.
+    const rm = m.tools.find((t) => t.name === "render_markdown");
+    const toolSpecificFields = new Set(["markdown", "markdownUrl"]);
+    const renderParamFields = new Set(
+      Object.keys(rm.inputSchema.properties || {}).filter(
+        (k) => !toolSpecificFields.has(k),
+      ),
+    );
     for (const tool of m.tools) {
       const props = Object.keys(tool.inputSchema.properties || {});
       const renderFields = props.filter((p) => renderParamFields.has(p));
