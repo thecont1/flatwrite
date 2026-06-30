@@ -387,14 +387,14 @@ export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
   {
     name: 'font',
     type: 'string',
-    description: 'Font family — must be a bundled family. Server validates against the bundled inventory.',
-    examples: ALLOWED_FONT_FAMILIES,
+    description: 'Font family — must be a bundled family.',
+    enum: ALLOWED_FONT_FAMILIES,
   },
   {
     name: 'appFramework',
     type: 'string',
-    description: 'UI framework applied when surfaceMode="app". Server validates against the bundled inventory.',
-    examples: ALLOWED_APP_FRAMEWORKS,
+    description: 'UI framework applied when surfaceMode="app".',
+    enum: ALLOWED_APP_FRAMEWORKS,
   },
   {
     name: 'size',
@@ -475,14 +475,14 @@ export const RENDER_INPUT_FIELDS: readonly InputFieldSpec[] = [
   {
     name: 'docEngine',
     type: 'string',
-    description: 'Document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules. Server validates against the bundled inventory.',
-    examples: ALLOWED_DOC_ENGINES,
+    description: 'Document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
+    enum: ALLOWED_DOC_ENGINES,
   },
   {
     name: 'surfaceMode',
     type: 'string',
     description: 'Surface mode hint. "app" unlocks the appFramework picker; otherwise this is metadata only.',
-    examples: ALLOWED_SURFACE_MODES,
+    enum: ALLOWED_SURFACE_MODES,
   },
   {
     name: 'theme',
@@ -550,6 +550,51 @@ export interface ToolSpec {
   };
 }
 
+export const RENDER_OPTIONS_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'RenderOptions',
+  description: 'Supported values for the render_markdown tool: fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes.',
+  required: ['fonts', 'frameworks', 'docEngines', 'pageSizes', 'orientations', 'margins', 'surfaceModes'],
+  additionalProperties: false,
+  properties: {
+    fonts: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Bundled font families that can be passed as fontFamily.',
+    },
+    frameworks: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'UI frameworks that can be passed as framework when surfaceMode is "app".',
+    },
+    docEngines: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Document engines that can be passed as docEngine.',
+    },
+    pageSizes: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Page size presets that can be passed as pageSize.',
+    },
+    orientations: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Page orientations that can be passed as orientation.',
+    },
+    margins: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Page margin presets that can be passed as marginsLR or marginsTB.',
+    },
+    surfaceModes: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Surface mode hints that can be passed as surfaceMode.',
+    },
+  },
+};
+
 export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown',
@@ -589,6 +634,22 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
       outputHints: { head: 'head', body: 'body' },
     },
   },
+  {
+    name: 'list_render_options',
+    description:
+      'Return the supported fonts, UI frameworks, document engines, page sizes, orientations, ' +
+      'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
+      'you need to know which enum values are valid.',
+    surfaceMode: 'doc',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
+    displayHints: {
+      inputFieldAliases: {},
+      outputHints: {},
+    },
+  },
 ];
 
 export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
@@ -624,6 +685,22 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
         line: 'lineHeight',
       },
       outputHints: { head: 'head', body: 'body' },
+    },
+  },
+  {
+    name: 'list_render_options',
+    description:
+      'Return the supported fonts, UI frameworks, document engines, page sizes, orientations, ' +
+      'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
+      'you need to know which enum values are valid.',
+    surfaceMode: 'app',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
+    displayHints: {
+      inputFieldAliases: {},
+      outputHints: {},
     },
   },
 ];
