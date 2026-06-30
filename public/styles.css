@@ -25,7 +25,7 @@
   --shell-gap: clamp(12px, 1.4vw, 24px);
 
   /* Zone widths */
-  --rail-w: clamp(232px, 18vw, 272px);
+  --rail-w: 264px;
   --canvas-max: 1100px;
   --canvas-min: 680px;
   --reserve-min: 56px;
@@ -115,9 +115,14 @@ body {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  overflow: hidden;
+  /* Horizontal scroll when canvas + sidebar exceed viewport.
+     Vertical remains hidden — fixed-position shell fills viewport height. */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--shell-pad-x);
   gap: var(--shell-gap);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 160, 200, 0.35) transparent;
 }
 
 /* ==========================================================================
@@ -129,9 +134,13 @@ body {
 .sidebar {
   flex-shrink: 0;
   width: var(--rail-w);
+  min-width: var(--rail-w);
   z-index: 10;
+  /* Stick to the left edge of the shell so the sidebar stays visible
+     when the user scrolls horizontally to reveal the wider canvas. */
   position: sticky;
   top: 0;
+  left: 0;
   align-self: flex-start;
   max-height: 100vh;
   overflow-y: auto;
@@ -176,7 +185,10 @@ body {
 
 .main-panel {
   flex: 1 1 0;
-  min-width: 0;
+  /* Canvas never compresses below this — below that, the shell scrolls
+     horizontally (see .app-shell overflow-x: auto) so the document
+     remains usable while the sidebar stays at full width. */
+  min-width: var(--canvas-min, 680px);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1161,16 +1173,21 @@ body {
   align-items: center;
   position: relative;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toolbar-center {
   display: flex;
   align-items: center;
-  overflow: visible;
-  flex: 1;
+  /* Horizontally scrollable so the H1/H2/... buttons never get crushed
+     when the canvas shrinks below the toolbar's natural width. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1 1 0;
   min-width: 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 160, 200, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .toolbar-center::-webkit-scrollbar {
@@ -1277,6 +1294,11 @@ body {
   border-radius: 10px;
   padding: 3px;
   flex-shrink: 0;
+  /* When the shell scrolls horizontally to reveal a wider canvas,
+     keep the Edit/View/Read switch visible at the right edge. */
+  position: sticky;
+  right: var(--space-4);
+  z-index: 5;
 }
 
 .mode-switch-label {
@@ -1875,20 +1897,12 @@ body {
     min-width: 0;
     overflow: hidden;
   }
-
-  :root {
-    --rail-w: clamp(210px, 18vw, 252px);
-  }
 }
 
 /* Stage D: Small laptop / tablet landscape, 760px – 979px */
 @media (max-width: 979px) {
   .reserve-zone {
     display: none;
-  }
-
-  :root {
-    --rail-w: clamp(196px, 20vw, 240px);
   }
 
   .sidebar-inner {
