@@ -4,7 +4,7 @@
  * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
- *   1. Register a single render_markdown tool
+ *   1. Register render_markdown and list_render_options tools
  *   2. Have a JSON Schema that requires markdown or markdownUrl
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
@@ -220,9 +220,9 @@ function fakeFetchWithTokenMint() {
 }
 
 describe("webmcp.js — tool registration", () => {
-  test("registers a single render_markdown tool", () => {
+  test("registers render_markdown and list_render_options tools", () => {
     const tools = loadWebmcp();
-    expect(tools.map((t) => t.name)).toEqual(["render_markdown"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["list_render_options", "render_markdown"]);
   });
 
   test("render_markdown input schema requires markdown or markdownUrl", () => {
@@ -274,8 +274,8 @@ describe("webmcp.js — tool registration", () => {
     // Reference: nekuda.ai/scripts/webmcp.js does the same.
     const chrome150Tools = loadWebmcp();                  // document.modelContext stubbed
     const chrome149Tools = loadWebmcpChrome149();          // navigator.modelContext stubbed
-    expect(chrome150Tools.map(t => t.name).sort()).toEqual(["render_markdown"]);
-    expect(chrome149Tools.map(t => t.name).sort()).toEqual(["render_markdown"]);
+    expect(chrome150Tools.map(t => t.name).sort()).toEqual(["list_render_options", "render_markdown"]);
+    expect(chrome149Tools.map(t => t.name).sort()).toEqual(["list_render_options", "render_markdown"]);
     // And the no-op path still works (both namespaces absent).
     const sandbox = {};
     const fn = new Function(
@@ -349,25 +349,28 @@ describe("webmcp.js — tool registration", () => {
     // not valid JSON Schema. Strict clients may reject the tool
     // registration. The orientation field must use
     // `type: "string"` with an `enum: [...]` sibling.
-    const tools = loadWebmcp();
-    for (const t of tools) {
-      const orient = t.inputSchema.properties.orientation;
-      expect(orient).toBeDefined();
-      expect(orient.type).toBe("string");
-      expect(orient.enum).toEqual(["portrait", "landscape"]);
-    }
+    const t = findTool(loadWebmcp(), "render_markdown");
+    const orient = t.inputSchema.properties.orientation;
+    expect(orient).toBeDefined();
+    expect(orient.type).toBe("string");
+    expect(orient.enum).toEqual(["portrait", "landscape"]);
   });
 
-  test("both tools declare an outputSchema with required head and body", () => {
+  test("every registered tool declares an outputSchema", () => {
     const tools = loadWebmcp();
     for (const t of tools) {
       expect(t.outputSchema).toBeDefined();
       expect(t.outputSchema.type).toBe("object");
-      expect(t.outputSchema.required).toContain("head");
-      expect(t.outputSchema.required).toContain("body");
-      expect(t.outputSchema.properties.head.type).toBe("string");
-      expect(t.outputSchema.properties.body.type).toBe("string");
     }
+  });
+
+  test("render_markdown outputSchema requires head and body", () => {
+    const tools = loadWebmcp();
+    const t = findTool(tools, "render_markdown");
+    expect(t.outputSchema.required).toContain("head");
+    expect(t.outputSchema.required).toContain("body");
+    expect(t.outputSchema.properties.head.type).toBe("string");
+    expect(t.outputSchema.properties.body.type).toBe("string");
   });
 
   test("output schema is hardened with title, description, and additionalProperties false", () => {
@@ -381,38 +384,35 @@ describe("webmcp.js — tool registration", () => {
     expect(t.outputSchema.required).toContain("body");
   });
 
-  test("style fields carry examples or enums and ranges", () => {
-    const tools = loadWebmcp();
-    for (const t of tools) {
-      const p = t.inputSchema.properties;
-      // Non-critical fields are examples (free-form strings) so the
-      // schema is less restrictive for LLM callers. Server-side validation
-      // still enforces the allowlists.
-      expect(p.fontFamily.examples).toEqual(
-        expect.arrayContaining(["Inter", "Comfortaa", "Unbounded"]),
-      );
-      expect(p.framework.examples).toEqual(
-        expect.arrayContaining(["spectre", "pico", "chota"]),
-      );
-      expect(p.docEngine.examples).toEqual(
-        expect.arrayContaining(["none", "pagedjs", "vivliostyle"]),
-      );
-      expect(p.surfaceMode.examples).toEqual(["doc", "app"]);
-      // CSS/page-geometry fields stay strict enums because they map to
-      // concrete @page rules or presets.
-      expect(p.pageSize.enum).toEqual(
-        expect.arrayContaining(["A4", "A3", "Letter", "Legal"]),
-      );
-      expect(p.marginsLR.enum).toEqual(["narrow", "normal", "wide"]);
-      expect(p.marginsTB.enum).toEqual(["narrow", "normal", "wide"]);
-      expect(p.orientation.enum).toEqual(["portrait", "landscape"]);
-      expect(p.fontSize.minimum).toBe(8);
-      expect(p.fontSize.maximum).toBe(72);
-      expect(p.width.minimum).toBe(400);
-      expect(p.width.maximum).toBe(1400);
-      expect(p.uiZoom.minimum).toBe(0.25);
-      expect(p.uiZoom.maximum).toBe(4.0);
-    }
+  test("style fields use strict enums and ranges where applicable", () => {
+    const t = findTool(loadWebmcp(), "render_markdown");
+    const p = t.inputSchema.properties;
+    // Core allowlisted fields are hard enums so the schema itself
+    // enforces the value set, not just prose or examples.
+    expect(p.fontFamily.enum).toEqual(
+      expect.arrayContaining(["Inter", "Comfortaa", "Unbounded"]),
+    );
+    expect(p.framework.enum).toEqual(
+      expect.arrayContaining(["spectre", "pico", "chota"]),
+    );
+    expect(p.docEngine.enum).toEqual(
+      expect.arrayContaining(["none", "pagedjs", "vivliostyle"]),
+    );
+    expect(p.surfaceMode.enum).toEqual(["doc", "app"]);
+    // CSS/page-geometry fields stay strict enums because they map to
+    // concrete @page rules or presets.
+    expect(p.pageSize.enum).toEqual(
+      expect.arrayContaining(["A4", "A3", "Letter", "Legal"]),
+    );
+    expect(p.marginsLR.enum).toEqual(["narrow", "normal", "wide"]);
+    expect(p.marginsTB.enum).toEqual(["narrow", "normal", "wide"]);
+    expect(p.orientation.enum).toEqual(["portrait", "landscape"]);
+    expect(p.fontSize.minimum).toBe(8);
+    expect(p.fontSize.maximum).toBe(72);
+    expect(p.width.minimum).toBe(400);
+    expect(p.width.maximum).toBe(1400);
+    expect(p.uiZoom.minimum).toBe(0.25);
+    expect(p.uiZoom.maximum).toBe(4.0);
   });
 });
 
@@ -491,9 +491,12 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(calls[1].body.markdown).toBe("# Hi");
     // Public alias `fontFamily` should NOT leak onto the wire
     expect("fontFamily" in calls[1].body).toBe(false);
-    // Result returns the head/body pair
-    expect(result.head).toBe("<style/>");
-    expect(result.body).toBe("<h1>Hi</h1>");
+    // Result is returned in WebMCP structuredContent format.
+    expect(result.content).toEqual([
+      { type: "text", text: "Rendered markdown as HTML head/body fragments" },
+    ]);
+    expect(result.structuredContent.head).toBe("<style/>");
+    expect(result.structuredContent.body).toBe("<h1>Hi</h1>");
   });
 
   test("translates string scale tokens to canonical size/weight/line fields", async () => {
@@ -556,7 +559,7 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(renderCall.body.markdownUrl).toBe(
       "https://raw.githubusercontent.com/foo/bar/main/README.md",
     );
-    expect(result.body).toBe("<h1>Hi</h1>");
+    expect(result.structuredContent.body).toBe("<h1>Hi</h1>");
   });
 
   test("canonical markdownUrl wins when both url and markdownUrl are sent", async () => {
@@ -604,7 +607,24 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(renderCall.body.font).toBe("Comfortaa");
     expect(renderCall.init.headers["X-Mcp-Token"]).toBe("fake.token");
     expect(renderCall.init.headers["X-Api-Key"]).toBeUndefined();
-    expect(result.body).toBe("<h1>Hi</h1>");
+    expect(result.structuredContent.body).toBe("<h1>Hi</h1>");
+  });
+
+  test("list_render_options returns bundled allowlists without network calls", async () => {
+    const tools = loadWebmcp();
+    const t = findTool(tools, "list_render_options");
+    const result = await t.execute({});
+    expect(result.content).toEqual([
+      { type: "text", text: "Supported render options" },
+    ]);
+    expect(result.structuredContent.fonts).toContain("Inter");
+    expect(result.structuredContent.fonts).toContain("Comfortaa");
+    expect(result.structuredContent.frameworks).toContain("spectre");
+    expect(result.structuredContent.docEngines).toContain("none");
+    expect(result.structuredContent.pageSizes).toContain("A4");
+    expect(result.structuredContent.orientations).toEqual(["portrait", "landscape"]);
+    expect(result.structuredContent.margins).toEqual(["narrow", "normal", "wide"]);
+    expect(result.structuredContent.surfaceModes).toEqual(["doc", "app"]);
   });
 });
 
@@ -638,24 +658,24 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     expect(m.surfaceMode).toBe("doc");
     expect(m.status).toBe("ready");
     expect(Array.isArray(m.tools)).toBe(true);
-    expect(m.tools.length).toBeGreaterThan(0);
+    expect(m.tools.length).toBe(2);
   });
 
-  test("apps manifest exists with ready status and one tool", () => {
+  test("apps manifest exists with ready status and two tools", () => {
     const m = loadManifest(APPS_MANIFEST_PATH);
     expect(m.surfaceMode).toBe("app");
     expect(m.status).toBe("ready");
-    expect(m.tools.length).toBe(1);
-    expect(m.tools[0].name).toBe("render_markdown");
+    expect(m.tools.length).toBe(2);
+    expect(m.tools.map(t => t.name).sort()).toEqual(["list_render_options", "render_markdown"]);
   });
 
   test("manifest and webmcp.js declare the same tool set", () => {
     const m = loadManifest(MANIFEST_PATH);
     const manifestNames = new Set(m.tools.map((t) => t.name));
-    // Extract tool names from webmcp.js by finding both
-    // `name: 'render_*'` occurrences.
+    // Extract tool names from webmcp.js by finding the `name: '...'`
+    // occurrences in the registerTool blocks.
     const webmcpNames = new Set();
-    const re = /name:\s*['"](render_[a-z_]+)['"]/g;
+    const re = /name:\s*['"]([a-z_]+)['"]/g;
     let match;
     while ((match = re.exec(WEBMCP_JS)) !== null) {
       webmcpNames.add(match[1]);
@@ -710,15 +730,15 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     expect(m.handlers[1].url).toBe("https://render.flatwrite.md/render");
   });
 
-  test("apps manifest declares one tool and the app handler", () => {
+  test("apps manifest declares two tools and the app handler", () => {
     const m = loadManifest(APPS_MANIFEST_PATH);
     expect(m.handler).toBeUndefined();
     expect(Array.isArray(m.handlers)).toBe(true);
     expect(m.handlers.length).toBe(1);
     expect(m.handlers[0].url).toBe("https://render.flatwrite.md/render?surface=app");
     expect(m.handlers[0].transport).toBe("http");
-    expect(m.tools.length).toBe(1);
-    expect(m.tools[0].name).toBe("render_markdown");
+    expect(m.tools.length).toBe(2);
+    expect(m.tools.map(t => t.name).sort()).toEqual(["list_render_options", "render_markdown"]);
   });
 
   /**
