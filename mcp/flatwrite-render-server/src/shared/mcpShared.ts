@@ -600,8 +600,6 @@ export interface ToolSpec {
    */
   readonly displayHints: {
     readonly inputFieldAliases: Readonly<Record<string, string>>;
-    /** Output field renames (empty when outputs are already canonical). */
-    readonly outputHints: Readonly<Record<string, string>>;
   };
 }
 
@@ -799,14 +797,14 @@ export const SHARE_LINK_OUTPUT_SCHEMA = {
 export const EXPORT_STATUS_OUTPUT_SCHEMA = {
   type: 'object',
   title: 'ExportStatusOutput',
-  description: 'Status of an asynchronous export job.',
+  description: 'Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always "completed" and downloadUrl is omitted.',
   required: ['ok', 'jobId', 'status'],
   additionalProperties: false,
   properties: {
     ok: { type: 'boolean', description: 'Always true on success.' },
     jobId: { type: 'string', description: 'Identifier for the export job.' },
     status: { type: 'string', enum: ['pending', 'completed', 'failed'], description: 'Current job status.' },
-    downloadUrl: { type: 'string', description: 'Download URL when status is "completed".' },
+    downloadUrl: { type: 'string', description: 'Download URL when status is "completed" and an async artifact exists. Omitted for synchronous exports.' },
   },
 } as const;
 
@@ -845,7 +843,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
         weight: 'fontWeight',
         line: 'lineHeight',
       },
-      outputHints: {},
     },
   },
   {
@@ -863,7 +860,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -880,7 +876,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -900,7 +895,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -918,7 +912,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -936,7 +929,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -952,7 +944,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -978,7 +969,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
         weight: 'fontWeight',
         line: 'lineHeight',
       },
-      outputHints: {},
     },
   },
   {
@@ -994,7 +984,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -1010,7 +999,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -1027,7 +1015,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: false },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
   {
@@ -1046,7 +1033,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
 ];
@@ -1084,7 +1070,6 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
         weight: 'fontWeight',
         line: 'lineHeight',
       },
-      outputHints: {},
     },
   },
   {
@@ -1101,7 +1086,6 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
 ];
