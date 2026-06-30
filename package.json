@@ -16,6 +16,7 @@
     "wrangler": "^4.104.0"
   },
   "dependencies": {
+    "chrome-devtools-mcp": "^1.4.0",
     "marked": "14.1.4",
     "sanitize-html": "^2.17.5",
     "spectrum-ts": "^5.2.0"

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "flatwrite-render": {
+      "command": "node",
+      "args": ["mcp/flatwrite-render-server/dist/index.js"],
+      "env": {
+        "FLATWRITE_RENDER_API_KEY": "<your-api-key>"
+      }
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"],
+      "env": {}
+    }
+  }
+}
