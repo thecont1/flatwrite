@@ -20,12 +20,12 @@
  * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
- *   1. Register all 12 WebMCP tools from the generated DOC_TOOLS array
+ *   1. Register all 11 WebMCP tools from the generated DOC_TOOLS array
  *   2. Have a JSON Schema that requires markdown or markdownUrl for render_markdown
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
  *   5. Pre-flight validate the markdown URL against the allowlist
- *   6. Return a discriminated { ok, kind, artifacts, ... } envelope on success
+ *   6. Return a typed { ok, kind, artifacts, ... } envelope on success
  *   7. Mint a short-lived token from /mcp-token and send it as X-Mcp-Token
  *   8. Call the executor as `t.execute(args)` — Chrome's WebMCP API
  *      uses the `execute` property on a registered tool.
@@ -37,8 +37,8 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const WEBMCP_JS = readFileSync(
@@ -243,12 +243,12 @@ function fakeFetchWithTokenMint() {
 describe("webmcp.js — tool registration", () => {
   const EXPECTED_TOOLS = [
     "create_document", "create_share_link", "export_document_html",
-    "export_document_pdf", "get_document_state", "get_export_status",
+    "export_document_pdf", "get_document_state",
     "list_recent_documents", "list_render_options", "open_document",
     "render_markdown", "render_markdown_preview", "update_document_content",
   ];
 
-  test("registers all 12 WebMCP tools from the generated DOC_TOOLS array", () => {
+  test("registers all 11 WebMCP tools from the generated DOC_TOOLS array", () => {
     const tools = loadWebmcp();
     expect(tools.map((t) => t.name).sort()).toEqual(EXPECTED_TOOLS);
   });
@@ -394,7 +394,7 @@ describe("webmcp.js — tool registration", () => {
     }
   });
 
-  test("render_markdown outputSchema uses discriminated envelope with ok, kind, artifacts", () => {
+  test("render_markdown outputSchema uses typed envelope with ok, kind, artifacts", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     expect(t.outputSchema.required).toContain("ok");
@@ -406,11 +406,10 @@ describe("webmcp.js — tool registration", () => {
     expect(t.outputSchema.properties.artifacts.properties.body.type).toBe("string");
   });
 
-  test("output schema is hardened with title, description, and additionalProperties false", () => {
+  test("output schema is hardened with description and additionalProperties false", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     expect(t.outputSchema.type).toBe("object");
-    expect(t.outputSchema.title).toBe("RenderOutput");
     expect(t.outputSchema.description).toContain("HTML fragments");
     expect(t.outputSchema.additionalProperties).toBe(false);
     expect(t.outputSchema.required).toContain("ok");
@@ -529,7 +528,7 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(calls[1].body.markdown).toBe("# Hi");
     // Public alias `fontFamily` should NOT leak onto the wire
     expect("fontFamily" in calls[1].body).toBe(false);
-    // Result is returned in WebMCP structuredContent format with discriminated envelope.
+    // Result is returned in WebMCP structuredContent format with typed envelope.
     expect(result.content).toEqual([
       { type: "text", text: "Rendered markdown as HTML head/body fragments" },
     ]);
@@ -652,7 +651,7 @@ describe("webmcp.js — render_markdown handler", () => {
     expect(result.structuredContent.artifacts.body).toBe("<h1>Hi</h1>");
   });
 
-  test("list_render_options returns bundled allowlists in discriminated envelope", async () => {
+  test("list_render_options returns bundled allowlists in typed envelope", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "list_render_options");
     const result = await t.execute({});
@@ -693,14 +692,14 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     return JSON.parse(readFileSync(p, "utf-8"));
   }
 
-  test("docs manifest exists and is well-formed with 12 tools", () => {
+  test("docs manifest exists and is well-formed with 11 tools", () => {
     const m = loadManifest(MANIFEST_PATH);
     expect(m.$schema).toBeTruthy();
     expect(m.name).toBe("FlatWrite Render — Docs");
     expect(m.surfaceMode).toBe("doc");
     expect(m.status).toBe("ready");
     expect(Array.isArray(m.tools)).toBe(true);
-    expect(m.tools.length).toBe(12);
+    expect(m.tools.length).toBe(11);
   });
 
   test("apps manifest exists with ready status and two tools", () => {
@@ -869,6 +868,31 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     }
   });
 
+  test("only render_markdown includes canonical render-param fields in inputSchema", () => {
+    const m = loadManifest();
+    // Derive the render-param field set from render_markdown's own
+    // inputSchema, minus its tool-specific fields (markdown, markdownUrl).
+    // This stays in sync with RENDER_INPUT_FIELDS automatically.
+    const rm = m.tools.find((t) => t.name === "render_markdown");
+    const toolSpecificFields = new Set(["markdown", "markdownUrl"]);
+    const renderParamFields = new Set(
+      Object.keys(rm.inputSchema.properties || {}).filter(
+        (k) => !toolSpecificFields.has(k),
+      ),
+    );
+    for (const tool of m.tools) {
+      const props = Object.keys(tool.inputSchema.properties || {});
+      const renderFields = props.filter((p) => renderParamFields.has(p));
+      if (tool.name === "render_markdown") {
+        // render_markdown should have ALL canonical render-param fields
+        expect(renderFields.length).toBeGreaterThan(0);
+      } else {
+        // No other tool should have any render-param fields
+        expect(renderFields).toEqual([]);
+      }
+    }
+  });
+
   test("render_markdown outputSchema includes ok, kind, and artifacts with head+body", () => {
     const m = loadManifest();
     const t = m.tools.find((x) => x.name === "render_markdown");
@@ -894,9 +918,64 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     const exportTools = m.tools.filter((t) => t.category === "export");
     expect(exportTools.length).toBeGreaterThan(0);
     for (const tool of exportTools) {
-      if (tool.name !== "get_export_status") {
-        expect(tool.outputSchema.required).toContain("format");
-      }
+      expect(tool.outputSchema.required).toContain("format");
     }
+  });
+});
+
+/**
+ * Snapshot baseline of the generated manifests. Acts as a regression
+ * gate for the build pipeline — any change to the generated
+ * `public/.well-known/model-context.*.json` files must be reflected in
+ * `test/__snapshots__/manifest-baseline.json` via an explicit snapshot
+ * update (delete the file and re-run, then commit the new baseline).
+ *
+ * Local dev: the test auto-bootstraps the baseline on first run so the
+ * developer doesn't have to remember the dance. CI: the test fails
+ * loudly if the baseline is missing so a fresh clone (or a lost
+ * baseline) cannot pass CI without an explicit commit of the snapshot.
+ */
+describe("manifest snapshot baseline", () => {
+  const SNAPSHOT_PATH = resolve(
+    REPO_ROOT,
+    "test",
+    "__snapshots__",
+    "manifest-baseline.json",
+  );
+  const DOCS_MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.docs.json",
+  );
+  const APPS_MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.apps.json",
+  );
+
+  test("current manifests match baseline (or initializes it on first local run)", () => {
+    const docs = JSON.parse(readFileSync(DOCS_MANIFEST_PATH, "utf-8"));
+    const apps = JSON.parse(readFileSync(APPS_MANIFEST_PATH, "utf-8"));
+    const current = { docs, apps };
+
+    if (!existsSync(SNAPSHOT_PATH)) {
+      if (process.env.CI) {
+        throw new Error(
+          `manifest-baseline.json missing at ${SNAPSHOT_PATH}. ` +
+          "Run `bun run build && bun test test/webmcp.test.js` locally and " +
+          "commit the generated baseline before pushing.",
+        );
+      }
+      mkdirSync(dirname(SNAPSHOT_PATH), { recursive: true });
+      writeFileSync(
+        SNAPSHOT_PATH,
+        JSON.stringify(current, null, 2) + "\n",
+        "utf-8",
+      );
+      console.warn(
+        "Initialized manifest-baseline.json snapshot. Re-run tests to enforce it.",
+      );
+      return;
+    }
+    const baseline = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf-8"));
+    expect(current).toEqual(baseline);
   });
 });

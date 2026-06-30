@@ -11,7 +11,7 @@ This document explains how FlatWrite's Model Context Protocol (MCP) integration 
 3. [How FlatWrite uses both](#3-how-flatwrite-uses-both)
 4. [The four surfaces](#4-the-four-surfaces)
 5. [Authentication model](#5-authentication-model)
-6. [Tool reference (12 tools)](#6-tool-reference-12-tools)
+6. [Tool reference (11 tools)](#6-tool-reference-11-tools)
 7. [Output schemas — what every tool returns](#7-output-schemas--what-every-tool-returns)
 8. [Error handling](#8-error-handling)
 9. [Using the MCP server (stdio)](#9-using-the-mcp-server-stdio)
@@ -81,7 +81,7 @@ FlatWrite exposes its rendering and document-management capabilities through **f
 ```
 
 - **Manifests** (`public/.well-known/model-context.*.json`): Static JSON files that declare what tools exist. Generated at build time from `mcpShared.ts`. Scanners and agents read these to discover capabilities without running code.
-- **WebMCP** (`public/webmcp.js`): Runs in the browser tab when someone visits flatwrite.md. Registers 12 tools via `document.modelContext.registerTool()`. An agent driving Chrome can call these directly — they interact with the live editor.
+- **WebMCP** (`public/webmcp.js`): Runs in the browser tab when someone visits flatwrite.md. Registers 11 tools via `document.modelContext.registerTool()`. An agent driving Chrome can call these directly — they interact with the live editor.
 - **MCP server** (`mcp/flatwrite-render-server/`): A standalone process that speaks the MCP protocol over stdio or Streamable HTTP. Exposes `render_markdown` and `render_markdown_from_url` for server-to-server clients like Claude Desktop or Cursor.
 - **HTTP API** (`https://render.flatwrite.md/render`): A plain JSON POST endpoint. Not MCP-formatted, but produces byte-identical output. Useful for curl, scripts, and integrations that don't speak MCP.
 
@@ -102,7 +102,7 @@ Two JSON files are published at well-known URLs and linked from `index.html`:
 
 | Manifest | URL | Tools | Purpose |
 |---|---|---|---|
-| Docs | `/.well-known/model-context.docs.json` | 12 | Full document lifecycle: render, inspect, edit, export, share |
+| Docs | `/.well-known/model-context.docs.json` | 11 | Full document lifecycle: render, inspect, edit, export, share |
 | Apps | `/.well-known/model-context.apps.json` | 2 | App-surface rendering (framework-styled output) |
 
 Each manifest contains:
@@ -118,7 +118,8 @@ Each manifest contains:
 The browser-side tools have two flavours:
 
 - **Server-backed tools** (`render_markdown`, `list_render_options`): Call the render Worker at `render.flatwrite.md/render` using a short-lived token. The output is byte-identical to what an external MCP client gets.
-- **Editor-bridge tools** (`get_document_state`, `create_document`, `export_document_pdf`, etc.): Interact with the live editor via `window.__flatwrite`, a bridge object that `app.js` exposes. These tools can read the editor's content, change modes, trigger exports, and create share links — all without DOM scraping.
+- **Bridge-backed render** (`render_markdown_preview`): Calls `window.__flatwrite.renderPreview()` to switch the editor into preview mode. The output envelope (`{ ok, kind: "preview", documentId, warnings }`) is constructed client-side; no network roundtrip is required.
+- **Editor-bridge tools** (`get_document_state`, `create_document`, `export_document_html`, `export_document_pdf`, `create_share_link`, etc.): Interact with the live editor via `window.__flatwrite`, a bridge object that `app.js` exposes. These tools can read the editor's content, change modes, trigger exports, and create share links — all without DOM scraping.
 
 ### 4.3 MCP server (stdio + Streamable HTTP)
 
@@ -181,9 +182,9 @@ The flow:
 
 ---
 
-## 6. Tool reference (12 tools)
+## 6. Tool reference (11 tools)
 
-All 12 tools are defined in `mcpShared.ts` as `RENDER_TOOLS_DOCS` and exposed via the Docs manifest and the browser-side WebMCP script. Each tool belongs to a **category** that groups related functionality:
+All 11 tools are defined in `mcpShared.ts` as `RENDER_TOOLS_DOCS` and exposed via the Docs manifest and the browser-side WebMCP script. Each tool belongs to a **category** that groups related functionality:
 
 ### Render tools (2)
 
@@ -271,7 +272,7 @@ Return a list of recently opened documents from the editor session.
 - **Output**: `{ ok: true, documents: [{ documentId, title, url, updatedAt }] }`
 - **When to use**: To discover what the user has been working on. Use `open_document` to load one.
 
-### Export tools (3)
+### Export tools (2)
 
 #### `export_document_html`
 
@@ -280,7 +281,7 @@ Export the active document as a self-contained HTML file and open it in a new ta
 - **Category**: `export`
 - **Read-only**: no
 - **Inputs**: none
-- **Output**: `{ ok: true, documentId, format: "html", warnings: [] }`
+- **Output**: `{ ok: true, documentId, format: "html", downloadUrl?, warnings? }`
 - **When to use**: When you need the full HTML document. Use `export_document_pdf` for print-ready output.
 
 #### `export_document_pdf`
@@ -290,20 +291,8 @@ Export the active document as a PDF by triggering the browser print dialog with 
 - **Category**: `export`
 - **Read-only**: no
 - **Inputs**: none
-- **Output**: `{ ok: true, documentId, format: "pdf", warnings: [] }`
+- **Output**: `{ ok: true, documentId, format: "pdf", pageCount?, warnings? }`
 - **When to use**: For print-ready output. Use `export_document_html` for a downloadable HTML file.
-
-#### `get_export_status`
-
-Return the status of an asynchronous export job.
-
-> **Status note**: This is a forward-looking placeholder for future async export support. Today FlatWrite exports are synchronous (browser-initiated new tab or print dialog), so the executor always returns `{ ok: true, jobId, status: "completed" }` with no `downloadUrl`.
-
-- **Category**: `export`
-- **Read-only**: yes
-- **Inputs**: `jobId` (required string)
-- **Output**: `{ ok: true, jobId, status: "completed" }` (no `downloadUrl` for synchronous exports)
-- **When to use**: After `export_document_pdf` or `export_document_html` if the export is queued. FlatWrite exports are synchronous, so this always returns `completed` immediately.
 
 ### Share tools (1)
 
@@ -366,7 +355,16 @@ Before this pattern, tools returned free-form strings or HTML blobs. An agent ha
 - `ok: true` → read the tool-specific success fields
 - `ok: false` → read `error.code` and decide what to do
 
-This is what the WebMCP scanner checks for when grading a site's MCP implementation. Every FlatWrite tool has an `outputSchema` with at least one required top-level field, and every schema has `additionalProperties: false` so agents can pre-validate returned data.
+This is what the WebMCP scanner checks for when grading a site's MCP implementation. Every FlatWrite tool has an `outputSchema` with at least one required top-level field so agents can pre-validate returned data.
+
+### Schema metadata fields
+
+The output schemas in the published manifests are derived from Zod via `z.toJSONSchema()`. Compared to the previously hand-written JSON Schema constants, this introduces two cosmetic differences:
+
+- A top-level `$schema: "https://json-schema.org/draft/2020-12/schema"` URL is now present in every output schema block.
+- The hand-written `title` field (e.g. `"title": "RenderOutput"`) is no longer emitted.
+
+Both differences are also captured by the `test/__snapshots__/manifest-baseline.json` regression gate — any drift fails CI before merge. External consumers that relied on `title` should use the schema's top-level `description` (always present, derived from the Zod `.describe()` call) or the tool's `name` instead.
 
 ---
 
@@ -452,7 +450,7 @@ The stdio server registers two tools:
 - `render_markdown` — render raw markdown to HTML fragments
 - `render_markdown_from_url` — fetch markdown from a URL and render it
 
-Both return `{ head, body }` in the MCP `structuredContent` format.
+Both return `{ ok, kind: "html", document: { title, wordCount, charCount }, artifacts: { head, body }, warnings: [] }` in the MCP `structuredContent` format. The envelope is built by `buildRenderEnvelope()` in `src/shared/renderOutputSchema.ts` — a Zod schema that's the single source of truth for the manifest's `outputSchema` block as well.
 
 ### Hermes config
 
@@ -518,7 +516,7 @@ The `webmcp.js` script handles this automatically — you don't need to mint tok
 
 ## 11. Using WebMCP in the browser
 
-When you visit flatwrite.md in Chrome 146+ (with the WebMCP flag enabled), `webmcp.js` automatically registers 12 tools. An AI agent driving the browser can discover and call them.
+When you visit flatwrite.md in Chrome 146+ (with the WebMCP flag enabled), `webmcp.js` automatically registers 11 tools. An AI agent driving the browser can discover and call them.
 
 ### What happens under the hood
 
@@ -599,9 +597,15 @@ flatwrite/
 │   │   │   ├── renderMarkdownFromUrl.ts ← render_markdown_from_url tool
 │   │   │   └── error.ts            ← Shared error-result helper
 │   │   └── shared/
-│   │       └── mcpShared.ts         ← SINGLE SOURCE OF TRUTH (schemas, tools, allowlists)
+│   │       ├── mcpShared.ts         ← SINGLE SOURCE OF TRUTH (schemas, tools, allowlists, BuildTimeSentinel definitions)
+│   │       ├── renderOutputSchema.ts            ← Zod schema for render_markdown output
+│   │       ├── renderOptionsOutputSchema.ts     ← Zod schema for list_render_options output
+│   │       ├── renderPreviewOutputSchema.ts     ← Zod schema for render_markdown_preview output
+│   │       ├── exportHtmlOutputSchema.ts        ← Zod schema for export_document_html output
+│   │       ├── exportPdfOutputSchema.ts         ← Zod schema for export_document_pdf output
+│   │       └── shareLinkOutputSchema.ts         ← Zod schema for create_share_link output
 │   └── scripts/
-│       └── build-manifest.mjs       ← Generates manifests + webmcp-tools.js
+│       └── build-manifest.mjs       ← Generates manifests + webmcp-tools.js (resolves BuildTimeSentinels via Zod → JSON-Schema)
 │
 ├── public/                          ← Browser-side assets
 │   ├── webmcp.js                    ← WebMCP runtime (imports tools, binds executors)
@@ -610,7 +614,7 @@ flatwrite/
 │   ├── app.js                       ← Editor logic + window.__flatwrite bridge
 │   ├── index.html                   ← Page with <link rel="model-context"> manifest pointers
 │   └── .well-known/
-│       ├── model-context.docs.json  ← GENERATED Docs manifest (12 tools)
+│       ├── model-context.docs.json  ← GENERATED Docs manifest (11 tools)
 │       └── model-context.apps.json  ← GENERATED Apps manifest (2 tools)
 │
 ├── workers/
@@ -654,21 +658,24 @@ Adding a font means dropping a woff2 in `public/fonts/`, adding an entry to `cor
 `mcpShared.ts` is the canonical definition for:
 - Tool names, descriptions, and categories
 - Input field specifications (types, enums, ranges)
-- Output schemas (discriminated envelopes)
+- Output schemas — for the 6 render/discovery/export/share tools, declared as `BuildTimeSentinel` markers (`INJECT_RENDER_OUTPUT`, `INJECT_RENDER_OPTIONS_OUTPUT`, …) and resolved at build time from Zod schemas in `src/shared/*OutputSchema.ts`; for the 5 lifecycle tools, declared as hand-written JSON Schema objects (see `DOCUMENT_STATE_OUTPUT_SCHEMA`, `CREATE_DOCUMENT_OUTPUT_SCHEMA`, etc.)
 - Allowlists (fonts, frameworks, doc engines, page sizes, etc.)
 - Handler configurations (URLs, transports, auth notes)
 - Validation functions (`validateMarkdownUrl`, `validateFontFamily`)
 - Style translation (`toCanonicalStyle`)
 - Token utilities (`mintToken`, `verifyToken`)
 
-At build time, `build-manifest.mjs` reads the compiled `mcpShared.js` and generates:
-1. `public/.well-known/model-context.docs.json` — 12-tool manifest
-2. `public/.well-known/model-context.apps.json` — 2-tool manifest
-3. `public/webmcp-tools.js` — JS module with tool definitions for `webmcp.js`
+The `SENTINEL_BY_TOOL_NAME` map in `mcpShared.ts` is the single source of truth that ties a tool's name to its BuildTimeSentinel. `build-manifest.mjs` mirrors this with a `SCHEMAS_BY_TOOL_NAME` record of Zod schemas, and asserts both records agree so a missing entry fails the build with a clear message rather than silently producing a malformed manifest.
+
+At build time, `build-manifest.mjs` reads the compiled `mcpShared.js` and the 6 Zod schema modules, then:
+1. Calls `z.toJSONSchema()` on each Zod schema to derive the wire-format JSON Schema.
+2. Resolves every `outputSchema` sentinel in the tool arrays via `SENTINEL_TO_SCHEMA` lookup.
+3. Generates `public/.well-known/model-context.docs.json` (11-tool manifest) and `public/.well-known/model-context.apps.json` (2-tool manifest).
+4. Generates `public/webmcp-tools.js` — JS module with tool definitions for `webmcp.js`.
 
 The MCP server (`mcp/flatwrite-render-server/`) imports `mcpShared.ts` directly at compile time. The Cloudflare Workers import `webmcp-shared.js` (the compiled output). The browser imports both `webmcp-shared.js` and `webmcp-tools.js`.
 
-This means **adding a new tool is a single edit in `mcpShared.ts`** — the manifests, the runtime registration, and the tests all pick it up automatically on the next build.
+This means **adding a new tool is a single edit in `mcpShared.ts`** — the manifests, the runtime registration, and the tests all pick it up automatically on the next build. **Migrating an output schema from hand-written to Zod-first** means creating a new `src/shared/<tool>OutputSchema.ts` with a Zod schema + builder helper, exporting a `BuildTimeSentinel` from `mcpShared.ts`, and adding the tool-name → sentinel mapping to `SENTINEL_BY_TOOL_NAME` and `build-manifest.mjs`'s `SCHEMAS_BY_TOOL_NAME`.
 
 ---
 
@@ -688,11 +695,16 @@ This runs:
 
 Output:
 ```
-wrote public/.well-known/model-context.docs.json (12 tools, status=ready)
+wrote public/.well-known/model-context.docs.json (11 tools, status=ready)
 wrote public/.well-known/model-context.apps.json (2 tools, status=ready)
 wrote public/webmcp-tools.js (runtime tool definitions)
+✓ All tools have outputSchema (docs + apps)
 build-manifest: 2 manifest files written + 1 runtime module.
 ```
+
+The final `✓ All tools have outputSchema (docs + apps)` line is a post-build validator that walks every tool in both generated manifests and fails the build if any has an empty or missing `outputSchema` — catching sentinel-not-injected regressions early.
+
+The build script wraps its top-level body in `try/catch` so any failure produces a single `build-manifest: <message>` line and a non-zero exit, regardless of which path threw (missing `dist/` artefact, missing exports, unknown handler, etc.).
 
 ### Deploying the Cloudflare Workers
 
@@ -725,9 +737,12 @@ bun test
 
 # Run only WebMCP tests
 bun test test/webmcp.test.js
+
+# Run only the MCP server tests
+cd mcp/flatwrite-render-server && bun test test/
 ```
 
-The test suite (242 tests across 9 files) includes:
+The test suite includes:
 
 ### MCP server tests
 
@@ -741,8 +756,16 @@ The `streamableHttp.test.ts` suite spins up a real HTTP server on a random port 
 
 The upstream call is mocked via `mock.module("../src/renderClient.js", ...)`, so the tests don't depend on the live API or an API key.
 
+### Output-schema tests
+
+The `renderOutputSchema.test.ts` suite covers the envelope-construction helpers and Zod schemas used by the manifest pipeline:
+
+- `buildRenderEnvelope` (helper used by `render_markdown` server-side handlers): URL path zeros metadata, inline path extracts and trims H1, fenced code (``` and ~~~) and inline backticks are skipped when looking for the H1 title, word/char counts are derived from the ORIGINAL markdown, empty/undefined input is safe, and the returned envelope validates against `RenderOutputSchema`.
+- `generateManifest` sentinel guard: throws with a descriptive message when a tool's `outputSchema` is a `BuildTimeSentinel` that wasn't injected (tested against the compiled `dist/shared/mcpShared.js`).
+- One `describe` block per Zod schema (`RenderOptionsOutputSchema`, `RenderPreviewOutputSchema`, `ExportHtmlOutputSchema`, `ExportPdfOutputSchema`, `ShareLinkOutputSchema`): canonical envelope parses, omitted optional fields still parse, wrong literals are rejected.
+
 ### Tool registration tests
-- All 12 tools are registered from the generated `DOC_TOOLS` array
+- All 11 tools are registered from the generated `DOC_TOOLS` array
 - Input schemas have correct types, enums, and ranges
 - Output schemas use the discriminated `{ ok, kind, ... }` pattern
 - Both Chrome 149 (`navigator.modelContext`) and Chrome 150+ (`document.modelContext`) probes work
@@ -760,6 +783,10 @@ The upstream call is mocked via `mock.module("../src/renderClient.js", ...)`, so
 - Manifest and runtime declare the same required input fields
 - `displayHints.inputFieldAliases` keys exist in both surfaces
 
+### Manifest snapshot baseline test
+
+The `manifest snapshot baseline` block in `test/webmcp.test.js` is a regression gate against unintentional manifest drift. On first local run it initializes `test/__snapshots__/manifest-baseline.json` from whatever is on disk; subsequent runs fail loudly if the manifests drift. In CI (`process.env.CI` is set), the test refuses to auto-bootstrap and demands the baseline be committed — a fresh clone cannot pass CI without an explicit commit of the snapshot file. Updating the baseline is a two-step operation: delete the file, re-run tests locally, then commit the regenerated `manifest-baseline.json`.
+
 ### Scan-oriented tests (grader-facing)
 - Every tool has `name`, `description`, `inputSchema`, and `outputSchema`
 - Every `outputSchema` has at least one required top-level field
@@ -768,7 +795,6 @@ The upstream call is mocked via `mock.module("../src/renderClient.js", ...)`, so
 - No two tools have indistinguishable descriptions (first 40 chars differ)
 - Every tool name starts with a verb (`create_`, `open_`, `get_`, etc.)
 - Manifests and runtime registry expose the same tool set
-- Every `outputSchema` has `additionalProperties: false`
 - Lifecycle tools return `documentId`
 - Export tools return `format`
 
@@ -782,13 +808,15 @@ The upstream call is mocked via `mock.module("../src/renderClient.js", ...)`, so
 | **WebMCP** | Browser-based variant where web pages register tools via `document.modelContext` |
 | **Tool** | A named capability with an input schema, output schema, and execute handler |
 | **Manifest** | A static JSON file at `.well-known/model-context.*.json` declaring a site's tools |
-| **Surface** | A grouping of tools by context — FlatWrite has "doc" (12 tools) and "app" (2 tools) |
+| **Surface** | A grouping of tools by context — FlatWrite has "doc" (11 tools) and "app" (2 tools) |
 | **Discriminated envelope** | A response shape where `ok: true/false` tells you which fields to read |
 | **X-Api-Key** | Long-lived server-to-server API key (never in browser JS) |
 | **X-Mcp-Token** | Short-lived (60s) HMAC-signed browser-safe token |
 | **Bridge** | `window.__flatwrite` — the object `app.js` exposes for WebMCP tools to interact with the editor |
 | **Canonical style** | The compact field names the renderer reads (`font`, `size`, `weight`, `line`) |
 | **Friendly alias** | The human-readable names (`fontFamily`, `fontSize`, `fontWeight`, `lineHeight`) |
-| `mcpShared.ts` | The single source of truth for all tool definitions, schemas, and allowlists |
+| **BuildTimeSentinel** | A `Symbol` marker on a `ToolSpec.outputSchema` that `build-manifest.mjs` resolves to a JSON-Schema object derived from a Zod schema. Six sentinels are defined today (`INJECT_RENDER_OUTPUT`, `INJECT_RENDER_OPTIONS_OUTPUT`, `INJECT_RENDER_PREVIEW_OUTPUT`, `INJECT_EXPORT_HTML_OUTPUT`, `INJECT_EXPORT_PDF_OUTPUT`, `INJECT_SHARE_LINK_OUTPUT`); the union type and tool-name → sentinel map live in `mcpShared.ts` as `BuildTimeSentinel` and `SENTINEL_BY_TOOL_NAME`. |
+| `mcpShared.ts` | The single source of truth for all tool definitions, schemas, allowlists, and `BuildTimeSentinel` markers |
+| `*OutputSchema.ts` | The 6 Zod schema files in `src/shared/` that back the BuildTimeSentinels; each exports a `*OutputSchema`, an inferred type, and a `build*Output()` helper that round-trips through `.parse()` |
 | `webmcp-tools.js` | Generated JS module with tool definitions (consumed by `webmcp.js`) |
 | `webmcp-shared.js` | Compiled `mcpShared.ts` — allowlists, validators, token utilities (consumed by browser + Workers) |

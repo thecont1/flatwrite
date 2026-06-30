@@ -194,15 +194,8 @@
         ]
       },
       "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "title": "RenderOutput",
-        "description": "Rendered markdown as self-contained HTML fragments with document metadata.",
-        "required": [
-          "ok",
-          "kind",
-          "artifacts"
-        ],
-        "additionalProperties": false,
         "properties": {
           "ok": {
             "type": "boolean",
@@ -213,54 +206,59 @@
             "enum": [
               "html"
             ],
-            "description": "Result modality — always \"html\" for render_markdown."
+            "description": "Output format — always \"html\" for render tools."
           },
           "document": {
             "type": "object",
-            "description": "Metadata about the rendered document.",
-            "additionalProperties": false,
             "properties": {
               "title": {
-                "type": "string",
-                "description": "Best-effort title extracted from the first H1 or filename."
+                "description": "Best-effort title extracted from the first H1 heading.",
+                "type": "string"
               },
               "wordCount": {
-                "type": "number",
-                "description": "Approximate word count of the source markdown."
+                "description": "Approximate word count of source markdown.",
+                "type": "number"
               },
               "charCount": {
-                "type": "number",
-                "description": "Character count of the source markdown."
+                "description": "Character count of source markdown.",
+                "type": "number"
               }
-            }
+            },
+            "additionalProperties": false
           },
           "artifacts": {
             "type": "object",
-            "description": "Concrete render artifacts.",
+            "properties": {
+              "head": {
+                "type": "string",
+                "description": "Self-contained <head> fragment."
+              },
+              "body": {
+                "type": "string",
+                "description": "Self-contained <body> fragment."
+              }
+            },
             "required": [
               "head",
               "body"
             ],
-            "additionalProperties": false,
-            "properties": {
-              "head": {
-                "type": "string",
-                "description": "Self-contained <head> fragment: inlined @font-face declarations, document CSS, and an optional <script defer> tag for the chosen docEngine. Inject verbatim into the consumer page's <head>."
-              },
-              "body": {
-                "type": "string",
-                "description": "Self-contained <body> fragment: the rendered markdown wrapped in <body class=\"fw-render\" data-theme=\"...\"><main>...</main></body>. Inject verbatim into the consumer page's <body>."
-              }
-            }
+            "additionalProperties": false
           },
           "warnings": {
+            "description": "Non-fatal warnings.",
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Non-fatal warnings (e.g. unknown options ignored, URL size cap approached)."
+            }
           }
-        }
+        },
+        "required": [
+          "ok",
+          "kind",
+          "artifacts"
+        ],
+        "additionalProperties": false,
+        "description": "Rendered markdown as self-contained HTML fragments with document metadata."
       },
       "annotations": {
         "readOnlyHint": true
@@ -281,166 +279,12 @@
       "category": "discovery",
       "inputSchema": {
         "type": "object",
-        "properties": {
-          "font": {
-            "type": "string",
-            "description": "Font family — must be a bundled family.",
-            "enum": [
-              "Inter",
-              "JetBrains Mono",
-              "Lato",
-              "Lora",
-              "Merriweather",
-              "Playfair Display",
-              "Comfortaa",
-              "Unbounded"
-            ]
-          },
-          "appFramework": {
-            "type": "string",
-            "description": "UI framework applied when surfaceMode=\"app\".",
-            "enum": [
-              "spectre",
-              "poshui",
-              "pico",
-              "milligram",
-              "chota"
-            ]
-          },
-          "size": {
-            "oneOf": [
-              {
-                "type": "string",
-                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-              },
-              {
-                "type": "number",
-                "description": "Absolute pixel value (8..72)"
-              }
-            ],
-            "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
-            "minimum": 8,
-            "maximum": 72
-          },
-          "weight": {
-            "oneOf": [
-              {
-                "type": "string",
-                "description": "Scale token (e.g. \"-1\", \"0\")"
-              },
-              {
-                "type": "number",
-                "description": "Absolute weight (100..900, multiples of 100)"
-              }
-            ],
-            "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
-            "minimum": 100,
-            "maximum": 900
-          },
-          "line": {
-            "oneOf": [
-              {
-                "type": "string",
-                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
-              },
-              {
-                "type": "number",
-                "description": "Absolute multiplier (0.8..4.0)"
-              }
-            ],
-            "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
-            "minimum": 0.8,
-            "maximum": 4
-          },
-          "uiZoom": {
-            "type": "number",
-            "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
-            "minimum": 0.25,
-            "maximum": 4
-          },
-          "pageSize": {
-            "type": "string",
-            "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
-            "enum": [
-              "A0",
-              "A1",
-              "A2",
-              "A3",
-              "A4",
-              "A5",
-              "Letter",
-              "Legal"
-            ]
-          },
-          "orientation": {
-            "type": "string",
-            "description": "Page orientation.",
-            "enum": [
-              "portrait",
-              "landscape"
-            ]
-          },
-          "marginsLR": {
-            "type": "string",
-            "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-            "enum": [
-              "narrow",
-              "normal",
-              "wide"
-            ]
-          },
-          "marginsTB": {
-            "type": "string",
-            "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
-            "enum": [
-              "narrow",
-              "normal",
-              "wide"
-            ]
-          },
-          "footer": {
-            "type": "boolean",
-            "description": "Include a page-number footer in paged output."
-          },
-          "width": {
-            "type": "number",
-            "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
-            "minimum": 400,
-            "maximum": 1400
-          },
-          "docEngine": {
-            "type": "string",
-            "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
-            "enum": [
-              "none",
-              "pagedjs",
-              "vivliostyle"
-            ]
-          },
-          "surfaceMode": {
-            "type": "string",
-            "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-            "enum": [
-              "doc",
-              "app"
-            ]
-          },
-          "theme": {
-            "type": "string",
-            "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
-          }
-        },
+        "properties": {},
         "required": []
       },
       "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "title": "RenderOptionsOutput",
-        "description": "Supported values for the render_markdown tool, wrapped in a discriminated envelope.",
-        "required": [
-          "ok",
-          "options"
-        ],
-        "additionalProperties": false,
         "properties": {
           "ok": {
             "type": "boolean",
@@ -448,17 +292,6 @@
           },
           "options": {
             "type": "object",
-            "description": "Supported enum values for each render option category.",
-            "required": [
-              "fonts",
-              "frameworks",
-              "docEngines",
-              "pageSizes",
-              "orientations",
-              "margins",
-              "surfaceModes"
-            ],
-            "additionalProperties": false,
             "properties": {
               "fonts": {
                 "type": "array",
@@ -509,36 +342,53 @@
                 },
                 "description": "Surface mode hints that can be passed as surfaceMode."
               }
-            }
+            },
+            "required": [
+              "fonts",
+              "frameworks",
+              "docEngines",
+              "pageSizes",
+              "orientations",
+              "margins",
+              "surfaceModes"
+            ],
+            "additionalProperties": false,
+            "description": "Supported enum values for each render option category."
           },
           "defaults": {
-            "type": "object",
             "description": "Default values used when an option is omitted.",
-            "additionalProperties": false,
+            "type": "object",
             "properties": {
               "font": {
-                "type": "string",
-                "description": "Default font family."
+                "description": "Default font family.",
+                "type": "string"
               },
               "docEngine": {
-                "type": "string",
-                "description": "Default document engine."
+                "description": "Default document engine.",
+                "type": "string"
               },
               "surfaceMode": {
-                "type": "string",
-                "description": "Default surface mode."
+                "description": "Default surface mode.",
+                "type": "string"
               },
               "pageSize": {
-                "type": "string",
-                "description": "Default page size."
+                "description": "Default page size.",
+                "type": "string"
               },
               "orientation": {
-                "type": "string",
-                "description": "Default orientation."
+                "description": "Default orientation.",
+                "type": "string"
               }
-            }
+            },
+            "additionalProperties": false
           }
-        }
+        },
+        "required": [
+          "ok",
+          "options"
+        ],
+        "additionalProperties": false,
+        "description": "Supported values for the render_markdown tool, wrapped in a typed envelope."
       },
       "annotations": {
         "readOnlyHint": true
