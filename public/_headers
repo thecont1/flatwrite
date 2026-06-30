@@ -1,0 +1,7 @@
+/.well-known/model-context.doc.json
+  Content-Type: application/json
+  Access-Control-Allow-Origin: *
+
+/.well-known/model-context.apps.json
+  Content-Type: application/json
+  Access-Control-Allow-Origin: *
