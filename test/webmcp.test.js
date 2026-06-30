@@ -1,7 +1,7 @@
 /**
  * Tests for public/webmcp.js. We can't run Chrome in CI, so we stub
- * navigator.modelContext with a minimal in-memory implementation that
- * captures registered tools and replays handler calls. The webmcp.js
+ * document.modelContext with a minimal in-memory implementation that
+ * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
  *   1. Register both tools (render_markdown, render_markdown_from_url)
@@ -17,6 +17,10 @@
  *      uses the `execute` property on a registered tool. The previous
  *      version of webmcp.js used `handler`, which threw inside
  *      registerTool() and prevented BOTH tools from registering.
+ *   9. Register via `document.modelContext` — NOT
+ *      `navigator.modelContext`. The spec namespace is `document`; the
+ *      `navigator` namespace is always undefined in Chrome and caused
+ *      a silent no-op even on builds where WebMCP IS enabled.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -67,7 +71,7 @@ function fakeResponse(status, body) {
 }
 
 /**
- * Build a sandbox with a stubbed navigator.modelContext that records
+ * Build a sandbox with a stubbed document.modelContext that records
  * every registered tool, then evaluate webmcp.js inside it.
  *
  * The fakeFetch here is the "minimal" version: it returns a SENTINEL
@@ -76,11 +80,21 @@ function fakeResponse(status, body) {
  *
  * Tests that exercise the tool function call it as `t.execute(args)`
  * — mirroring the WebMCP spec property name Chrome 146+ expects.
+ *
+ * NOTE: we also leave `navigator.modelContext` UNDEFINED in the
+ * sandbox. The regression test "uses document.modelContext, not
+ * navigator.modelContext" depends on that — if webmcp.js ever flips
+ * back to the wrong namespace, the guard fires and the script silently
+ * bails, registering zero tools. We detect that.
  */
 function loadWebmcp() {
   const tools = [];
   const sandbox = {
-    navigator: {
+    // document.modelContext is the WebMCP entry point per spec. The
+    // sandbox stubs it; navigator.modelContext is left undefined so
+    // the regression test below can confirm webmcp.js does NOT use
+    // the wrong namespace.
+    document: {
       modelContext: {
         registerTool(def) {
           tools.push(def);
@@ -99,11 +113,11 @@ function loadWebmcp() {
     Object,
   };
   const fn = new Function(
-    "navigator", "fetch", "URL", "console", "Promise", "Object",
+    "document", "fetch", "URL", "console", "Promise", "Object",
     EVALUABLE_WEBMCP_JS,
   );
   fn(
-    sandbox.navigator, sandbox.fetch, sandbox.URL,
+    sandbox.document, sandbox.fetch, sandbox.URL,
     sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
@@ -118,18 +132,18 @@ function findTool(tools, name) {
 function sandboxWithFetch(fetchImpl) {
   const tools = [];
   const sandbox = {
-    navigator: {
+    document: {
       modelContext: { registerTool: (def) => tools.push(def) },
     },
     fetch: fetchImpl,
     URL, console, Promise, Object,
   };
   const fn = new Function(
-    "navigator", "fetch", "URL", "console", "Promise", "Object",
+    "document", "fetch", "URL", "console", "Promise", "Object",
     EVALUABLE_WEBMCP_JS,
   );
   fn(
-    sandbox.navigator, sandbox.fetch, sandbox.URL,
+    sandbox.document, sandbox.fetch, sandbox.URL,
     sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
@@ -191,14 +205,48 @@ describe("webmcp.js — tool registration", () => {
     }
   });
 
-  test("does nothing when navigator.modelContext is absent", () => {
+  test("does nothing when document.modelContext is absent", () => {
+    // Regression: the guard must check `document.modelContext`, not
+    // `navigator.modelContext`. With document.modelContext absent
+    // AND navigator.modelContext absent, the script must no-op.
     const sandbox = {};
     const fn = new Function(
-      "navigator", "URL", "console", "Promise", "Object",
+      "document", "URL", "console", "Promise", "Object",
       EVALUABLE_WEBMCP_JS,
     );
     fn(sandbox, URL, console, Promise, Object);
     expect(sandbox.tools).toBeUndefined();
+  });
+
+  test("uses document.modelContext, NOT navigator.modelContext (regression)", () => {
+    // The earlier version of webmcp.js called
+    // `navigator.modelContext.registerTool(...)`. navigator.modelContext
+    // is always undefined in Chrome, so the guard fired and the script
+    // silently no-op'd — webmcp.com's scanner saw tools as "registered
+    // but not executable" because the JS declared them in the manifest
+    // but the live script never ran. Pin the namespace to `document`.
+    //
+    // Two-part check:
+    //   1. Functional: with `navigator.modelContext` UNDEFINED in the
+    //      sandbox (which it always is in real Chrome), the script
+    //      must still register both tools. If webmcp.js had used
+    //      navigator.modelContext, the guard would have fired and
+    //      zero tools would register.
+    //   2. Source-level (comments stripped): the executable code must
+    //      reference `document.modelContext` and must NOT reference
+    //      `navigator.modelContext`. We strip comments so the
+    //      explanatory comment block — which intentionally mentions
+    //      the bad namespace as part of the regression history —
+    //      doesn't false-positive.
+    const tools = loadWebmcp();
+    expect(tools.length).toBe(2);
+    const stripped = WEBMCP_JS
+      // strip /* ... */ block comments
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      // strip // line comments
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(stripped).toMatch(/document\.modelContext/);
+    expect(stripped).not.toMatch(/navigator\s*\.\s*modelContext/);
   });
 
   test("does not embed a 64-char hex API key in the source", () => {

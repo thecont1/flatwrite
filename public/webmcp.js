@@ -1,14 +1,21 @@
 // public/webmcp.js
 //
-// Registers the FlatWrite render tools via navigator.modelContext (WebMCP,
-// Chrome 146+ DevTrial) so an AI agent driving the browser can call the
-// same render pipeline that the editor uses internally.
+// Registers the FlatWrite render tools via document.modelContext
+// (WebMCP, Chrome 146+ DevTrial) so an AI agent driving the browser
+// can call the same render pipeline that the editor uses internally.
 //
-// This script runs client-side in the tab when flatwrite.md is loaded. On
-// browsers without WebMCP it does nothing. The handler calls the public
-// render.flatwrite.md/render Worker — same endpoint the MCP server uses
-// — so the page output is byte-identical to what an MCP/HTTP client gets
-// from outside the browser.
+// IMPORTANT: the WebMCP spec puts the entry point on `document`, not
+// `navigator`. A previous version of this file used
+// `navigator.modelContext`, which is always undefined and caused the
+// script to silently no-op on every Chrome build. The spec repo
+// (webmachinelearning/webmcp) confirms the namespace is
+// `document.modelContext`.
+//
+// This script runs client-side in the tab when flatwrite.md is loaded.
+// On browsers without WebMCP it does nothing. The execute function
+// calls the public render.flatwrite.md/render Worker — same endpoint
+// the MCP server uses — so the page output is byte-identical to what
+// an MCP/HTTP client gets from outside the browser.
 //
 // Auth model: we do NOT embed a long-lived API key in this script.
 // Instead, the script mints short-lived HMAC tokens from
@@ -33,16 +40,22 @@ import {
   ALLOWED_MARGINS,
 } from './webmcp-shared.js';
 
-// WebMCP / navigator.modelContext.registerTool({ ..., execute }) —
-// Chrome 146+ uses the `execute` property. Earlier drafts of the
-// spec used `handler`; that's been renamed. The previous version of
-// this file used `handler:`, which caused registerTool() to throw
-// and prevented BOTH tools from registering on current Chrome.
-// Scanner feedback (2026-06-30, webmcp.com): tools must use `execute`.
-// navigator.modelContext is the WebMCP entry point. If absent (older
-// browsers, or the DevTrial flag is off), gracefully bail.
-if (typeof navigator === 'undefined' || !navigator.modelContext) {
-  // Module top-level; no further work.
+// WebMCP spec: the entry point is `document.modelContext` (NOT
+// `navigator.modelContext`, which is always undefined in Chrome).
+// Reference: webmachinelearning/webmcp README, "Imperative Tool
+// Registration" section. Older drafts of the spec used `navigator`
+// and a `handler:` property; both have moved to `document` and
+// `execute:`. Regression history (FlatWrite, 2026-06-30):
+//   - `handler:` → `execute:` rename fixed a registerTool() throw.
+//   - `navigator.modelContext` → `document.modelContext` rename
+//     fixed a silent no-op caused by the guard being `true` even
+//     on Chrome builds where WebMCP IS enabled.
+var hasModelContext = typeof document !== 'undefined'
+  && document
+  && document.modelContext
+  && typeof document.modelContext.registerTool === 'function';
+if (typeof document === 'undefined' || !hasModelContext) {
+  // Graceful no-op on browsers without WebMCP / with the flag off.
 }
 else {
   var RENDER_URL = 'https://render.flatwrite.md/render';
@@ -227,7 +240,7 @@ else {
   getToken().catch(() => {});  // fire-and-forget; failure recovered on first tool call
 
   // === render_markdown ===
-  navigator.modelContext.registerTool({
+  document.modelContext.registerTool({
     name: 'render_markdown',
     description:
       'Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments, ' +
@@ -259,7 +272,7 @@ else {
   });
 
   // === render_markdown_from_url ===
-  navigator.modelContext.registerTool({
+  document.modelContext.registerTool({
     name: 'render_markdown_from_url',
     description:
       'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org) ' +
