@@ -17,10 +17,14 @@
  *      uses the `execute` property on a registered tool. The previous
  *      version of webmcp.js used `handler`, which threw inside
  *      registerTool() and prevented BOTH tools from registering.
- *   9. Register via `document.modelContext` — NOT
- *      `navigator.modelContext`. The spec namespace is `document`; the
- *      `navigator` namespace is always undefined in Chrome and caused
- *      a silent no-op even on builds where WebMCP IS enabled.
+ *   9. Register via `document.modelContext` (Chrome 150+ spec shape)
+ *      OR `navigator.modelContext` (Chrome 149 DevTrial legacy shape) —
+ *      whichever is present, in that preference order. Chrome 149
+ *      (the DevTrial release that was live at the time of writing)
+ *      exposed WebMCP only on `navigator`, while Chrome 150+ moved
+ *      it to `document`. A single-namespace probe was a silent no-op
+ *      on whichever build we hadn't probed. Reference:
+ *      nekuda.ai/scripts/webmcp.js probes both in the same order.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -88,36 +92,55 @@ function fakeResponse(status, body) {
  * bails, registering zero tools. We detect that.
  */
 function loadWebmcp() {
+  // Default: Chrome 150+ (document.modelContext). Tests that need to
+  // simulate Chrome 149 use loadWebmcpChrome149() below.
+  return loadWebmcpWithSandbox({});
+}
+
+/**
+ * Chrome 149 DevTrial release exposed WebMCP under navigator.modelContext
+ * (the now-deprecated shape). The current spec moves it to
+ * document.modelContext. webmcp.js must probe both. This loader
+ * exercises the Chrome 149 code path.
+ */
+function loadWebmcpChrome149() {
+  return loadWebmcpWithSandbox({ chrome149: true });
+}
+
+/**
+ * Shared loader. Returns the array of registered tools. Builds a
+ * minimal sandbox, evaluates webmcp.js inside it via `new Function`,
+ * and returns the array the script populated.
+ *
+ * The stubs (Chrome 150+ vs Chrome 149) are installed AFTER the
+ * shared `tools` array is created, so the stub closures capture the
+ * right reference. This was previously a closure bug — DO NOT move
+ * the stubs back inline into the extra object.
+ */
+function loadWebmcpWithSandbox(opts) {
   const tools = [];
+  opts = opts || {};
   const sandbox = {
-    // document.modelContext is the WebMCP entry point per spec. The
-    // sandbox stubs it; navigator.modelContext is left undefined so
-    // the regression test below can confirm webmcp.js does NOT use
-    // the wrong namespace.
-    document: {
+    document: opts.chrome149 ? undefined : {
       modelContext: {
-        registerTool(def) {
-          tools.push(def);
-        },
+        registerTool(def) { tools.push(def); },
       },
     },
-    // Pre-warm fetch (runs at page load): return a valid token.
-    // Subsequent tool-call fetches that don't override this will
-    // hit the SENTINEL — tests that need real behavior should use
-    // sandboxWithFetch() instead.
+    navigator: opts.chrome149 ? {
+      modelContext: {
+        registerTool(def) { tools.push(def); },
+      },
+    } : undefined,
     fetch: async () =>
       fakeResponse(200, { token: "fake.token", expiresAt: Math.floor(Date.now() / 1000) + 60 }),
-    URL,
-    console,
-    Promise,
-    Object,
+    URL, console, Promise, Object,
   };
   const fn = new Function(
-    "document", "fetch", "URL", "console", "Promise", "Object",
+    "document", "navigator", "fetch", "URL", "console", "Promise", "Object",
     EVALUABLE_WEBMCP_JS,
   );
   fn(
-    sandbox.document, sandbox.fetch, sandbox.URL,
+    sandbox.document, sandbox.navigator, sandbox.fetch, sandbox.URL,
     sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
@@ -139,11 +162,35 @@ function sandboxWithFetch(fetchImpl) {
     URL, console, Promise, Object,
   };
   const fn = new Function(
-    "document", "fetch", "URL", "console", "Promise", "Object",
+    "document", "navigator", "fetch", "URL", "console", "Promise", "Object",
     EVALUABLE_WEBMCP_JS,
   );
   fn(
-    sandbox.document, sandbox.fetch, sandbox.URL,
+    sandbox.document, sandbox.navigator, sandbox.fetch, sandbox.URL,
+    sandbox.console, sandbox.Promise, sandbox.Object,
+  );
+  return tools;
+}
+
+/**
+ * Chrome 149 variant of sandboxWithFetch: stubs navigator.modelContext
+ * instead of document.modelContext. Used by the Chrome 149 tests.
+ */
+function sandboxWithFetchChrome149(fetchImpl) {
+  const tools = [];
+  const sandbox = {
+    navigator: {
+      modelContext: { registerTool: (def) => tools.push(def) },
+    },
+    fetch: fetchImpl,
+    URL, console, Promise, Object,
+  };
+  const fn = new Function(
+    "document", "navigator", "fetch", "URL", "console", "Promise", "Object",
+    EVALUABLE_WEBMCP_JS,
+  );
+  fn(
+    sandbox.document, sandbox.navigator, sandbox.fetch, sandbox.URL,
     sandbox.console, sandbox.Promise, sandbox.Object,
   );
   return tools;
@@ -205,48 +252,55 @@ describe("webmcp.js — tool registration", () => {
     }
   });
 
-  test("does nothing when document.modelContext is absent", () => {
-    // Regression: the guard must check `document.modelContext`, not
-    // `navigator.modelContext`. With document.modelContext absent
-    // AND navigator.modelContext absent, the script must no-op.
+  test("does nothing when neither document.modelContext nor navigator.modelContext is present", () => {
+    // Regression: with both namespaces absent, the script must no-op.
+    // Earlier versions used a single-namespace guard (whichever one
+    // we hadn't probed at the time) and broke the OTHER Chrome build.
     const sandbox = {};
     const fn = new Function(
-      "document", "URL", "console", "Promise", "Object",
+      "document", "navigator", "URL", "console", "Promise", "Object",
       EVALUABLE_WEBMCP_JS,
     );
-    fn(sandbox, URL, console, Promise, Object);
+    fn(sandbox, sandbox, URL, console, Promise, Object);
     expect(sandbox.tools).toBeUndefined();
   });
 
-  test("uses document.modelContext, NOT navigator.modelContext (regression)", () => {
-    // The earlier version of webmcp.js called
-    // `navigator.modelContext.registerTool(...)`. navigator.modelContext
-    // is always undefined in Chrome, so the guard fired and the script
-    // silently no-op'd — webmcp.com's scanner saw tools as "registered
-    // but not executable" because the JS declared them in the manifest
-    // but the live script never ran. Pin the namespace to `document`.
-    //
-    // Two-part check:
-    //   1. Functional: with `navigator.modelContext` UNDEFINED in the
-    //      sandbox (which it always is in real Chrome), the script
-    //      must still register both tools. If webmcp.js had used
-    //      navigator.modelContext, the guard would have fired and
-    //      zero tools would register.
-    //   2. Source-level (comments stripped): the executable code must
-    //      reference `document.modelContext` and must NOT reference
-    //      `navigator.modelContext`. We strip comments so the
-    //      explanatory comment block — which intentionally mentions
-    //      the bad namespace as part of the regression history —
-    //      doesn't false-positive.
-    const tools = loadWebmcp();
-    expect(tools.length).toBe(2);
-    const stripped = WEBMCP_JS
-      // strip /* ... */ block comments
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      // strip // line comments
-      .replace(/^\s*\/\/.*$/gm, "");
-    expect(stripped).toMatch(/document\.modelContext/);
-    expect(stripped).not.toMatch(/navigator\s*\.\s*modelContext/);
+  test("probes BOTH document.modelContext (Chrome 150+) and navigator.modelContext (Chrome 149)", () => {
+    // webmcp.js must work on either Chrome build. Chrome 149 (the
+    // DevTrial release at the time of writing) exposed WebMCP on
+    // `navigator`; Chrome 150+ moved it to `document`. We probe both.
+    // Reference: nekuda.ai/scripts/webmcp.js does the same.
+    const chrome150Tools = loadWebmcp();                  // document.modelContext stubbed
+    const chrome149Tools = loadWebmcpChrome149();          // navigator.modelContext stubbed
+    expect(chrome150Tools.map(t => t.name).sort()).toEqual([
+      "render_markdown",
+      "render_markdown_from_url",
+    ]);
+    expect(chrome149Tools.map(t => t.name).sort()).toEqual([
+      "render_markdown",
+      "render_markdown_from_url",
+    ]);
+    // And the no-op path still works (both namespaces absent).
+    const sandbox = {};
+    const fn = new Function(
+      "document", "navigator", "URL", "console", "Promise", "Object",
+      EVALUABLE_WEBMCP_JS,
+    );
+    fn(sandbox, sandbox, URL, console, Promise, Object);
+    expect(sandbox.tools).toBeUndefined();
+  });
+
+  test("Chrome 149 tools call the same execute function as Chrome 150+ tools", () => {
+    // Regression for the dual-namespace fix: both probe paths must
+    // register tools whose `execute` body is byte-identical. We compare
+    // the render_markdown inputSchema and execute.toString() across
+    // both Chrome variants — if the Chrome 149 path were registering
+    // a stub or a different function, the bodies would diverge.
+    const a = findTool(loadWebmcp(), "render_markdown");
+    const b = findTool(loadWebmcpChrome149(), "render_markdown");
+    expect(b.execute.toString()).toBe(a.execute.toString());
+    expect(b.inputSchema).toEqual(a.inputSchema);
+    expect(b.outputSchema).toEqual(a.outputSchema);
   });
 
   test("does not embed a 64-char hex API key in the source", () => {

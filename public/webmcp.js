@@ -40,21 +40,37 @@ import {
   ALLOWED_MARGINS,
 } from './webmcp-shared.js';
 
-// WebMCP spec: the entry point is `document.modelContext` (NOT
-// `navigator.modelContext`, which is always undefined in Chrome).
+// WebMCP spec: the spec entry point is `document.modelContext`. The
+// current webmachinelearning/webmcp README documents that shape, and
+// Chrome 150+ implements it.
+//
+// Chrome 149 (the DevTrial release you may still be on) exposed the
+// API as `navigator.modelContext` instead — a now-deprecated shape
+// that the spec repo and Chrome 150+ both abandoned. We resolve
+// whichever is present, preferring the spec name first.
+//
 // Reference: webmachinelearning/webmcp README, "Imperative Tool
-// Registration" section. Older drafts of the spec used `navigator`
-// and a `handler:` property; both have moved to `document` and
-// `execute:`. Regression history (FlatWrite, 2026-06-30):
-//   - `handler:` → `execute:` rename fixed a registerTool() throw.
-//   - `navigator.modelContext` → `document.modelContext` rename
-//     fixed a silent no-op caused by the guard being `true` even
-//     on Chrome builds where WebMCP IS enabled.
-var hasModelContext = typeof document !== 'undefined'
-  && document
-  && document.modelContext
-  && typeof document.modelContext.registerTool === 'function';
-if (typeof document === 'undefined' || !hasModelContext) {
+// Registration" section. nekuda.ai/scripts/webmcp.js (Chrome 149–156
+// origin trial, dogfooded by nekuda themselves) probes both in the
+// same order — that's the working pattern.
+//
+// Regression history (FlatWrite, 2026-06-30):
+//   - `handler:` → `execute:` rename fixed a registerTool() throw
+//     on the Chrome 150+ spec shape.
+//   - single-namespace guard was a silent no-op on the OTHER Chrome
+//     build (whichever one we hadn't probed). Whichever we picked,
+//     the opposite version broke. The dual-probe below is robust to
+//     Chrome 149 (`navigator.modelContext`) AND Chrome 150+
+//     (`document.modelContext`) AND future renames.
+var mc = null;
+if (typeof document !== 'undefined' && document && document.modelContext
+    && typeof document.modelContext.registerTool === 'function') {
+  mc = document.modelContext;  // spec / Chrome 150+
+} else if (typeof navigator !== 'undefined' && navigator && navigator.modelContext
+    && typeof navigator.modelContext.registerTool === 'function') {
+  mc = navigator.modelContext;  // Chrome 149 legacy
+}
+if (mc === null) {
   // Graceful no-op on browsers without WebMCP / with the flag off.
 }
 else {
@@ -240,7 +256,7 @@ else {
   getToken().catch(() => {});  // fire-and-forget; failure recovered on first tool call
 
   // === render_markdown ===
-  document.modelContext.registerTool({
+  mc.registerTool({
     name: 'render_markdown',
     description:
       'Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments, ' +
@@ -272,7 +288,7 @@ else {
   });
 
   // === render_markdown_from_url ===
-  document.modelContext.registerTool({
+  mc.registerTool({
     name: 'render_markdown_from_url',
     description:
       'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org) ' +
