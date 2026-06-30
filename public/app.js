@@ -3080,6 +3080,44 @@
     return buildShareYaml() + editor.value;
   }
 
+  /* ── Helpers for openDocument (extracted for clarity) ─────────────── */
+
+  function fwFetchText(url) {
+    return fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw { code: "OPEN_FAILED", message: "HTTP " + r.status };
+        return r.text();
+      })
+      .catch(function (e) {
+        throw e.code ? e : { code: "OPEN_FAILED", message: e.message || String(e) };
+      });
+  }
+
+  function fwApplyContent(content, sourceUrl, opts) {
+    opts = opts || {};
+    if (opts.isShare) {
+      var parsed = parseShareYaml(content);
+      if (parsed.frontmatter) {
+        var fm = parsed.frontmatter;
+        if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
+        if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
+        if (fm.font) comfortFont = fm.font;
+        setDocEngine(currentDocEngine);
+      }
+      setMarkdownUrl("");
+    } else {
+      setMarkdownUrl(sourceUrl);
+    }
+    setEditorContent(content);
+    fwDocumentId = "";
+    fwEnsureDocumentId();
+    return {
+      documentId: fwDocumentId,
+      title: fwExtractTitle(content),
+      url: sourceUrl,
+    };
+  }
+
   window.__flatwrite = {
     getDocumentState: function () {
       var md = editor.value || "";
@@ -3119,61 +3157,21 @@
     },
 
     openDocument: async function (url) {
-      return new Promise(function (resolve, reject) {
-        if (!url) { reject({ code: "INVALID_URL", message: "url is required" }); return; }
-        /* Handle share links (?s=...) */
-        var sMatch = url.match(/[?&]s=([^&]+)/);
-        if (sMatch) {
-          fetch("/api/s?key=" + encodeURIComponent(sMatch[1]))
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              if (data.error) throw new Error(data.error);
-              var content = data.content || "";
-              /* Parse and apply YAML front-matter settings */
-              var parsed = parseShareYaml(content);
-              if (parsed.frontmatter) {
-                var fm = parsed.frontmatter;
-                if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
-                if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
-                if (fm.font) comfortFont = fm.font;
-                setDocEngine(currentDocEngine);
-              }
-              setMarkdownUrl("");
-              setEditorContent(content);
-              fwDocumentId = "";
-              fwEnsureDocumentId();
-              resolve({
-                documentId: fwDocumentId,
-                title: fwExtractTitle(content),
-                url: url,
-              });
-            })
-            .catch(function (e) {
-              reject({ code: "OPEN_FAILED", message: e.message || String(e) });
-            });
-          return;
+      if (!url) throw { code: "INVALID_URL", message: "url is required" };
+      var sMatch = url.match(/[?&]s=([^&]+)/);
+      if (sMatch) {
+        var data;
+        try {
+          var res = await fetch("/api/s?key=" + encodeURIComponent(sMatch[1]));
+          data = await res.json();
+        } catch (e) {
+          throw { code: "OPEN_FAILED", message: e.message || String(e) };
         }
-        /* Handle raw markdown URLs */
-        fetch(url)
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.text();
-          })
-          .then(function (content) {
-            setMarkdownUrl(url);
-            setEditorContent(content);
-            fwDocumentId = "";
-            fwEnsureDocumentId();
-            resolve({
-              documentId: fwDocumentId,
-              title: fwExtractTitle(content),
-              url: url,
-            });
-          })
-          .catch(function (e) {
-            reject({ code: "OPEN_FAILED", message: e.message || String(e) });
-          });
-      });
+        if (data.error) throw { code: "OPEN_FAILED", message: data.error };
+        return fwApplyContent(data.content || "", url, { isShare: true });
+      }
+      var content = await fwFetchText(url);
+      return fwApplyContent(content, url, { isShare: false });
     },
 
     updateDocumentContent: function (markdown) {
@@ -3211,14 +3209,17 @@
       renderPreview();
     },
 
+    /* Browser-initiated export: opens a new tab (HTML) or print
+       dialog (PDF). No download URL or page count is reported back
+       because the browser handles the output, not the server. */
     exportHTML: function () {
       exportHTML();
-      return { documentId: fwEnsureDocumentId(), downloadUrl: "" };
+      return { documentId: fwEnsureDocumentId() };
     },
 
     exportPDF: function () {
       exportPDF();
-      return { documentId: fwEnsureDocumentId(), pageCount: 0 };
+      return { documentId: fwEnsureDocumentId() };
     },
 
     createShareLink: async function () {
