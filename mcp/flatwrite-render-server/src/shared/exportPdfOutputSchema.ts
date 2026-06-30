@@ -15,8 +15,8 @@
  */
 
 /**
- * Zod schema and builder for the `export_document_pdf` tool's success
- * envelope. Mirrors the previously hand-written EXPORT_PDF_OUTPUT_SCHEMA.
+ * Zod schema for the `export_document_pdf` tool's success envelope.
+ * Mirrors the previously hand-written EXPORT_PDF_OUTPUT_SCHEMA.
  *
  * `format` is the literal `"pdf"`. PDF export goes through the browser
  * print dialog, so `downloadUrl` is not used here — only `pageCount`
@@ -42,23 +42,3 @@ export const ExportPdfOutputSchema = z
   .describe('Result of exporting the document as PDF (via browser print dialog).');
 
 export type ExportPdfOutput = z.infer<typeof ExportPdfOutputSchema>;
-
-/**
- * Build a PDF-export envelope. `format` is hard-coded to `"pdf"`.
- */
-export function buildExportPdfOutput(
-  args: {
-    documentId: string;
-    pageCount?: number;
-    warnings?: string[];
-  },
-): ExportPdfOutput {
-  const envelope = {
-    ok: true,
-    documentId: args.documentId,
-    format: 'pdf' as const,
-    ...(args.pageCount !== undefined ? { pageCount: args.pageCount } : {}),
-    ...(args.warnings !== undefined ? { warnings: args.warnings } : {}),
-  };
-  return ExportPdfOutputSchema.parse(envelope);
-}

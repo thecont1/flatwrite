@@ -14,7 +14,7 @@
  * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
  */
 // Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
-// @version 1782850109
+// @version 1782852981
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 

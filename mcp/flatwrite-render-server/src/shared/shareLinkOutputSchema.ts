@@ -15,8 +15,8 @@
  */
 
 /**
- * Zod schema and builder for the `create_share_link` tool's success
- * envelope. Mirrors the previously hand-written SHARE_LINK_OUTPUT_SCHEMA.
+ * Zod schema for the `create_share_link` tool's success envelope.
+ * Mirrors the previously hand-written SHARE_LINK_OUTPUT_SCHEMA.
  *
  * `expiresAt` is optional — callers may mint a non-expiring share
  * for short-lived demos, though production traffic uses a 30-day TTL.
@@ -39,20 +39,3 @@ export const ShareLinkOutputSchema = z
   .describe('Result of creating a shareable URL for the document.');
 
 export type ShareLinkOutput = z.infer<typeof ShareLinkOutputSchema>;
-
-/**
- * Build a share-link envelope.
- */
-export function buildShareLinkOutput(args: {
-  documentId: string;
-  shareUrl: string;
-  expiresAt?: string;
-}): ShareLinkOutput {
-  const envelope = {
-    ok: true,
-    documentId: args.documentId,
-    shareUrl: args.shareUrl,
-    ...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
-  };
-  return ShareLinkOutputSchema.parse(envelope);
-}

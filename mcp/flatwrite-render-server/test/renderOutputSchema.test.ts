@@ -151,35 +151,39 @@ describe("generateManifest — sentinel guard", () => {
 /**
  * PR-B: unit tests for the 5 Zod schemas that replaced the
  * hand-written output-schema constants. Each `describe` block
- * verifies (a) the schema accepts the canonical happy-path object,
- * (b) the schema rejects malformed input, and (c) the builder helper
- * round-trips through `schema.parse()` successfully.
+ * verifies (a) the schema accepts a canonical happy-path literal,
+ * (b) the schema rejects malformed input. Envelopes are
+ * constructed inline — no builder helpers, since the schema's
+ * `.parse()` is what we're asserting against.
  */
 
-import {
-  RenderOptionsOutputSchema,
-  buildRenderOptionsOutput,
-} from "../src/shared/renderOptionsOutputSchema.js";
-import {
-  RenderPreviewOutputSchema,
-  buildRenderPreviewOutput,
-} from "../src/shared/renderPreviewOutputSchema.js";
-import {
-  ExportHtmlOutputSchema,
-  buildExportHtmlOutput,
-} from "../src/shared/exportHtmlOutputSchema.js";
-import {
-  ExportPdfOutputSchema,
-  buildExportPdfOutput,
-} from "../src/shared/exportPdfOutputSchema.js";
-import {
-  ShareLinkOutputSchema,
-  buildShareLinkOutput,
-} from "../src/shared/shareLinkOutputSchema.js";
+import { RenderOptionsOutputSchema } from "../src/shared/renderOptionsOutputSchema.js";
+import { RenderPreviewOutputSchema } from "../src/shared/renderPreviewOutputSchema.js";
+import { ExportHtmlOutputSchema } from "../src/shared/exportHtmlOutputSchema.js";
+import { ExportPdfOutputSchema } from "../src/shared/exportPdfOutputSchema.js";
+import { ShareLinkOutputSchema } from "../src/shared/shareLinkOutputSchema.js";
 
 describe("RenderOptionsOutputSchema", () => {
   test("accepts the canonical envelope shape", () => {
-    const env = buildRenderOptionsOutput();
+    const env = {
+      ok: true,
+      options: {
+        fonts: ["Inter"],
+        frameworks: ["spectre"],
+        docEngines: ["none"],
+        pageSizes: ["A4"],
+        orientations: ["portrait"],
+        margins: ["normal"],
+        surfaceModes: ["doc"],
+      },
+      defaults: {
+        font: "Inter",
+        docEngine: "none",
+        surfaceMode: "doc",
+        pageSize: "A4",
+        orientation: "portrait",
+      },
+    };
     expect(env.ok).toBe(true);
     expect(env.options.fonts.length).toBeGreaterThan(0);
     expect(env.options.frameworks).toContain("spectre");
@@ -211,7 +215,7 @@ describe("RenderOptionsOutputSchema", () => {
 
 describe("RenderPreviewOutputSchema", () => {
   test("accepts canonical envelope", () => {
-    const env = buildRenderPreviewOutput({ documentId: "doc-1" });
+    const env = { ok: true, kind: "preview", documentId: "doc-1" };
     expect(env.ok).toBe(true);
     expect(env.kind).toBe("preview");
     expect(env.documentId).toBe("doc-1");
@@ -232,10 +236,12 @@ describe("RenderPreviewOutputSchema", () => {
 
 describe("ExportHtmlOutputSchema", () => {
   test("accepts canonical envelope", () => {
-    const env = buildExportHtmlOutput({
+    const env = {
+      ok: true,
       documentId: "doc-1",
+      format: "html",
       downloadUrl: "blob:abc",
-    });
+    };
     expect(env.ok).toBe(true);
     expect(env.format).toBe("html");
     expect(env.documentId).toBe("doc-1");
@@ -261,7 +267,7 @@ describe("ExportHtmlOutputSchema", () => {
 
 describe("ExportPdfOutputSchema", () => {
   test("accepts canonical envelope", () => {
-    const env = buildExportPdfOutput({ documentId: "doc-1", pageCount: 5 });
+    const env = { ok: true, documentId: "doc-1", format: "pdf", pageCount: 5 };
     expect(env.ok).toBe(true);
     expect(env.format).toBe("pdf");
     expect(env.pageCount).toBe(5);
@@ -286,11 +292,12 @@ describe("ExportPdfOutputSchema", () => {
 
 describe("ShareLinkOutputSchema", () => {
   test("accepts canonical envelope", () => {
-    const env = buildShareLinkOutput({
+    const env = {
+      ok: true,
       documentId: "doc-1",
       shareUrl: "https://flatwrite.md/s/abc",
       expiresAt: "2026-08-01T00:00:00Z",
-    });
+    };
     expect(env.ok).toBe(true);
     expect(env.shareUrl).toContain("flatwrite.md");
     expect(env.expiresAt).toBe("2026-08-01T00:00:00Z");

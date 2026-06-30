@@ -29,10 +29,28 @@
  * this script does not need to change.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+/**
+ * Atomic file write: write the payload to `<path>.tmp`, then rename
+ * it over the destination. A crash mid-write leaves the previous
+ * destination untouched (or no file if none existed) rather than a
+ * half-written JSON blob. Best-effort cleanup of the temp file on
+ * rename failure.
+ */
+function writeAtomic(path, contents) {
+  const tmpPath = `${path}.tmp`;
+  writeFileSync(tmpPath, contents, "utf-8");
+  try {
+    renameSync(tmpPath, path);
+  } catch (e) {
+    try { unlinkSync(tmpPath); } catch {}
+    throw e;
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
@@ -56,7 +74,8 @@ try {
   if (!existsSync(DIST_SHARED)) {
     throw new Error(
       `${DIST_SHARED} not found.\n` +
-        "Run `bun run build` (which runs `tsc` first) before this script.",
+        "Run `bun run build` (which runs `tsc` first) before this script.\n" +
+        "Missing module: mcpShared (the central tool/schema source).",
     );
   }
 
@@ -66,23 +85,35 @@ try {
   // output — the server-side MCP tools import the Zod schema directly,
   // and the manifest gets the derived JSON-Schema injected at build
   // time.
+  //
+  // Each path is existence-checked before the dynamic import so a
+  // missing dist file (e.g. an interrupted `bun run build`) produces
+  // a clear "Run `bun run build` first" message that names which
+  // schema is affected, instead of an opaque ERR_MODULE_NOT_FOUND.
   // -------------------------------------------------------------------------
-  const { RenderOutputSchema } = await import(DIST_RENDER_OUTPUT);
-  const { RenderOptionsOutputSchema } = await import(
-    resolve(__dirname, "../dist/shared/renderOptionsOutputSchema.js")
-  );
-  const { RenderPreviewOutputSchema } = await import(
-    resolve(__dirname, "../dist/shared/renderPreviewOutputSchema.js")
-  );
-  const { ExportHtmlOutputSchema } = await import(
-    resolve(__dirname, "../dist/shared/exportHtmlOutputSchema.js")
-  );
-  const { ExportPdfOutputSchema } = await import(
-    resolve(__dirname, "../dist/shared/exportPdfOutputSchema.js")
-  );
-  const { ShareLinkOutputSchema } = await import(
-    resolve(__dirname, "../dist/shared/shareLinkOutputSchema.js")
-  );
+  const SCHEMA_DIST_PATHS = {
+    RenderOutputSchema: resolve(__dirname, "../dist/shared/renderOutputSchema.js"),
+    RenderOptionsOutputSchema: resolve(__dirname, "../dist/shared/renderOptionsOutputSchema.js"),
+    RenderPreviewOutputSchema: resolve(__dirname, "../dist/shared/renderPreviewOutputSchema.js"),
+    ExportHtmlOutputSchema: resolve(__dirname, "../dist/shared/exportHtmlOutputSchema.js"),
+    ExportPdfOutputSchema: resolve(__dirname, "../dist/shared/exportPdfOutputSchema.js"),
+    ShareLinkOutputSchema: resolve(__dirname, "../dist/shared/shareLinkOutputSchema.js"),
+  };
+  for (const [name, path] of Object.entries(SCHEMA_DIST_PATHS)) {
+    if (!existsSync(path)) {
+      throw new Error(
+        `${path} not found.\n` +
+        "Run `bun run build` (which runs `tsc` first) before this script.\n" +
+        `Missing schema: ${name}.`,
+      );
+    }
+  }
+  const { RenderOutputSchema } = await import(SCHEMA_DIST_PATHS.RenderOutputSchema);
+  const { RenderOptionsOutputSchema } = await import(SCHEMA_DIST_PATHS.RenderOptionsOutputSchema);
+  const { RenderPreviewOutputSchema } = await import(SCHEMA_DIST_PATHS.RenderPreviewOutputSchema);
+  const { ExportHtmlOutputSchema } = await import(SCHEMA_DIST_PATHS.ExportHtmlOutputSchema);
+  const { ExportPdfOutputSchema } = await import(SCHEMA_DIST_PATHS.ExportPdfOutputSchema);
+  const { ShareLinkOutputSchema } = await import(SCHEMA_DIST_PATHS.ShareLinkOutputSchema);
 
   const sharedSrc = readFileSync(DIST_SHARED, "utf-8");
 
@@ -200,9 +231,17 @@ try {
     app: [HANDLER_APPS].filter(Boolean),
   };
 
-  mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
-
-  let written = 0;
+  // -------------------------------------------------------------------------
+  // Build every manifest in memory, validate in place, THEN write. A
+  // drift regression (e.g. a sentinel that didn't resolve, or a tool
+  // with an empty outputSchema) now leaves public/ untouched instead
+  // of writing broken JSON files that the validator then rejects.
+  //
+  // The runtime-tools / version.json payload is derived from the same
+  // already-validated manifests, so no separate runtime-module shape
+  // check is needed.
+  // -------------------------------------------------------------------------
+  const builtManifests = [];
   const runtimeToolsBySurface = {};
 
   for (const surface of REGISTERED_SURFACES) {
@@ -217,37 +256,32 @@ try {
     const manifest = generateManifest(surface.id, tools, handlers, {
       status: surface.status,
     });
-    // manifestFile is `.well-known/model-context.<surface>.json`; strip
-    // the leading `.well-known/` to get the path under PUBLIC_WELL_KNOWN.
-    const relativePath = surface.manifestFile.replace(/^\.well-known\//, "");
-    const outPath = resolve(PUBLIC_WELL_KNOWN, relativePath);
-    writeFileSync(outPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-    console.log(
-      `  wrote ${relative(REPO_ROOT, outPath)} (${tools.length} tool${
-        tools.length === 1 ? "" : "s"
-      }, status=${surface.status})`,
+    const missing = manifest.tools.filter(
+      (t) => !t.outputSchema || Object.keys(t.outputSchema).length === 0,
     );
-    written++;
-
-    // Collect the manifest's tool definitions (without execute handlers)
-    // for the runtime module. webmcp.js imports this and binds execute
-    // handlers to each tool by name.
+    if (missing.length > 0) {
+      const names = missing.map((t) => t.name).join(", ");
+      throw new Error(
+        `Missing outputSchema on ${names} in ${surface.id} manifest (in-memory)`,
+      );
+    }
+    builtManifests.push({ surface, manifest, relativePath: surface.manifestFile.replace(/^\.well-known\//, "") });
     runtimeToolsBySurface[surface.id] = manifest.tools;
   }
 
-// ---------------------------------------------------------------------------
-// Emit the runtime tool definitions module (public/webmcp-tools.js).
-// This is the single source of truth for tool metadata at runtime —
-// webmcp.js imports DOC_TOOLS and APP_TOOLS from here and only adds
-// execute handlers. Eliminates hand-sync between manifests and the
-// page-side registerTool() calls.
-//
-// A // @version header is written so maintainers can verify freshness
-// at a glance. public/version.json carries the same ID for tooling.
-// ---------------------------------------------------------------------------
-const BUILD_ID = process.env.BUILD_ID || String(Math.floor(Date.now() / 1000));
-const RUNTIME_TOOLS_PATH = resolve(REPO_ROOT, "public/webmcp-tools.js");
-const LICENSE_HEADER = `/**
+  // ---------------------------------------------------------------------------
+  // Emit the runtime tool definitions module (public/webmcp-tools.js).
+  // This is the single source of truth for tool metadata at runtime —
+  // webmcp.js imports DOC_TOOLS and APP_TOOLS from here and only adds
+  // execute handlers. Eliminates hand-sync between manifests and the
+  // page-side registerTool() calls.
+  //
+  // A // @version header is written so maintainers can verify freshness
+  // at a glance. public/version.json carries the same ID for tooling.
+  // ---------------------------------------------------------------------------
+  const BUILD_ID = process.env.BUILD_ID || String(Math.floor(Date.now() / 1000));
+  const RUNTIME_TOOLS_PATH = resolve(REPO_ROOT, "public/webmcp-tools.js");
+  const LICENSE_HEADER = `/**
  * flatwrite.md - Minimalist Markdown Editor
  *
  * Copyright (C) 2026 Mahesh Shantaram
@@ -264,7 +298,7 @@ const LICENSE_HEADER = `/**
  */
 `;
 
-const runtimeModule = `${LICENSE_HEADER}// Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
+  const runtimeModule = `${LICENSE_HEADER}// Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
 // @version ${BUILD_ID}
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
@@ -273,55 +307,50 @@ export const DOC_TOOLS = ${JSON.stringify(runtimeToolsBySurface.doc ?? [], null,
 
 export const APP_TOOLS = ${JSON.stringify(runtimeToolsBySurface.app ?? [], null, 2)};
 `;
-writeFileSync(RUNTIME_TOOLS_PATH, runtimeModule, "utf-8");
-console.log(
-  `  wrote ${relative(REPO_ROOT, RUNTIME_TOOLS_PATH)} (runtime tool definitions, @version ${BUILD_ID})`,
-);
 
-// ---------------------------------------------------------------------------
-// Emit public/version.json — informational build ID for cache-bust
-// tooling. The ?v= strings in index.html remain the source of truth
-// for client-side cache busting; this file is for build verification.
-// ---------------------------------------------------------------------------
-const VERSION_PATH = resolve(REPO_ROOT, "public/version.json");
-writeFileSync(
-  VERSION_PATH,
-  JSON.stringify({ "webmcp-tools": BUILD_ID }, null, 2) + "\n",
-  "utf-8",
-);
-console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
+  // ---------------------------------------------------------------------------
+  // Emit public/version.json — informational build ID for cache-bust
+  // tooling. The ?v= strings in index.html remain the source of truth
+  // for client-side cache busting; this file is for build verification.
+  // ---------------------------------------------------------------------------
+  const VERSION_PATH = resolve(REPO_ROOT, "public/version.json");
+  const versionJson = JSON.stringify({ "webmcp-tools": BUILD_ID }, null, 2) + "\n";
 
-// ---------------------------------------------------------------------------
-// Post-build validation: verify every tool has a non-empty outputSchema
-// in both generated manifests. (Originally scoped to render_-prefixed
-// tools; expanded to all tools once the sentinel pattern generalized.)
-// ---------------------------------------------------------------------------
-function validateOutputSchemas(manifestPath, surfaceName) {
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  const missing = manifest.tools.filter(
-    (t) => !t.outputSchema || Object.keys(t.outputSchema).length === 0,
-  );
-  if (missing.length > 0) {
-    const names = missing.map((t) => t.name).join(", ");
-    throw new Error(
-      `Missing outputSchema on ${names} in ${surfaceName} manifest (${relative(REPO_ROOT, manifestPath)})`,
+  // -------------------------------------------------------------------------
+  // All payloads are now valid in memory. mkdir + write atomically (per
+  // file: write to *.tmp, then rename) so a mid-write crash leaves the
+  // previous successful artifacts in place rather than half-written
+  // JSON. mkdirSync(..., { recursive: true }) is a no-op if the
+  // directory already exists.
+  // -------------------------------------------------------------------------
+  mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
+  for (const { surface, manifest, relativePath } of builtManifests) {
+    const outPath = resolve(PUBLIC_WELL_KNOWN, relativePath);
+    writeAtomic(outPath, JSON.stringify(manifest, null, 2) + "\n");
+    console.log(
+      `  wrote ${relative(REPO_ROOT, outPath)} (${manifest.tools.length} tool${
+        manifest.tools.length === 1 ? "" : "s"
+      }, status=${surface.status})`,
     );
   }
-}
+  writeAtomic(RUNTIME_TOOLS_PATH, runtimeModule);
+  console.log(
+    `  wrote ${relative(REPO_ROOT, RUNTIME_TOOLS_PATH)} (runtime tool definitions, @version ${BUILD_ID})`,
+  );
+  writeAtomic(VERSION_PATH, versionJson);
+  console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
 
-validateOutputSchemas(
-  resolve(PUBLIC_WELL_KNOWN, "model-context.docs.json"),
-  "docs",
-);
-validateOutputSchemas(
-  resolve(PUBLIC_WELL_KNOWN, "model-context.apps.json"),
-  "apps",
-);
-console.log("\u2713 All tools have outputSchema (docs + apps)");
+  console.log(
+    `\u2713 All tools have outputSchema (${builtManifests.length} surface${
+      builtManifests.length === 1 ? "" : "s"
+    } validated before write)`,
+  );
 
-console.log(
-  `build-manifest: ${written} manifest file${written === 1 ? "" : "s"} written + 1 runtime module.`,
-);
+  console.log(
+    `build-manifest: ${builtManifests.length} manifest file${
+      builtManifests.length === 1 ? "" : "s"
+    } written + 1 runtime module.`,
+  );
 } catch (e) {
   console.error(`build-manifest: ${e.message}`);
   process.exit(1);

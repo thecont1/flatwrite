@@ -15,8 +15,8 @@
  */
 
 /**
- * Zod schema and builder for the `export_document_html` tool's success
- * envelope. Mirrors the previously hand-written EXPORT_HTML_OUTPUT_SCHEMA.
+ * Zod schema for the `export_document_html` tool's success envelope.
+ * Mirrors the previously hand-written EXPORT_HTML_OUTPUT_SCHEMA.
  *
  * `format` is the literal `"html"`. `downloadUrl` is the temporary
  * blob URL created by the browser-side export handler.
@@ -41,23 +41,3 @@ export const ExportHtmlOutputSchema = z
   .describe('Result of exporting the document as HTML.');
 
 export type ExportHtmlOutput = z.infer<typeof ExportHtmlOutputSchema>;
-
-/**
- * Build an HTML-export envelope. `format` is hard-coded to `"html"`.
- */
-export function buildExportHtmlOutput(
-  args: {
-    documentId: string;
-    downloadUrl?: string;
-    warnings?: string[];
-  },
-): ExportHtmlOutput {
-  const envelope = {
-    ok: true,
-    documentId: args.documentId,
-    format: 'html' as const,
-    ...(args.downloadUrl !== undefined ? { downloadUrl: args.downloadUrl } : {}),
-    ...(args.warnings !== undefined ? { warnings: args.warnings } : {}),
-  };
-  return ExportHtmlOutputSchema.parse(envelope);
-}

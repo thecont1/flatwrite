@@ -357,6 +357,15 @@ Before this pattern, tools returned free-form strings or HTML blobs. An agent ha
 
 This is what the WebMCP scanner checks for when grading a site's MCP implementation. Every FlatWrite tool has an `outputSchema` with at least one required top-level field so agents can pre-validate returned data.
 
+### Schema metadata fields
+
+The output schemas in the published manifests are derived from Zod via `z.toJSONSchema()`. Compared to the previously hand-written JSON Schema constants, this introduces two cosmetic differences:
+
+- A top-level `$schema: "https://json-schema.org/draft/2020-12/schema"` URL is now present in every output schema block.
+- The hand-written `title` field (e.g. `"title": "RenderOutput"`) is no longer emitted.
+
+Both differences are also captured by the `test/__snapshots__/manifest-baseline.json` regression gate — any drift fails CI before merge. External consumers that relied on `title` should use the schema's top-level `description` (always present, derived from the Zod `.describe()` call) or the tool's `name` instead.
+
 ---
 
 ## 8. Error handling

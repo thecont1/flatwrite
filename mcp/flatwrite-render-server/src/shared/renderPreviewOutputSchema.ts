@@ -15,9 +15,8 @@
  */
 
 /**
- * Zod schema and builder for the `render_markdown_preview` tool's
- * success envelope. Mirrors the previously hand-written
- * RENDER_PREVIEW_OUTPUT_SCHEMA.
+ * Zod schema for the `render_markdown_preview` tool's success envelope.
+ * Mirrors the previously hand-written RENDER_PREVIEW_OUTPUT_SCHEMA.
  *
  * Note: `kind` is the literal `"preview"`, NOT `"html"` like the
  * main render_markdown tool — these are distinct modalities even
@@ -42,22 +41,3 @@ export const RenderPreviewOutputSchema = z
   .describe('Result of rendering markdown into the editor preview pane.');
 
 export type RenderPreviewOutput = z.infer<typeof RenderPreviewOutputSchema>;
-
-/**
- * Build a preview envelope. Pass optional documentId and warnings;
- * `kind` is hard-coded to `"preview"`.
- */
-export function buildRenderPreviewOutput(
-  args: {
-    documentId?: string;
-    warnings?: string[];
-  } = {},
-): RenderPreviewOutput {
-  const envelope = {
-    ok: true,
-    kind: 'preview' as const,
-    ...(args.documentId !== undefined ? { documentId: args.documentId } : {}),
-    ...(args.warnings !== undefined ? { warnings: args.warnings } : {}),
-  };
-  return RenderPreviewOutputSchema.parse(envelope);
-}

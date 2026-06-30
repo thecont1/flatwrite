@@ -15,9 +15,9 @@
  */
 
 /**
- * Zod schema and builder for the `list_render_options` tool's success
- * envelope. Mirrors the previously hand-written RENDER_OPTIONS_OUTPUT_SCHEMA
- * so the manifest and any server-side caller stay in sync.
+ * Zod schema for the `list_render_options` tool's success envelope.
+ * Mirrors the previously hand-written RENDER_OPTIONS_OUTPUT_SCHEMA so
+ * the manifest and any server-side caller stay in sync.
  *
  * The build-manifest.mjs script derives a JSON-Schema object from
  * `RenderOptionsOutputSchema` and injects it into the manifest at
@@ -26,15 +26,6 @@
  */
 
 import { z } from 'zod';
-import {
-  ALLOWED_FONT_FAMILIES,
-  ALLOWED_APP_FRAMEWORKS,
-  ALLOWED_DOC_ENGINES,
-  ALLOWED_PAGE_SIZES,
-  ALLOWED_ORIENTATIONS,
-  ALLOWED_MARGINS,
-  ALLOWED_SURFACE_MODES,
-} from './mcpShared.js';
 
 export const RenderOptionsOutputSchema = z
   .object({
@@ -64,32 +55,3 @@ export const RenderOptionsOutputSchema = z
   .describe('Supported values for the render_markdown tool, wrapped in a typed envelope.');
 
 export type RenderOptionsOutput = z.infer<typeof RenderOptionsOutputSchema>;
-
-/**
- * Build a render-options envelope from the runtime allowlist
- * constants. The defaults block is derived from the first element
- * of each allowlist (the runtime source of truth) so the schema
- * stays in lock-step with the renderer.
- */
-export function buildRenderOptionsOutput(): RenderOptionsOutput {
-  const envelope = {
-    ok: true,
-    options: {
-      fonts: [...ALLOWED_FONT_FAMILIES],
-      frameworks: [...ALLOWED_APP_FRAMEWORKS],
-      docEngines: [...ALLOWED_DOC_ENGINES],
-      pageSizes: [...ALLOWED_PAGE_SIZES],
-      orientations: [...ALLOWED_ORIENTATIONS],
-      margins: [...ALLOWED_MARGINS],
-      surfaceModes: [...ALLOWED_SURFACE_MODES],
-    },
-    defaults: {
-      font: ALLOWED_FONT_FAMILIES[0],
-      docEngine: ALLOWED_DOC_ENGINES[0],
-      surfaceMode: ALLOWED_SURFACE_MODES[0],
-      pageSize: ALLOWED_PAGE_SIZES[0],
-      orientation: ALLOWED_ORIENTATIONS[0],
-    },
-  };
-  return RenderOptionsOutputSchema.parse(envelope);
-}
