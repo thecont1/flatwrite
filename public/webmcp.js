@@ -31,6 +31,7 @@ import {
   validateFontFamily,
   validateMarkdownUrl,
   RENDER_OUTPUT_SCHEMA,
+  RENDER_OPTIONS_OUTPUT_SCHEMA,
   ALLOWED_FONT_FAMILIES,
   ALLOWED_APP_FRAMEWORKS,
   ALLOWED_DOC_ENGINES,
@@ -38,7 +39,7 @@ import {
   ALLOWED_PAGE_SIZES,
   ALLOWED_ORIENTATIONS,
   ALLOWED_MARGINS,
-} from './webmcp-shared.js?v=1';
+} from './webmcp-shared.js?v=2';
 
 // WebMCP spec: the spec entry point is `document.modelContext`. The
 // current webmachinelearning/webmcp README documents that shape, and
@@ -87,13 +88,13 @@ else {
   var STYLE_SCHEMA = {
     framework: {
       type: 'string',
-      examples: [...ALLOWED_APP_FRAMEWORKS],
-      description: 'Optional UI framework applied when surfaceMode="app". Server validates against the bundled inventory.',
+      enum: [...ALLOWED_APP_FRAMEWORKS],
+      description: 'Optional UI framework applied when surfaceMode="app". Must be one of the bundled frameworks.',
     },
     fontFamily: {
       type: 'string',
-      examples: [...ALLOWED_FONT_FAMILIES],
-      description: 'Optional font family — must be a bundled family. Defaults to Inter. Server validates against the bundled inventory.',
+      enum: [...ALLOWED_FONT_FAMILIES],
+      description: 'Optional font family — must be one of the bundled families. Defaults to Inter.',
     },
     fontSize: {
       oneOf: [
@@ -160,12 +161,12 @@ else {
     },
     docEngine: {
       type: 'string',
-      examples: [...ALLOWED_DOC_ENGINES],
-      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules. Server validates against the bundled inventory.',
+      enum: [...ALLOWED_DOC_ENGINES],
+      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
     },
     surfaceMode: {
       type: 'string',
-      examples: [...ALLOWED_SURFACE_MODES],
+      enum: [...ALLOWED_SURFACE_MODES],
       description: 'Optional surface mode — "doc" or "app". "app" unlocks the framework picker.',
     },
     theme: {
@@ -249,7 +250,13 @@ else {
       e2.code = 'RENDER_FAILED';
       throw e2;
     }
-    return parsed;
+    // Return in the WebMCP structured-content format so the declared
+    // outputSchema is actually honored. Agents see the JSON in the text
+    // content block and the validated object in structuredContent.
+    return {
+      content: [{ type: 'text', text: 'Rendered markdown as HTML head/body fragments' }],
+      structuredContent: parsed,
+    };
   }
 
   // Pre-warm the token at page load so the first tool call is fast.
@@ -319,6 +326,39 @@ else {
         body = buildRawMarkdownBody(args.markdown, args);
       }
       return callRender(body);
+    },
+  });
+
+  // === list_render_options ===
+  mc.registerTool({
+    name: 'list_render_options',
+    description:
+      'Return the supported fonts, UI frameworks, document engines, page sizes, orientations, ' +
+      'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
+      'you need to know which enum values are valid.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+    outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
+    annotations: {
+      readOnlyHint: true,
+    },
+    execute: function () {
+      return {
+        content: [{ type: 'text', text: 'Supported render options' }],
+        structuredContent: {
+          fonts: ALLOWED_FONT_FAMILIES,
+          frameworks: ALLOWED_APP_FRAMEWORKS,
+          docEngines: ALLOWED_DOC_ENGINES,
+          pageSizes: ALLOWED_PAGE_SIZES,
+          orientations: ALLOWED_ORIENTATIONS,
+          margins: ALLOWED_MARGINS,
+          surfaceModes: ALLOWED_SURFACE_MODES,
+        },
+      };
     },
   });
 }
