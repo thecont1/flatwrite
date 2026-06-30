@@ -1,3 +1,19 @@
+/**
+ * flatwrite.md - Minimalist Markdown Editor
+ * 
+ * Copyright (C) 2026 Mahesh Shantaram
+ * Sole Proprietary Owner. All Rights Reserved.
+ * 
+ * This file is part of flatwrite.md.
+ * flatwrite.md is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * For commercial, closed-source embedding, and SaaS deployment exemptions,
+ * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
+ */
+
 // core/doc-engines.js
 // Document engines and page layout helpers for the doc preview.
 

@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 /**
+ * flatwrite.md - Minimalist Markdown Editor
+ * 
+ * Copyright (C) 2026 Mahesh Shantaram
+ * Sole Proprietary Owner. All Rights Reserved.
+ * 
+ * This file is part of flatwrite.md.
+ * flatwrite.md is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * For commercial, closed-source embedding, and SaaS deployment exemptions,
+ * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
+ */
+
+/**
  * Generate `.well-known/model-context.<surface>.json` manifests from
  * the canonical schema source in src/shared/mcpShared.ts.
  *
@@ -138,7 +154,24 @@ for (const surface of REGISTERED_SURFACES) {
 // ---------------------------------------------------------------------------
 const BUILD_ID = process.env.BUILD_ID || String(Math.floor(Date.now() / 1000));
 const RUNTIME_TOOLS_PATH = resolve(REPO_ROOT, "public/webmcp-tools.js");
-const runtimeModule = `// Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
+const LICENSE_HEADER = `/**
+ * flatwrite.md - Minimalist Markdown Editor
+ *
+ * Copyright (C) 2026 Mahesh Shantaram
+ * Sole Proprietary Owner. All Rights Reserved.
+ *
+ * This file is part of flatwrite.md.
+ * flatwrite.md is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * For commercial, closed-source embedding, and SaaS deployment exemptions,
+ * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
+ */
+`;
+
+const runtimeModule = `${LICENSE_HEADER}// Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
 // @version ${BUILD_ID}
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
