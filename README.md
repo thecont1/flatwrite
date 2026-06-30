@@ -1,10 +1,10 @@
 # FlatWrite
 
+> **Write once, style many worlds.**
+
 Markdown is one of the greatest cross-platform information formats ever invented. Ironically, while it is easy to read, it is also somehow difficult to read.
 
 **FlatWrite** makes it easy — and actually pleasant — to work with markdown files. It renders your markdown in the most pleasing, customisable viewing format. From there, it is one quick step to becoming the markdown editor you reach for by default. And once the file looks and reads the way you love it, export it as **HTML** or **PDF**, or send it around as a **shareable URL**.
-
-> **Write once, style many worlds.**
 
 ## What it does
 
@@ -13,11 +13,11 @@ Markdown is one of the greatest cross-platform information formats ever invented
 - **View** your rendered markdown with a clean, document-first preview.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
 - **Export** to `.md`, `.html`, or `.pdf` whenever you are ready.
-- **Share** your document as a real URL — the markdown is stored in an online pastebin and returns a short link that anyone can open.
+- **Share** your document as a real URL
 
 ## Share & publish
 
-The share button is the jewel in the crown. Instead of stuffing a long document into a URL hash, FlatWrite saves the markdown to a paste bin backend and returns a short, readable link. The recipient can open the link and immediately see the document in the same preview style you chose.
+**The share button is the jewel in the crown.** Instead of stuffing a long document into a URL hash, FlatWrite saves the markdown to a paste bin backend and returns a short, readable link. The recipient can open the link and immediately see the document in the same preview style you chose.
 
 - Links are short enough to paste into a chat, email, or a tweet.
 - The document is stored server-side, so it works with large files and survives URL-length limits.
@@ -36,21 +36,16 @@ The preview is built around a polished document experience with fine-grained con
   - **Comfortaa** (variable, 300–700) — a friendly geometric
   - **Lato** (300 / 400 / 700) — a humanist sans
   - **Unbounded** (variable, 200–900) — an expressive display sans
+
 - Pick a font, then tune **size**, **weight**, and **line spacing** until the reading rhythm feels right. Adjust **UI zoom** when the chrome needs to be a little larger or smaller. All fonts are self-hosted and bundled, so the rendered output has no external font dependency.
 
 ## Get started
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.
 
-If you want to run your own instance, the app is a small Node.js/Vercel project:
+Then either paste a markdown file into the text area, open a markdown file that's already on your hard disk, or open one from a URL. 
 
-```bash
-bun run start
-# or
-node public/server.js
-```
-
-Then open the printed URL in a browser. To use the **Share** feature locally, you will need a compatible paste backend and `vercel dev`.
+Make any edits to the raw markdown in **Edit** mode, then switch to **View** mode to apply style changes, then click on **Read** to see the final version in an uncluttered layout. When you click on the **Share** icon, the URL gets automatically copied to your clipboard.
 
 ## For developers
 
@@ -69,6 +64,3 @@ The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 
 Because most editors either look like a code playground or a publishing pipeline. FlatWrite sits somewhere sweeter: close enough to the raw text that you still control it, but polished enough that you actually enjoy reading and sharing what you create.
 
----
-
-© 2026 [Mahesh Shantaram](https://thecontrarian.in)
