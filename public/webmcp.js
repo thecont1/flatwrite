@@ -38,7 +38,7 @@ import {
   ALLOWED_PAGE_SIZES,
   ALLOWED_ORIENTATIONS,
   ALLOWED_MARGINS,
-} from './webmcp-shared.js';
+} from './webmcp-shared.js?v=1';
 
 // WebMCP spec: the spec entry point is `document.modelContext`. The
 // current webmachinelearning/webmcp README documents that shape, and
@@ -79,20 +79,21 @@ else {
 
   // ---- Shared schema definitions ----
   //
-  // Both tools return the same { head, body } envelope and accept the same
-  // style options. Define the shape once so the two page-side schemas stay
-  // in sync and mirror the .well-known/model-context.docs.json manifest.
+  // The render tool returns a { head, body } envelope and accepts the same
+  // style options regardless of whether the markdown is inline or fetched
+  // from a URL. Define the shape once so the page-side schema stays in sync
+  // with the .well-known/model-context.docs.json manifest.
   var OUTPUT_SCHEMA = RENDER_OUTPUT_SCHEMA;
   var STYLE_SCHEMA = {
     framework: {
       type: 'string',
-      enum: [...ALLOWED_APP_FRAMEWORKS],
-      description: 'Optional UI framework applied when surfaceMode="app".',
+      examples: [...ALLOWED_APP_FRAMEWORKS],
+      description: 'Optional UI framework applied when surfaceMode="app". Server validates against the bundled inventory.',
     },
     fontFamily: {
       type: 'string',
-      enum: [...ALLOWED_FONT_FAMILIES],
-      description: 'Optional font family — must be a bundled family. Defaults to Inter.',
+      examples: [...ALLOWED_FONT_FAMILIES],
+      description: 'Optional font family — must be a bundled family. Defaults to Inter. Server validates against the bundled inventory.',
     },
     fontSize: {
       oneOf: [
@@ -159,12 +160,12 @@ else {
     },
     docEngine: {
       type: 'string',
-      enum: [...ALLOWED_DOC_ENGINES],
-      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
+      examples: [...ALLOWED_DOC_ENGINES],
+      description: 'Optional document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules. Server validates against the bundled inventory.',
     },
     surfaceMode: {
       type: 'string',
-      enum: [...ALLOWED_SURFACE_MODES],
+      examples: [...ALLOWED_SURFACE_MODES],
       description: 'Optional surface mode — "doc" or "app". "app" unlocks the framework picker.',
     },
     theme: {
@@ -259,48 +260,15 @@ else {
   mc.registerTool({
     name: 'render_markdown',
     description:
-      'Render raw markdown into FlatWrite-styled HTML <head> and <body> fragments, ' +
-      'with optional typography and page-layout controls. Returns { head, body } — ' +
-      'head is CSS to inject, body is the document fragment.',
+      'Render markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional ' +
+      'typography and page-layout controls. Provide either the raw markdown inline (`markdown`) ' +
+      'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. The Worker ' +
+      'validates URLs against raw.githubusercontent.com / raw.gitlab.com / bitbucket.org and ' +
+      'enforces a size cap. Returns { head, body } — head is CSS to inject, body is the document fragment.',
     inputSchema: {
       type: 'object',
       properties: {
         markdown: { type: 'string', description: 'Raw markdown content to render' },
-        ...STYLE_SCHEMA,
-      },
-      required: ['markdown'],
-    },
-    outputSchema: OUTPUT_SCHEMA,
-    annotations: {
-      readOnlyHint: true,
-    },
-    execute: function (args) {
-      if (!args || typeof args.markdown !== 'string' || args.markdown.length === 0) {
-        return Promise.reject(new Error('markdown is required and must be a non-empty string [INVALID_INPUT]'));
-      }
-      var fontCheck = validateFontFamily(args.fontFamily);
-      if (!fontCheck.ok) {
-        return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
-      }
-      var body = buildRawMarkdownBody(args.markdown, args);
-      return callRender(body);
-    },
-  });
-
-  // === render_markdown_from_url ===
-  mc.registerTool({
-    name: 'render_markdown_from_url',
-    description:
-      'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, bitbucket.org) ' +
-      'and render it into FlatWrite-styled HTML <head> and <body> fragments, ' +
-      'with the same optional typography and page-layout controls as render_markdown. ' +
-      'Returns { head, body }.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        // Canonical name: matches the MCP server contract and the
-        // manifest. The deprecated `url` alias is still accepted by
-        // the handler for backward compatibility with older agents.
         markdownUrl: {
           type: 'string',
           format: 'uri',
@@ -308,30 +276,48 @@ else {
         },
         ...STYLE_SCHEMA,
       },
-      required: ['markdownUrl'],
+      required: [],
+      oneOf: [
+        { required: ['markdown'] },
+        { required: ['markdownUrl'] },
+      ],
     },
     outputSchema: OUTPUT_SCHEMA,
     annotations: {
       readOnlyHint: true,
     },
     execute: function (args) {
-      // Accept either the canonical `markdownUrl` or the deprecated
-      // `url` alias. Canonical wins if both are sent.
+      // Accept either inline markdown or a markdown URL. Canonical
+      // markdownUrl wins if both are sent; the deprecated `url` alias
+      // is still accepted for backward compatibility with older agents.
+      var hasMarkdown = args && typeof args.markdown === 'string' && args.markdown.length > 0;
       var rawUrl = (args && typeof args.markdownUrl === 'string' && args.markdownUrl.length > 0)
         ? args.markdownUrl
         : (args && typeof args.url === 'string' ? args.url : '');
-      if (!rawUrl) {
-        return Promise.reject(new Error('markdownUrl is required [INVALID_INPUT]'));
+      var hasUrl = rawUrl.length > 0;
+
+      if (hasMarkdown && hasUrl) {
+        return Promise.reject(new Error('provide only one of markdown or markdownUrl, not both [INVALID_INPUT]'));
       }
-      var urlCheck = validateMarkdownUrl(rawUrl);
-      if (!urlCheck.ok) {
-        return Promise.reject(new Error(urlCheck.message + ' [' + urlCheck.code + ']'));
+      if (!hasMarkdown && !hasUrl) {
+        return Promise.reject(new Error('markdown or markdownUrl is required [INVALID_INPUT]'));
       }
+
       var fontCheck = validateFontFamily(args.fontFamily);
       if (!fontCheck.ok) {
         return Promise.reject(new Error(fontCheck.message + ' [' + fontCheck.code + ']'));
       }
-      var body = buildRemoteMarkdownBody(urlCheck.url, args);
+
+      var body;
+      if (hasUrl) {
+        var urlCheck = validateMarkdownUrl(rawUrl);
+        if (!urlCheck.ok) {
+          return Promise.reject(new Error(urlCheck.message + ' [' + urlCheck.code + ']'));
+        }
+        body = buildRemoteMarkdownBody(urlCheck.url, args);
+      } else {
+        body = buildRawMarkdownBody(args.markdown, args);
+      }
       return callRender(body);
     },
   });
