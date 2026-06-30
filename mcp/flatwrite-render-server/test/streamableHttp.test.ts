@@ -214,7 +214,7 @@ describe("streamableHttpServer — basic transport", () => {
 });
 
 describe("streamableHttpServer — tool behavior parity with stdio", () => {
-  test("render_markdown returns head/body for valid input", async () => {
+  test("render_markdown returns full discriminated envelope for valid input", async () => {
     const sid = await initialize();
     const r = await callRpc(sid, 3, "tools/call", {
       name: "render_markdown",
@@ -222,8 +222,10 @@ describe("streamableHttpServer — tool behavior parity with stdio", () => {
     });
     expect(r.status).toBe(200);
     const result = (r.body as any).result;
-    expect(result.structuredContent.head).toContain("/* mock */");
-    expect(result.structuredContent.body).toContain("# Twin test");
+    expect(result.structuredContent.ok).toBe(true);
+    expect(result.structuredContent.kind).toBe("html");
+    expect(result.structuredContent.artifacts.head).toContain("/* mock */");
+    expect(result.structuredContent.artifacts.body).toContain("# Twin test");
   });
 
   test("friendly aliases translate to canonical frontmatter", async () => {
@@ -233,7 +235,7 @@ describe("streamableHttpServer — tool behavior parity with stdio", () => {
       arguments: { markdown: "hi", fontFamily: "Comfortaa" },
     });
     expect(r.status).toBe(200);
-    expect((r.body as any).result.structuredContent.body).toContain("hi");
+    expect((r.body as any).result.structuredContent.artifacts.body).toContain("hi");
   });
 
   test("invalid fontFamily returns isError with INVALID_FONT_FAMILY code", async () => {
@@ -300,7 +302,7 @@ describe("streamableHttpServer — tool behavior parity with stdio", () => {
     });
     const result = (r.body as any).result;
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent.head).toContain("/* mock */");
+    expect(result.structuredContent.artifacts.head).toContain("/* mock */");
   });
 });
 

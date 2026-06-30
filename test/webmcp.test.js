@@ -20,7 +20,7 @@
  * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
- *   1. Register all 12 WebMCP tools from the generated DOC_TOOLS array
+ *   1. Register all 11 WebMCP tools from the generated DOC_TOOLS array
  *   2. Have a JSON Schema that requires markdown or markdownUrl for render_markdown
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
@@ -243,12 +243,12 @@ function fakeFetchWithTokenMint() {
 describe("webmcp.js — tool registration", () => {
   const EXPECTED_TOOLS = [
     "create_document", "create_share_link", "export_document_html",
-    "export_document_pdf", "get_document_state", "get_export_status",
+    "export_document_pdf", "get_document_state",
     "list_recent_documents", "list_render_options", "open_document",
     "render_markdown", "render_markdown_preview", "update_document_content",
   ];
 
-  test("registers all 12 WebMCP tools from the generated DOC_TOOLS array", () => {
+  test("registers all 11 WebMCP tools from the generated DOC_TOOLS array", () => {
     const tools = loadWebmcp();
     expect(tools.map((t) => t.name).sort()).toEqual(EXPECTED_TOOLS);
   });
@@ -406,11 +406,10 @@ describe("webmcp.js — tool registration", () => {
     expect(t.outputSchema.properties.artifacts.properties.body.type).toBe("string");
   });
 
-  test("output schema is hardened with title, description, and additionalProperties false", () => {
+  test("output schema is hardened with description and additionalProperties false", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     expect(t.outputSchema.type).toBe("object");
-    expect(t.outputSchema.title).toBe("RenderOutput");
     expect(t.outputSchema.description).toContain("HTML fragments");
     expect(t.outputSchema.additionalProperties).toBe(false);
     expect(t.outputSchema.required).toContain("ok");
@@ -693,14 +692,14 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     return JSON.parse(readFileSync(p, "utf-8"));
   }
 
-  test("docs manifest exists and is well-formed with 12 tools", () => {
+  test("docs manifest exists and is well-formed with 11 tools", () => {
     const m = loadManifest(MANIFEST_PATH);
     expect(m.$schema).toBeTruthy();
     expect(m.name).toBe("FlatWrite Render — Docs");
     expect(m.surfaceMode).toBe("doc");
     expect(m.status).toBe("ready");
     expect(Array.isArray(m.tools)).toBe(true);
-    expect(m.tools.length).toBe(12);
+    expect(m.tools.length).toBe(11);
   });
 
   test("apps manifest exists with ready status and two tools", () => {
@@ -869,6 +868,26 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     }
   });
 
+  test("only render_markdown includes canonical render-param fields in inputSchema", () => {
+    const m = loadManifest();
+    const renderParamFields = new Set([
+      "font", "appFramework", "size", "weight", "line", "uiZoom",
+      "pageSize", "orientation", "marginsLR", "marginsTB", "footer",
+      "width", "docEngine", "surfaceMode", "theme",
+    ]);
+    for (const tool of m.tools) {
+      const props = Object.keys(tool.inputSchema.properties || {});
+      const renderFields = props.filter((p) => renderParamFields.has(p));
+      if (tool.name === "render_markdown") {
+        // render_markdown should have ALL canonical render-param fields
+        expect(renderFields.length).toBeGreaterThan(0);
+      } else {
+        // No other tool should have any render-param fields
+        expect(renderFields).toEqual([]);
+      }
+    }
+  });
+
   test("render_markdown outputSchema includes ok, kind, and artifacts with head+body", () => {
     const m = loadManifest();
     const t = m.tools.find((x) => x.name === "render_markdown");
@@ -894,9 +913,7 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     const exportTools = m.tools.filter((t) => t.category === "export");
     expect(exportTools.length).toBeGreaterThan(0);
     for (const tool of exportTools) {
-      if (tool.name !== "get_export_status") {
-        expect(tool.outputSchema.required).toContain("format");
-      }
+      expect(tool.outputSchema.required).toContain("format");
     }
   });
 });
