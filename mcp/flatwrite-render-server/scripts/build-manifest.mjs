@@ -53,11 +53,12 @@ const captured = {};
 // eslint-disable-next-line no-new-func
 new Function(
   "captured",
-  `${stripped}\n;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_DOCS_MCP=HANDLER_DOCS_MCP;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
+  `${stripped}\n;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.RENDER_TOOLS_APPS=RENDER_TOOLS_APPS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_DOCS_MCP=HANDLER_DOCS_MCP;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
 )(captured);
 
 const {
   RENDER_TOOLS_DOCS,
+  RENDER_TOOLS_APPS,
   HANDLER_DOCS,
   HANDLER_DOCS_MCP,
   HANDLER_APPS,
@@ -65,7 +66,7 @@ const {
   generateManifest,
 } = captured;
 
-if (!RENDER_TOOLS_DOCS || !REGISTERED_SURFACES || !generateManifest) {
+if (!RENDER_TOOLS_DOCS || !RENDER_TOOLS_APPS || !REGISTERED_SURFACES || !generateManifest) {
   console.error(
     "build-manifest: shared module did not export expected symbols. " +
       "Did the export-strip regex miss something?",
@@ -75,8 +76,7 @@ if (!RENDER_TOOLS_DOCS || !REGISTERED_SURFACES || !generateManifest) {
 
 const TOOLS_BY_SURFACE = {
   doc: RENDER_TOOLS_DOCS,
-  // Apps surface has no tools yet. When Apps ships, add `app: RENDER_TOOLS_APPS`.
-  app: [],
+  app: RENDER_TOOLS_APPS,
 };
 
 /**
