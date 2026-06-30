@@ -624,11 +624,30 @@ flatwrite/
 │   ├── share.js                     ← Share link creation (Dustebin proxy)
 │   └── s.js                         ← Share link retrieval
 │
+├── core/
+│   ├── render.js                    ← Markdown → HTML renderer
+│   ├── font-loader.js               ← Inlines bundled woff2 fonts as data URIs
+│   └── font-inventory.js            ← SINGLE SOURCE OF TRUTH for bundled fonts
+│
+├── scripts/
+│   └── build-fonts-css.mjs          ← Regenerates public/fonts.css from the inventory
+│
 ├── test/
 │   └── webmcp.test.js               ← 47 tests: registration, handlers, parity, scan-oriented
 │
 └── openapi.yaml                     ← OpenAPI spec for the HTTP API
 ```
+
+### Font pipeline
+
+Because the fonts ship as inlined woff2 data URIs, a FlatWrite preview is fully self-contained — no Google Fonts request, no FOIT, no fallback to system-ui for the fonts you actually picked.
+
+The font inventory lives in `core/font-inventory.js` and is consumed by both:
+
+- `core/font-loader.js` — server-side render path that embeds the woff2 as a data URI for `/api/render` and `render.flatwrite.md`.
+- `scripts/build-fonts-css.mjs` — regenerates `public/fonts.css`, which `public/index.html` loads via `<link rel="stylesheet">` for the static preview.
+
+Adding a font means dropping a woff2 in `public/fonts/`, adding an entry to `core/font-inventory.js`, and running `node scripts/build-fonts-css.mjs`. The regression test `test/font-inventory.test.js` cross-checks all three sources (the inventory, the generated CSS, the render-core loader, and the picker allowlist) so they can't drift silently.
 
 ### The single-source-of-truth principle
 
