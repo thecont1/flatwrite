@@ -4,8 +4,8 @@
  * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
- *   1. Register both tools (render_markdown, render_markdown_from_url)
- *   2. Have a JSON Schema that requires the right fields
+ *   1. Register a single render_markdown tool
+ *   2. Have a JSON Schema that requires markdown or markdownUrl
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
  *   5. Pre-flight validate the markdown URL against the allowlist
@@ -52,7 +52,7 @@ function bundleWebmcpForEval() {
     .replace(/export async function /g, "async function ")
     .replace(/export function /g, "function ");
   const webmcp = WEBMCP_JS.replace(
-    /import\s+\{[^}]+\}\s+from\s+['"]\.\/webmcp-shared\.js['"]\s*;?\n/,
+    /import\s+\{[^}]+\}\s+from\s+['"]\.\/webmcp-shared\.js(?:\?[^'"]*)?['"]\s*;?\n/,
     "",
   );
   return shared + "\n" + webmcp;
@@ -220,29 +220,31 @@ function fakeFetchWithTokenMint() {
 }
 
 describe("webmcp.js — tool registration", () => {
-  test("registers both render_markdown and render_markdown_from_url", () => {
+  test("registers a single render_markdown tool", () => {
     const tools = loadWebmcp();
-    expect(tools.map((t) => t.name).sort()).toEqual([
-      "render_markdown",
-      "render_markdown_from_url",
-    ]);
+    expect(tools.map((t) => t.name)).toEqual(["render_markdown"]);
   });
 
-  test("render_markdown input schema requires markdown", () => {
+  test("render_markdown input schema requires markdown or markdownUrl", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
-    expect(t.inputSchema.required).toContain("markdown");
     expect(t.inputSchema.properties.markdown.type).toBe("string");
+    expect(t.inputSchema.properties.markdownUrl.type).toBe("string");
+    expect(t.inputSchema.required).toEqual([]);
+    expect(t.inputSchema.oneOf).toEqual([
+      { required: ["markdown"] },
+      { required: ["markdownUrl"] },
+    ]);
     expect(t.inputSchema.properties.fontFamily.type).toBe("string");
     expect(t.inputSchema.properties.pageSize.type).toBe("string");
   });
 
-  test("render_markdown_from_url input schema requires markdownUrl (canonical)", () => {
+  test("render_markdown input schema accepts deprecated url alias", () => {
     const tools = loadWebmcp();
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     // The canonical name is `markdownUrl`. The deprecated alias `url`
-    // is still accepted by the handler for backward compatibility.
-    expect(t.inputSchema.required).toContain("markdownUrl");
+    // is still accepted by the execute handler for backward compatibility.
+    expect(t.inputSchema.properties.markdownUrl).toBeDefined();
   });
 
   test("tools are marked read-only", () => {
@@ -272,14 +274,8 @@ describe("webmcp.js — tool registration", () => {
     // Reference: nekuda.ai/scripts/webmcp.js does the same.
     const chrome150Tools = loadWebmcp();                  // document.modelContext stubbed
     const chrome149Tools = loadWebmcpChrome149();          // navigator.modelContext stubbed
-    expect(chrome150Tools.map(t => t.name).sort()).toEqual([
-      "render_markdown",
-      "render_markdown_from_url",
-    ]);
-    expect(chrome149Tools.map(t => t.name).sort()).toEqual([
-      "render_markdown",
-      "render_markdown_from_url",
-    ]);
+    expect(chrome150Tools.map(t => t.name).sort()).toEqual(["render_markdown"]);
+    expect(chrome149Tools.map(t => t.name).sort()).toEqual(["render_markdown"]);
     // And the no-op path still works (both namespaces absent).
     const sandbox = {};
     const fn = new Function(
@@ -374,55 +370,41 @@ describe("webmcp.js — tool registration", () => {
     }
   });
 
-  test("render_markdown_from_url shares the same rich style schema as render_markdown", () => {
+  test("output schema is hardened with title, description, and additionalProperties false", () => {
     const tools = loadWebmcp();
-    const a = findTool(tools, "render_markdown").inputSchema.properties;
-    const b = findTool(tools, "render_markdown_from_url").inputSchema.properties;
-    const styleFields = [
-      "framework",
-      "fontFamily",
-      "fontSize",
-      "fontWeight",
-      "lineHeight",
-      "uiZoom",
-      "pageSize",
-      "orientation",
-      "marginsLR",
-      "marginsTB",
-      "footer",
-      "width",
-      "docEngine",
-      "surfaceMode",
-      "theme",
-    ];
-    for (const f of styleFields) {
-      expect(b[f]).toBeDefined();
-      expect(b[f].type || b[f].oneOf).toEqual(a[f].type || a[f].oneOf);
-      if (a[f].enum) expect(b[f].enum).toEqual(a[f].enum);
-      if (a[f].minimum !== undefined) expect(b[f].minimum).toBe(a[f].minimum);
-      if (a[f].maximum !== undefined) expect(b[f].maximum).toBe(a[f].maximum);
-    }
+    const t = findTool(tools, "render_markdown");
+    expect(t.outputSchema.type).toBe("object");
+    expect(t.outputSchema.title).toBe("RenderOutput");
+    expect(t.outputSchema.description).toContain("HTML fragments");
+    expect(t.outputSchema.additionalProperties).toBe(false);
+    expect(t.outputSchema.required).toContain("head");
+    expect(t.outputSchema.required).toContain("body");
   });
 
-  test("style fields carry enums and ranges", () => {
+  test("style fields carry examples or enums and ranges", () => {
     const tools = loadWebmcp();
     for (const t of tools) {
       const p = t.inputSchema.properties;
-      expect(p.fontFamily.enum).toEqual(
+      // Non-critical fields are examples (free-form strings) so the
+      // schema is less restrictive for LLM callers. Server-side validation
+      // still enforces the allowlists.
+      expect(p.fontFamily.examples).toEqual(
         expect.arrayContaining(["Inter", "Comfortaa", "Unbounded"]),
       );
-      expect(p.framework.enum).toEqual(
+      expect(p.framework.examples).toEqual(
         expect.arrayContaining(["spectre", "pico", "chota"]),
       );
+      expect(p.docEngine.examples).toEqual(
+        expect.arrayContaining(["none", "pagedjs", "vivliostyle"]),
+      );
+      expect(p.surfaceMode.examples).toEqual(["doc", "app"]);
+      // CSS/page-geometry fields stay strict enums because they map to
+      // concrete @page rules or presets.
       expect(p.pageSize.enum).toEqual(
         expect.arrayContaining(["A4", "A3", "Letter", "Legal"]),
       );
       expect(p.marginsLR.enum).toEqual(["narrow", "normal", "wide"]);
       expect(p.marginsTB.enum).toEqual(["narrow", "normal", "wide"]);
-      expect(p.docEngine.enum).toEqual(
-        expect.arrayContaining(["none", "pagedjs", "vivliostyle"]),
-      );
-      expect(p.surfaceMode.enum).toEqual(["doc", "app"]);
       expect(p.orientation.enum).toEqual(["portrait", "landscape"]);
       expect(p.fontSize.minimum).toBe(8);
       expect(p.fontSize.maximum).toBe(72);
@@ -435,11 +417,23 @@ describe("webmcp.js — tool registration", () => {
 });
 
 describe("webmcp.js — render_markdown handler", () => {
-  test("rejects empty/missing markdown with INVALID_INPUT", async () => {
+  test("rejects missing/empty markdown and markdownUrl with INVALID_INPUT", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     await expect(t.execute({})).rejects.toThrow(/INVALID_INPUT/);
     await expect(t.execute({ markdown: "" })).rejects.toThrow(/INVALID_INPUT/);
+    await expect(t.execute({ markdownUrl: "" })).rejects.toThrow(/INVALID_INPUT/);
+  });
+
+  test("rejects both markdown and markdownUrl together", async () => {
+    const tools = loadWebmcp();
+    const t = findTool(tools, "render_markdown");
+    await expect(
+      t.execute({
+        markdown: "# Hi",
+        markdownUrl: "https://raw.githubusercontent.com/foo/bar/main/README.md",
+      }),
+    ).rejects.toThrow(/INVALID_INPUT/);
   });
 
   test("rejects unknown fontFamily with INVALID_FONT_FAMILY", async () => {
@@ -466,7 +460,7 @@ describe("webmcp.js — render_markdown handler", () => {
     }
   });
 
-  test("mints a token from /mcp-token and uses X-Mcp-Token (not X-Api-Key)", async () => {
+  test("mints a token from /mcp-token and uses X-Mcp-Token (not X-Api-Key) for markdown", async () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
@@ -540,21 +534,19 @@ describe("webmcp.js — render_markdown handler", () => {
     const renderCall = calls.find((c) => c.url.endsWith("/render"));
     expect(renderCall.body.theme).toBe("dark");
   });
-});
 
-describe("webmcp.js — render_markdown_from_url handler", () => {
   test("rejects URL on a disallowed host with DISALLOWED_HOST", async () => {
     const tools = loadWebmcp();
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     await expect(
       t.execute({ url: "https://github.com/foo/bar/blob/main/README.md" }),
     ).rejects.toThrow(/DISALLOWED_HOST/);
   });
 
-  test("render_markdown_from_url accepts the deprecated `url` alias for backward compat", async () => {
+  test("accepts the deprecated `url` alias for backward compat", async () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     // Older agents send `url`; the handler must still translate it to
     // the canonical `markdownUrl` on the wire.
     const result = await t.execute({
@@ -570,7 +562,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
   test("canonical markdownUrl wins when both url and markdownUrl are sent", async () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     await t.execute({
       url: "https://wrong-host.example.com/rejected.md",
       markdownUrl: "https://raw.githubusercontent.com/foo/bar/main/README.md",
@@ -581,9 +573,9 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     );
   });
 
-  test("render_markdown_from_url rejects ftp:// URL with UNSUPPORTED_SCHEME", async () => {
+  test("rejects ftp:// URL with UNSUPPORTED_SCHEME", async () => {
     const tools = loadWebmcp();
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     await expect(
       t.execute({ url: "ftp://example.com/file.md" }),
     ).rejects.toThrow(/UNSUPPORTED_SCHEME/);
@@ -591,7 +583,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
 
   test("rejects malformed URL with INVALID_URL", async () => {
     const tools = loadWebmcp();
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     await expect(
       t.execute({ url: "not a url at all" }),
     ).rejects.toThrow(/INVALID_URL/);
@@ -600,7 +592,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
   test("accepts an allowlisted URL, mints a token, and forwards markdownUrl", async () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
-    const t = findTool(tools, "render_markdown_from_url");
+    const t = findTool(tools, "render_markdown");
     const result = await t.execute({
       url: "https://raw.githubusercontent.com/foo/bar/main/README.md",
       fontFamily: "Comfortaa",
@@ -649,11 +641,12 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     expect(m.tools.length).toBeGreaterThan(0);
   });
 
-  test("apps manifest exists with preview status and zero tools", () => {
+  test("apps manifest exists with ready status and one tool", () => {
     const m = loadManifest(APPS_MANIFEST_PATH);
     expect(m.surfaceMode).toBe("app");
-    expect(m.status).toBe("preview");
-    expect(m.tools).toEqual([]);
+    expect(m.status).toBe("ready");
+    expect(m.tools.length).toBe(1);
+    expect(m.tools[0].name).toBe("render_markdown");
   });
 
   test("manifest and webmcp.js declare the same tool set", () => {
@@ -717,12 +710,15 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     expect(m.handlers[1].url).toBe("https://render.flatwrite.md/render");
   });
 
-  test("apps manifest declares zero tools and the placeholder handler", () => {
+  test("apps manifest declares one tool and the app handler", () => {
     const m = loadManifest(APPS_MANIFEST_PATH);
     expect(m.handler).toBeUndefined();
     expect(Array.isArray(m.handlers)).toBe(true);
     expect(m.handlers.length).toBe(1);
-    expect(m.tools).toEqual([]);
+    expect(m.handlers[0].url).toBe("https://render.flatwrite.md/render?surface=app");
+    expect(m.handlers[0].transport).toBe("http");
+    expect(m.tools.length).toBe(1);
+    expect(m.tools[0].name).toBe("render_markdown");
   });
 
   /**
