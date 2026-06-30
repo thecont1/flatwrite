@@ -25,7 +25,7 @@ export const ALLOWED_FONT_FAMILIES = [
     'Unbounded',
 ];
 /**
- * Hosts from which render_markdown_from_url may fetch raw markdown.
+ * Hosts from which the consolidated render_markdown tool may fetch raw markdown.
  */
 export const ALLOWED_MARKDOWN_HOSTS = [
     'raw.githubusercontent.com',
@@ -81,13 +81,17 @@ export const ALLOWED_MARGINS = ['narrow', 'normal', 'wide'];
 /**
  * Output shape every render tool returns. Mirrors what
  * core/render.js → renderToDocument emits and what /api/render
- * responds with (api/render.js line 146). Both tools return the same
- * `{ head, body }` envelope — the only difference between them is the
- * input source (inline markdown vs allowlisted URL).
+ * responds with (api/render.js line 146). The consolidated
+ * `render_markdown` tool returns the same `{ head, body }` envelope
+ * regardless of whether the markdown is provided inline or via an
+ * allowlisted URL.
  */
 export const RENDER_OUTPUT_SCHEMA = {
     type: 'object',
+    title: 'RenderOutput',
+    description: 'Rendered markdown as self-contained HTML fragments: head (CSS) and body (content).',
     required: ['head', 'body'],
+    additionalProperties: false,
     properties: {
         head: {
             type: 'string',
@@ -148,8 +152,8 @@ export function toCanonicalStyle(publicStyle = {}) {
     return out;
 }
 /**
- * Pre-flight check for render_markdown_from_url URLs. Only allowlisted
- * hosts and http(s) schemes are accepted.
+ * Pre-flight check for markdownUrl values used by the consolidated
+ * render_markdown tool. Only allowlisted hosts and http(s) schemes are accepted.
  */
 export function validateMarkdownUrl(rawUrl) {
     let parsed;
@@ -286,14 +290,14 @@ export const RENDER_INPUT_FIELDS = [
     {
         name: 'font',
         type: 'string',
-        description: 'Font family — must be a bundled family. See ALLOWED_FONT_FAMILIES.',
-        enum: ALLOWED_FONT_FAMILIES,
+        description: 'Font family — must be a bundled family. Server validates against the bundled inventory.',
+        examples: ALLOWED_FONT_FAMILIES,
     },
     {
         name: 'appFramework',
         type: 'string',
-        description: 'UI framework applied when surfaceMode="app". One of the bundled frameworks below.',
-        enum: ALLOWED_APP_FRAMEWORKS,
+        description: 'UI framework applied when surfaceMode="app". Server validates against the bundled inventory.',
+        examples: ALLOWED_APP_FRAMEWORKS,
     },
     {
         name: 'size',
@@ -374,14 +378,14 @@ export const RENDER_INPUT_FIELDS = [
     {
         name: 'docEngine',
         type: 'string',
-        description: 'Document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules.',
-        enum: ALLOWED_DOC_ENGINES,
+        description: 'Document engine — "none" emits plain CSS; "pagedjs"/"vivliostyle" wrap the output in @page rules. Server validates against the bundled inventory.',
+        examples: ALLOWED_DOC_ENGINES,
     },
     {
         name: 'surfaceMode',
         type: 'string',
         description: 'Surface mode hint. "app" unlocks the appFramework picker; otherwise this is metadata only.',
-        enum: ALLOWED_SURFACE_MODES,
+        examples: ALLOWED_SURFACE_MODES,
     },
     {
         name: 'theme',
@@ -393,20 +397,27 @@ export const RENDER_INPUT_FIELDS = [
 export const RENDER_TOOLS_DOCS = [
     {
         name: 'render_markdown',
-        description: 'Render an inline markdown string into FlatWrite-styled HTML head and body fragments. ' +
-            'Use this when the markdown source is already available to the caller (a string in the ' +
-            'agent context, a user-pasted blob, or a programmatic snippet). For sources fetched ' +
-            'from raw.githubusercontent.com / raw.gitlab.com / bitbucket.org, prefer ' +
-            'render_markdown_from_url so the Worker does the fetch + host allowlist check on your behalf. ' +
-            'Returns { head, body } — head is CSS to inject, body is the document fragment.',
+        description: 'Render markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional ' +
+            'typography and page-layout controls. Provide either the raw markdown inline (`markdown`) ' +
+            'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. The Worker ' +
+            'validates URLs against raw.githubusercontent.com / raw.gitlab.com / bitbucket.org and ' +
+            'enforces a size cap. Returns { head, body } — head is CSS to inject, body is the document fragment.',
         surfaceMode: 'doc',
         inputFields: [
-            // Tool-local primary payload (not a style option).
+            // Alternative primary payloads: provide exactly one of these.
             { name: 'markdown', type: 'string', description: 'Raw markdown content to render.' },
+            {
+                name: 'markdownUrl',
+                type: 'string',
+                description: 'URL pointing to raw markdown content. Must be on an allowlisted host ' +
+                    '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org), http(s) only, ' +
+                    'and <=1 MB. Host validation is enforced server-side.',
+            },
             // Shared style fields, referenced by canonical name.
             ...RENDER_INPUT_FIELDS.map((f) => f.name),
         ],
-        requiredFields: ['markdown'],
+        requiredFields: [],
+        requiredOneOf: [['markdown'], ['markdownUrl']],
         outputSchema: RENDER_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
         displayHints: {
@@ -420,16 +431,16 @@ export const RENDER_TOOLS_DOCS = [
             outputHints: { head: 'head', body: 'body' },
         },
     },
+];
+export const RENDER_TOOLS_APPS = [
     {
-        name: 'render_markdown_from_url',
-        description: 'Fetch markdown from an allowlisted URL (raw.githubusercontent.com, raw.gitlab.com, ' +
-            'bitbucket.org — only raw-text hosts, no HTML scrapers) and render it through the same ' +
-            'FlatWrite pipeline as render_markdown. Use this when the source lives on a public raw ' +
-            'gist / repo and you want the Worker to validate the host + size cap. For sources you ' +
-            'already have in memory, use render_markdown instead. Returns { head, body }.',
-        surfaceMode: 'doc',
+        name: 'render_markdown',
+        description: 'Render markdown into FlatWrite-styled HTML <head> and <body> fragments for the app surface. ' +
+            'Provide either the raw markdown inline (`markdown`) or an allowlisted URL (`markdownUrl`). ' +
+            'Returns { head, body } — head is CSS to inject, body is the document fragment.',
+        surfaceMode: 'app',
         inputFields: [
-            // Tool-local primary payload.
+            { name: 'markdown', type: 'string', description: 'Raw markdown content to render.' },
             {
                 name: 'markdownUrl',
                 type: 'string',
@@ -439,7 +450,8 @@ export const RENDER_TOOLS_DOCS = [
             },
             ...RENDER_INPUT_FIELDS.map((f) => f.name),
         ],
-        requiredFields: ['markdownUrl'],
+        requiredFields: [],
+        requiredOneOf: [['markdown'], ['markdownUrl']],
         outputSchema: RENDER_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
         displayHints: {
@@ -456,12 +468,9 @@ export const RENDER_TOOLS_DOCS = [
 ];
 export const REGISTERED_SURFACES = [
     { id: 'doc', status: 'ready', manifestFile: '.well-known/model-context.docs.json' },
-    // Apps surface is registered as "preview" so clients can render a
-    // "coming soon" affordance before the actual tools ship. The id is
-    // 'app' (singular) to match the canonical surfaceMode enum used by
-    // toCanonicalStyle and the renderer; the filename uses the plural
-    // product name for the well-known namespace.
-    { id: 'app', status: 'preview', manifestFile: '.well-known/model-context.apps.json' },
+    // Apps surface is now ready and exposes the same consolidated render
+    // tool, broadening the registered page coverage beyond the Docs page.
+    { id: 'app', status: 'ready', manifestFile: '.well-known/model-context.apps.json' },
 ];
 export const HANDLER_DOCS = {
     url: 'https://render.flatwrite.md/render',
@@ -499,7 +508,7 @@ export const HANDLER_APPS = {
     transport: 'http',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    authNote: 'Apps surface not yet available. Reserved for future use.',
+    authNote: 'Browser clients mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first. Server-to-server clients may use X-Api-Key directly.',
 };
 const MANIFEST_SCHEMA_URL = 'https://webmcp.org/schemas/model-context-v1.json';
 const MANIFEST_VERSION = '1.0.0';
@@ -550,6 +559,8 @@ function fieldToJsonSchema(f) {
     const out = { type: f.type, description: f.description };
     if (f.enum)
         out.enum = f.enum;
+    if (f.examples)
+        out.examples = f.examples;
     if (f.minimum !== undefined)
         out.minimum = f.minimum;
     if (f.maximum !== undefined)
@@ -586,14 +597,27 @@ export function generateManifest(surface, tools, handlers, options = {}) {
                 throw new Error(`generateManifest: tool "${t.name}" requires "${req}" but it's not in inputFields.`);
             }
         }
+        if (t.requiredOneOf) {
+            for (const group of t.requiredOneOf) {
+                for (const req of group) {
+                    if (!(req in properties)) {
+                        throw new Error(`generateManifest: tool "${t.name}" requiredOneOf group references "${req}" but it's not in inputFields.`);
+                    }
+                }
+            }
+        }
+        const inputSchema = {
+            type: 'object',
+            properties,
+            required: t.requiredFields,
+        };
+        if (t.requiredOneOf) {
+            inputSchema.oneOf = t.requiredOneOf.map((group) => ({ required: group }));
+        }
         return {
             name: t.name,
             description: t.description,
-            inputSchema: {
-                type: 'object',
-                properties,
-                required: t.requiredFields,
-            },
+            inputSchema,
             ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
             annotations: t.annotations,
             displayHints: t.displayHints,
