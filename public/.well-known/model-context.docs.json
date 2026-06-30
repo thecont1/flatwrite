@@ -43,8 +43,8 @@
           },
           "font": {
             "type": "string",
-            "description": "Font family — must be a bundled family. Server validates against the bundled inventory.",
-            "examples": [
+            "description": "Font family — must be a bundled family.",
+            "enum": [
               "Inter",
               "JetBrains Mono",
               "Lato",
@@ -57,8 +57,8 @@
           },
           "appFramework": {
             "type": "string",
-            "description": "UI framework applied when surfaceMode=\"app\". Server validates against the bundled inventory.",
-            "examples": [
+            "description": "UI framework applied when surfaceMode=\"app\".",
+            "enum": [
               "spectre",
               "poshui",
               "pico",
@@ -169,8 +169,8 @@
           },
           "docEngine": {
             "type": "string",
-            "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules. Server validates against the bundled inventory.",
-            "examples": [
+            "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
+            "enum": [
               "none",
               "pagedjs",
               "vivliostyle"
@@ -179,7 +179,7 @@
           "surfaceMode": {
             "type": "string",
             "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
-            "examples": [
+            "enum": [
               "doc",
               "app"
             ]
@@ -238,6 +238,236 @@
           "head": "head",
           "body": "body"
         }
+      }
+    },
+    {
+      "name": "list_render_options",
+      "description": "Return the supported fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes for the render_markdown tool. Call this before rendering if you need to know which enum values are valid.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "font": {
+            "type": "string",
+            "description": "Font family — must be a bundled family.",
+            "enum": [
+              "Inter",
+              "JetBrains Mono",
+              "Lato",
+              "Lora",
+              "Merriweather",
+              "Playfair Display",
+              "Comfortaa",
+              "Unbounded"
+            ]
+          },
+          "appFramework": {
+            "type": "string",
+            "description": "UI framework applied when surfaceMode=\"app\".",
+            "enum": [
+              "spectre",
+              "poshui",
+              "pico",
+              "milligram",
+              "chota"
+            ]
+          },
+          "size": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute pixel value (8..72)"
+              }
+            ],
+            "description": "Font size as a scale token (e.g. \"-1\", \"0\", \"1\").",
+            "minimum": 8,
+            "maximum": 72
+          },
+          "weight": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute weight (100..900, multiples of 100)"
+              }
+            ],
+            "description": "Font weight as a scale token (e.g. \"-1\", \"0\").",
+            "minimum": 100,
+            "maximum": 900
+          },
+          "line": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Scale token (e.g. \"-1\", \"0\", \"1\")"
+              },
+              {
+                "type": "number",
+                "description": "Absolute multiplier (0.8..4.0)"
+              }
+            ],
+            "description": "Line height as a scale token (e.g. \"-1\", \"0\", \"1\").",
+            "minimum": 0.8,
+            "maximum": 4
+          },
+          "uiZoom": {
+            "type": "number",
+            "description": "UI zoom level (1.0 = default; >1 zooms in, <1 zooms out).",
+            "minimum": 0.25,
+            "maximum": 4
+          },
+          "pageSize": {
+            "type": "string",
+            "description": "Page size for paged output. Only effective when docEngine is pagedjs or vivliostyle.",
+            "enum": [
+              "A0",
+              "A1",
+              "A2",
+              "A3",
+              "A4",
+              "A5",
+              "Letter",
+              "Legal"
+            ]
+          },
+          "orientation": {
+            "type": "string",
+            "description": "Page orientation.",
+            "enum": [
+              "portrait",
+              "landscape"
+            ]
+          },
+          "marginsLR": {
+            "type": "string",
+            "description": "Left/right page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
+            "enum": [
+              "narrow",
+              "normal",
+              "wide"
+            ]
+          },
+          "marginsTB": {
+            "type": "string",
+            "description": "Top/bottom page margin preset. Only effective when docEngine is pagedjs or vivliostyle.",
+            "enum": [
+              "narrow",
+              "normal",
+              "wide"
+            ]
+          },
+          "footer": {
+            "type": "boolean",
+            "description": "Include a page-number footer in paged output."
+          },
+          "width": {
+            "type": "number",
+            "description": "Content width in pixels (400..1400). Only effective when docEngine=\"none\".",
+            "minimum": 400,
+            "maximum": 1400
+          },
+          "docEngine": {
+            "type": "string",
+            "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
+            "enum": [
+              "none",
+              "pagedjs",
+              "vivliostyle"
+            ]
+          },
+          "surfaceMode": {
+            "type": "string",
+            "description": "Surface mode hint. \"app\" unlocks the appFramework picker; otherwise this is metadata only.",
+            "enum": [
+              "doc",
+              "app"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "title": "RenderOptions",
+        "description": "Supported values for the render_markdown tool: fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes.",
+        "required": [
+          "fonts",
+          "frameworks",
+          "docEngines",
+          "pageSizes",
+          "orientations",
+          "margins",
+          "surfaceModes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "fonts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bundled font families that can be passed as fontFamily."
+          },
+          "frameworks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "UI frameworks that can be passed as framework when surfaceMode is \"app\"."
+          },
+          "docEngines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Document engines that can be passed as docEngine."
+          },
+          "pageSizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Page size presets that can be passed as pageSize."
+          },
+          "orientations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Page orientations that can be passed as orientation."
+          },
+          "margins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Page margin presets that can be passed as marginsLR or marginsTB."
+          },
+          "surfaceModes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Surface mode hints that can be passed as surfaceMode."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "displayHints": {
+        "inputFieldAliases": {},
+        "outputHints": {}
       }
     }
   ]
