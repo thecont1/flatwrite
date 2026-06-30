@@ -280,7 +280,7 @@ Export the active document as a self-contained HTML file and open it in a new ta
 - **Category**: `export`
 - **Read-only**: no
 - **Inputs**: none
-- **Output**: `{ ok: true, documentId, format: "html", downloadUrl, warnings: [] }`
+- **Output**: `{ ok: true, documentId, format: "html", warnings: [] }`
 - **When to use**: When you need the full HTML document. Use `export_document_pdf` for print-ready output.
 
 #### `export_document_pdf`
@@ -290,17 +290,19 @@ Export the active document as a PDF by triggering the browser print dialog with 
 - **Category**: `export`
 - **Read-only**: no
 - **Inputs**: none
-- **Output**: `{ ok: true, documentId, format: "pdf", pageCount, warnings: [] }`
+- **Output**: `{ ok: true, documentId, format: "pdf", warnings: [] }`
 - **When to use**: For print-ready output. Use `export_document_html` for a downloadable HTML file.
 
 #### `get_export_status`
 
 Return the status of an asynchronous export job.
 
+> **Status note**: This is a forward-looking placeholder for future async export support. Today FlatWrite exports are synchronous (browser-initiated new tab or print dialog), so the executor always returns `{ ok: true, jobId, status: "completed" }` with no `downloadUrl`.
+
 - **Category**: `export`
 - **Read-only**: yes
 - **Inputs**: `jobId` (required string)
-- **Output**: `{ ok: true, jobId, status: "completed", downloadUrl }`
+- **Output**: `{ ok: true, jobId, status: "completed" }` (no `downloadUrl` for synchronous exports)
 - **When to use**: After `export_document_pdf` or `export_document_html` if the export is queued. FlatWrite exports are synchronous, so this always returns `completed` immediately.
 
 ### Share tools (1)
