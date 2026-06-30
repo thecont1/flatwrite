@@ -1,8 +1,0 @@
-# content/projects/flatwrite.yaml
-url: https://raw.githubusercontent.com/thecont1/flatwrite/main/README.md
-title: FlatWrite
-framework: spectre
-font: Merriweather
-fontSize: 18
-lineHeight: 1.8
-fontWeight: 400
