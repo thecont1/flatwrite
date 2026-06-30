@@ -18,7 +18,8 @@
   "tools": [
     {
       "name": "render_markdown",
-      "description": "Render markdown into FlatWrite-styled HTML <head> and <body> fragments for the app surface. Provide either the raw markdown inline (`markdown`) or an allowlisted URL (`markdownUrl`). Returns { head, body } — head is CSS to inject, body is the document fragment.",
+      "description": "Render markdown into FlatWrite-styled HTML <head> and <body> fragments for the app surface. Provide either the raw markdown inline (`markdown`) or an allowlisted URL (`markdownUrl`). Use this when you need the rendered HTML artifacts for the app surface.",
+      "category": "render",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -195,20 +196,69 @@
       "outputSchema": {
         "type": "object",
         "title": "RenderOutput",
-        "description": "Rendered markdown as self-contained HTML fragments: head (CSS) and body (content).",
+        "description": "Rendered markdown as self-contained HTML fragments with document metadata.",
         "required": [
-          "head",
-          "body"
+          "ok",
+          "kind",
+          "artifacts"
         ],
         "additionalProperties": false,
         "properties": {
-          "head": {
-            "type": "string",
-            "description": "Self-contained <head> fragment: inlined @font-face declarations, document CSS, and an optional <script defer> tag for the chosen docEngine. Inject verbatim into the consumer page's <head>."
+          "ok": {
+            "type": "boolean",
+            "description": "True on successful render."
           },
-          "body": {
+          "kind": {
             "type": "string",
-            "description": "Self-contained <body> fragment: the rendered markdown wrapped in <body class=\"fw-render\" data-theme=\"...\"><main>...</main></body>. Inject verbatim into the consumer page's <body>."
+            "enum": [
+              "html"
+            ],
+            "description": "Result modality — always \"html\" for render_markdown."
+          },
+          "document": {
+            "type": "object",
+            "description": "Metadata about the rendered document.",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Best-effort title extracted from the first H1 or filename."
+              },
+              "wordCount": {
+                "type": "number",
+                "description": "Approximate word count of the source markdown."
+              },
+              "charCount": {
+                "type": "number",
+                "description": "Character count of the source markdown."
+              }
+            }
+          },
+          "artifacts": {
+            "type": "object",
+            "description": "Concrete render artifacts.",
+            "required": [
+              "head",
+              "body"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "head": {
+                "type": "string",
+                "description": "Self-contained <head> fragment: inlined @font-face declarations, document CSS, and an optional <script defer> tag for the chosen docEngine. Inject verbatim into the consumer page's <head>."
+              },
+              "body": {
+                "type": "string",
+                "description": "Self-contained <body> fragment: the rendered markdown wrapped in <body class=\"fw-render\" data-theme=\"...\"><main>...</main></body>. Inject verbatim into the consumer page's <body>."
+              }
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal warnings (e.g. unknown options ignored, URL size cap approached)."
           }
         }
       },
@@ -222,16 +272,13 @@
           "size": "fontSize",
           "weight": "fontWeight",
           "line": "lineHeight"
-        },
-        "outputHints": {
-          "head": "head",
-          "body": "body"
         }
       }
     },
     {
       "name": "list_render_options",
       "description": "Return the supported fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes for the render_markdown tool. Call this before rendering if you need to know which enum values are valid.",
+      "category": "discovery",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -387,67 +434,109 @@
       },
       "outputSchema": {
         "type": "object",
-        "title": "RenderOptions",
-        "description": "Supported values for the render_markdown tool: fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes.",
+        "title": "RenderOptionsOutput",
+        "description": "Supported values for the render_markdown tool, wrapped in a discriminated envelope.",
         "required": [
-          "fonts",
-          "frameworks",
-          "docEngines",
-          "pageSizes",
-          "orientations",
-          "margins",
-          "surfaceModes"
+          "ok",
+          "options"
         ],
         "additionalProperties": false,
         "properties": {
-          "fonts": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Bundled font families that can be passed as fontFamily."
+          "ok": {
+            "type": "boolean",
+            "description": "Always true for successful options listing."
           },
-          "frameworks": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "UI frameworks that can be passed as framework when surfaceMode is \"app\"."
+          "options": {
+            "type": "object",
+            "description": "Supported enum values for each render option category.",
+            "required": [
+              "fonts",
+              "frameworks",
+              "docEngines",
+              "pageSizes",
+              "orientations",
+              "margins",
+              "surfaceModes"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "fonts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Bundled font families that can be passed as fontFamily."
+              },
+              "frameworks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "UI frameworks that can be passed as framework when surfaceMode is \"app\"."
+              },
+              "docEngines": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Document engines that can be passed as docEngine."
+              },
+              "pageSizes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Page size presets that can be passed as pageSize."
+              },
+              "orientations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Page orientations that can be passed as orientation."
+              },
+              "margins": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Page margin presets that can be passed as marginsLR or marginsTB."
+              },
+              "surfaceModes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Surface mode hints that can be passed as surfaceMode."
+              }
+            }
           },
-          "docEngines": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Document engines that can be passed as docEngine."
-          },
-          "pageSizes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Page size presets that can be passed as pageSize."
-          },
-          "orientations": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Page orientations that can be passed as orientation."
-          },
-          "margins": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Page margin presets that can be passed as marginsLR or marginsTB."
-          },
-          "surfaceModes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Surface mode hints that can be passed as surfaceMode."
+          "defaults": {
+            "type": "object",
+            "description": "Default values used when an option is omitted.",
+            "additionalProperties": false,
+            "properties": {
+              "font": {
+                "type": "string",
+                "description": "Default font family."
+              },
+              "docEngine": {
+                "type": "string",
+                "description": "Default document engine."
+              },
+              "surfaceMode": {
+                "type": "string",
+                "description": "Default surface mode."
+              },
+              "pageSize": {
+                "type": "string",
+                "description": "Default page size."
+              },
+              "orientation": {
+                "type": "string",
+                "description": "Default orientation."
+              }
+            }
           }
         }
       },
@@ -455,8 +544,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     }
   ]

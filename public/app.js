@@ -3050,6 +3050,201 @@
   }
 
   /* ==========================================================================
+     WebMCP editor bridge — exposes editor state and actions to
+     webmcp.js via window.__flatwrite so browser-side MCP tools
+     (get_document_state, create_document, open_document, etc.) can
+     interact with the editor without DOM scraping.
+     ========================================================================== */
+
+  var fwStateVersion = 0;
+  var fwDocumentId = "";
+
+  function fwEnsureDocumentId() {
+    if (!fwDocumentId) {
+      if (currentMarkdownUrl) {
+        fwDocumentId = "url:" + btoa(currentMarkdownUrl).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
+      } else {
+        fwDocumentId = "doc-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      }
+    }
+    return fwDocumentId;
+  }
+
+  function fwExtractTitle(md) {
+    if (!md) return "Untitled";
+    var m = md.match(/^#\s+(.+)$/m);
+    return m ? m[1].trim() : "Untitled";
+  }
+
+  function fwBuildShareContent() {
+    return buildShareYaml() + editor.value;
+  }
+
+  /* ── Helpers for openDocument (extracted for clarity) ─────────────── */
+
+  function fwFetchText(url) {
+    return fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw { code: "OPEN_FAILED", message: "HTTP " + r.status };
+        return r.text();
+      })
+      .catch(function (e) {
+        throw e.code ? e : { code: "OPEN_FAILED", message: e.message || String(e) };
+      });
+  }
+
+  function fwApplyContent(content, sourceUrl, opts) {
+    opts = opts || {};
+    if (opts.isShare) {
+      var parsed = parseShareYaml(content);
+      if (parsed.frontmatter) {
+        var fm = parsed.frontmatter;
+        if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
+        if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
+        if (fm.font) comfortFont = fm.font;
+        setDocEngine(currentDocEngine);
+      }
+      setMarkdownUrl("");
+    } else {
+      setMarkdownUrl(sourceUrl);
+    }
+    setEditorContent(content);
+    fwDocumentId = "";
+    fwEnsureDocumentId();
+    return {
+      documentId: fwDocumentId,
+      title: fwExtractTitle(content),
+      url: sourceUrl,
+    };
+  }
+
+  window.__flatwrite = {
+    getDocumentState: function () {
+      var md = editor.value || "";
+      var words = md.trim().split(/\s+/).filter(Boolean).length;
+      var shareUrl = "";
+      try {
+        var sParam = new URLSearchParams(window.location.search).get("s");
+        if (sParam) shareUrl = window.location.origin + window.location.pathname + "?s=" + sParam;
+      } catch (e) { /* ignore */ }
+      return {
+        documentId: fwEnsureDocumentId(),
+        title: fwExtractTitle(md),
+        wordCount: words,
+        charCount: md.length,
+        unsavedChanges: isEditorDirty(),
+        renderMode: mode,
+        docEngine: currentDocEngine,
+        surfaceMode: surfaceMode,
+        url: currentMarkdownUrl || shareUrl,
+        availableExports: ["html", "pdf", "markdown"],
+        canShare: md.length < 400000,
+      };
+    },
+
+    createDocument: function (markdown, title) {
+      editor.value = markdown || "";
+      initialEditorContent = markdown || "";
+      fwDocumentId = "";
+      fwEnsureDocumentId();
+      editor.dispatchEvent(new Event("input"));
+      if (mode !== "edit") setMode("edit");
+      return {
+        documentId: fwDocumentId,
+        title: title || fwExtractTitle(markdown || ""),
+        url: "",
+      };
+    },
+
+    openDocument: async function (url) {
+      if (!url) throw { code: "INVALID_URL", message: "url is required" };
+      var sMatch = url.match(/[?&]s=([^&]+)/);
+      if (sMatch) {
+        var data;
+        try {
+          var res = await fetch("/api/s?key=" + encodeURIComponent(sMatch[1]));
+          data = await res.json();
+        } catch (e) {
+          throw { code: "OPEN_FAILED", message: e.message || String(e) };
+        }
+        if (data.error) throw { code: "OPEN_FAILED", message: data.error };
+        return fwApplyContent(data.content || "", url, { isShare: true });
+      }
+      var content = await fwFetchText(url);
+      return fwApplyContent(content, url, { isShare: false });
+    },
+
+    updateDocumentContent: function (markdown) {
+      setEditorContent(markdown);
+      fwStateVersion++;
+      return {
+        documentId: fwEnsureDocumentId(),
+        updatedAt: new Date().toISOString(),
+        stateVersion: fwStateVersion,
+      };
+    },
+
+    listRecentDocuments: async function () {
+      /* FlatWrite stores a single active document in IDB. Return it
+         along with any URL-loaded document. */
+      try {
+        var record = await idbGet("activeDocument", "current");
+        var docs = [];
+        if (record && record.markdown) {
+          docs.push({
+            documentId: fwEnsureDocumentId(),
+            title: fwExtractTitle(record.markdown),
+            url: currentMarkdownUrl || "",
+            updatedAt: record.updated || new Date().toISOString(),
+          });
+        }
+        return docs;
+      } catch (e) {
+        return [];
+      }
+    },
+
+    renderPreview: function () {
+      if (mode === "edit") setMode("preview");
+      renderPreview();
+    },
+
+    /* Browser-initiated export: opens a new tab (HTML) or print
+       dialog (PDF). No download URL or page count is reported back
+       because the browser handles the output, not the server. */
+    exportHTML: function () {
+      exportHTML();
+      return { documentId: fwEnsureDocumentId() };
+    },
+
+    exportPDF: function () {
+      exportPDF();
+      return { documentId: fwEnsureDocumentId() };
+    },
+
+    createShareLink: async function () {
+      var content = fwBuildShareContent();
+      if (content.length > 400000) {
+        throw { code: "TOO_LARGE", message: "Document too large to share" };
+      }
+      var res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: content,
+      });
+      if (!res.ok) throw { code: "SHARE_FAILED", message: "HTTP " + res.status };
+      var data = await res.json();
+      if (data.error) throw { code: "SHARE_FAILED", message: data.error };
+      var shareUrl = window.location.origin + window.location.pathname + "?s=" + data.key;
+      return {
+        documentId: fwEnsureDocumentId(),
+        shareUrl: shareUrl,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    },
+  };
+
+  /* ==========================================================================
      Boot
      ========================================================================== */
 

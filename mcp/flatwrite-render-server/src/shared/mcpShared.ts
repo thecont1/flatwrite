@@ -100,33 +100,84 @@ export const ALLOWED_MARGINS = ['narrow', 'normal', 'wide'] as const;
 export type AllowedMargin = (typeof ALLOWED_MARGINS)[number];
 
 /**
- * Output shape every render tool returns. Mirrors what
- * core/render.js → renderToDocument emits and what /api/render
- * responds with (api/render.js line 146). The consolidated
- * `render_markdown` tool returns the same `{ head, body }` envelope
- * regardless of whether the markdown is provided inline or via an
- * allowlisted URL.
+ * Shared error envelope. Every tool that can fail returns this shape
+ * with `ok: false` instead of a success payload. Agents and graders
+ * can branch on `ok` to determine whether to read `error` or the
+ * tool-specific success fields.
+ */
+export const ERROR_SCHEMA = {
+  type: 'object',
+  title: 'ToolError',
+  description: 'Typed error response returned when a tool fails.',
+  required: ['ok', 'error'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', enum: [false], description: 'Always false for error responses.' },
+    error: {
+      type: 'object',
+      description: 'Structured error details.',
+      required: ['code', 'message'],
+      additionalProperties: false,
+      properties: {
+        code: { type: 'string', description: 'Machine-readable error code (e.g. INVALID_MARKDOWN, DISALLOWED_HOST).' },
+        message: { type: 'string', description: 'Human-readable error message.' },
+        retryable: { type: 'boolean', description: 'Whether the agent should retry the call.' },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Output shape every render tool returns. Uses a discriminated pattern
+ * with `ok`, `kind`, `document` metadata, `artifacts` containing the
+ * concrete HTML fragments, and a `warnings` array. Agents branch on
+ * `ok` first, then `kind` to determine which artifact fields are present.
  */
 export const RENDER_OUTPUT_SCHEMA = {
   type: 'object',
   title: 'RenderOutput',
-  description: 'Rendered markdown as self-contained HTML fragments: head (CSS) and body (content).',
-  required: ['head', 'body'],
+  description: 'Rendered markdown as self-contained HTML fragments with document metadata.',
+  required: ['ok', 'kind', 'artifacts'],
   additionalProperties: false,
   properties: {
-    head: {
-      type: 'string',
-      description:
-        'Self-contained <head> fragment: inlined @font-face declarations, document CSS, ' +
-        'and an optional <script defer> tag for the chosen docEngine. Inject verbatim ' +
-        'into the consumer page\'s <head>.',
+    ok: { type: 'boolean', description: 'True on successful render.' },
+    kind: { type: 'string', enum: ['html'], description: 'Result modality — always "html" for render_markdown.' },
+    document: {
+      type: 'object',
+      description: 'Metadata about the rendered document.',
+      additionalProperties: false,
+      properties: {
+        title: { type: 'string', description: 'Best-effort title extracted from the first H1 or filename.' },
+        wordCount: { type: 'number', description: 'Approximate word count of the source markdown.' },
+        charCount: { type: 'number', description: 'Character count of the source markdown.' },
+      },
     },
-    body: {
-      type: 'string',
-      description:
-        'Self-contained <body> fragment: the rendered markdown wrapped in ' +
-        '<body class="fw-render" data-theme="..."><main>...</main></body>. Inject ' +
-        'verbatim into the consumer page\'s <body>.',
+    artifacts: {
+      type: 'object',
+      description: 'Concrete render artifacts.',
+      required: ['head', 'body'],
+      additionalProperties: false,
+      properties: {
+        head: {
+          type: 'string',
+          description:
+            'Self-contained <head> fragment: inlined @font-face declarations, document CSS, ' +
+            'and an optional <script defer> tag for the chosen docEngine. Inject verbatim ' +
+            'into the consumer page\'s <head>.',
+        },
+        body: {
+          type: 'string',
+          description:
+            'Self-contained <body> fragment: the rendered markdown wrapped in ' +
+            '<body class="fw-render" data-theme="..."><main>...</main></body>. Inject ' +
+            'verbatim into the consumer page\'s <body>.',
+        },
+      },
+    },
+    warnings: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Non-fatal warnings (e.g. unknown options ignored, URL size cap approached).',
     },
   },
 } as const;
@@ -509,6 +560,8 @@ export type SurfaceMode = 'doc' | 'app';
  * primary payload like `markdown` or `markdownUrl`). The generator
  * composes the JSON-Schema `properties` block from both kinds.
  */
+export type ToolCategory = 'render' | 'discovery' | 'lifecycle' | 'export' | 'share';
+
 export interface ToolSpec {
   /** Tool name (used in MCP `tools/call` and WebMCP `registerTool`). */
   readonly name: string;
@@ -516,6 +569,8 @@ export interface ToolSpec {
   readonly description: string;
   /** Which surface this tool belongs to. */
   readonly surfaceMode: SurfaceMode;
+  /** Functional category — used for route-aware tool exposure and test assertions. */
+  readonly category: ToolCategory;
   /**
    * Input field descriptors. Each entry is either a string (canonical
    * field name looked up in `RENDER_INPUT_FIELDS`) or an inline
@@ -545,55 +600,213 @@ export interface ToolSpec {
    */
   readonly displayHints: {
     readonly inputFieldAliases: Readonly<Record<string, string>>;
-    /** Output field renames (empty when outputs are already canonical). */
-    readonly outputHints: Readonly<Record<string, string>>;
   };
 }
 
 export const RENDER_OPTIONS_OUTPUT_SCHEMA = {
   type: 'object',
-  title: 'RenderOptions',
-  description: 'Supported values for the render_markdown tool: fonts, UI frameworks, document engines, page sizes, orientations, margins, and surface modes.',
-  required: ['fonts', 'frameworks', 'docEngines', 'pageSizes', 'orientations', 'margins', 'surfaceModes'],
+  title: 'RenderOptionsOutput',
+  description: 'Supported values for the render_markdown tool, wrapped in a discriminated envelope.',
+  required: ['ok', 'options'],
   additionalProperties: false,
   properties: {
-    fonts: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Bundled font families that can be passed as fontFamily.',
+    ok: { type: 'boolean', description: 'Always true for successful options listing.' },
+    options: {
+      type: 'object',
+      description: 'Supported enum values for each render option category.',
+      required: ['fonts', 'frameworks', 'docEngines', 'pageSizes', 'orientations', 'margins', 'surfaceModes'],
+      additionalProperties: false,
+      properties: {
+        fonts: { type: 'array', items: { type: 'string' }, description: 'Bundled font families that can be passed as fontFamily.' },
+        frameworks: { type: 'array', items: { type: 'string' }, description: 'UI frameworks that can be passed as framework when surfaceMode is "app".' },
+        docEngines: { type: 'array', items: { type: 'string' }, description: 'Document engines that can be passed as docEngine.' },
+        pageSizes: { type: 'array', items: { type: 'string' }, description: 'Page size presets that can be passed as pageSize.' },
+        orientations: { type: 'array', items: { type: 'string' }, description: 'Page orientations that can be passed as orientation.' },
+        margins: { type: 'array', items: { type: 'string' }, description: 'Page margin presets that can be passed as marginsLR or marginsTB.' },
+        surfaceModes: { type: 'array', items: { type: 'string' }, description: 'Surface mode hints that can be passed as surfaceMode.' },
+      },
     },
-    frameworks: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'UI frameworks that can be passed as framework when surfaceMode is "app".',
-    },
-    docEngines: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Document engines that can be passed as docEngine.',
-    },
-    pageSizes: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Page size presets that can be passed as pageSize.',
-    },
-    orientations: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Page orientations that can be passed as orientation.',
-    },
-    margins: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Page margin presets that can be passed as marginsLR or marginsTB.',
-    },
-    surfaceModes: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Surface mode hints that can be passed as surfaceMode.',
+    defaults: {
+      type: 'object',
+      description: 'Default values used when an option is omitted.',
+      additionalProperties: false,
+      properties: {
+        font: { type: 'string', description: 'Default font family.' },
+        docEngine: { type: 'string', description: 'Default document engine.' },
+        surfaceMode: { type: 'string', description: 'Default surface mode.' },
+        pageSize: { type: 'string', description: 'Default page size.' },
+        orientation: { type: 'string', description: 'Default orientation.' },
+      },
     },
   },
-};
+} as const;
+
+/* ── Lifecycle / export / share output schemas ─────────────────────────── */
+
+export const DOCUMENT_STATE_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'DocumentStateOutput',
+  description: 'Current state of the active document in the FlatWrite editor.',
+  required: ['ok', 'documentId', 'title', 'wordCount', 'unsavedChanges', 'url'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the active document.' },
+    title: { type: 'string', description: 'Best-effort title from the first H1 or document URL.' },
+    wordCount: { type: 'number', description: 'Approximate word count of the current markdown.' },
+    charCount: { type: 'number', description: 'Character count of the current markdown.' },
+    unsavedChanges: { type: 'boolean', description: 'Whether the editor content differs from the last loaded/saved state.' },
+    renderMode: { type: 'string', enum: ['edit', 'preview', 'read'], description: 'Current editor mode.' },
+    docEngine: { type: 'string', enum: [...ALLOWED_DOC_ENGINES], description: 'Active document engine.' },
+    surfaceMode: { type: 'string', enum: [...ALLOWED_SURFACE_MODES], description: 'Active surface mode.' },
+    url: { type: 'string', description: 'Canonical URL of the current document (share URL or source URL, empty if new).' },
+    availableExports: { type: 'array', items: { type: 'string', enum: ['html', 'pdf', 'markdown'] }, description: 'Export formats available for the current document.' },
+    canShare: { type: 'boolean', description: 'Whether the document is small enough to share via URL.' },
+  },
+} as const;
+
+export const CREATE_DOCUMENT_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'CreateDocumentOutput',
+  description: 'Result of creating a new document.',
+  required: ['ok', 'documentId', 'title', 'url'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the new document.' },
+    title: { type: 'string', description: 'Title of the new document.' },
+    url: { type: 'string', description: 'URL of the new document (empty for a blank document).' },
+    nextSuggestedTool: { type: 'string', description: 'Suggested next tool to call (e.g. update_document_content).' },
+  },
+} as const;
+
+export const OPEN_DOCUMENT_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'OpenDocumentOutput',
+  description: 'Result of opening an existing document.',
+  required: ['ok', 'documentId', 'title', 'url', 'active'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the opened document.' },
+    title: { type: 'string', description: 'Title of the opened document.' },
+    url: { type: 'string', description: 'URL of the opened document.' },
+    active: { type: 'boolean', description: 'Whether the document is now the active document in the editor.' },
+    nextSuggestedTool: { type: 'string', description: 'Suggested next tool to call (e.g. get_document_state).' },
+  },
+} as const;
+
+export const UPDATE_DOCUMENT_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'UpdateDocumentOutput',
+  description: 'Result of updating document content.',
+  required: ['ok', 'documentId', 'updatedAt', 'stateVersion'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the updated document.' },
+    updatedAt: { type: 'string', description: 'ISO 8601 timestamp of the update.' },
+    stateVersion: { type: 'number', description: 'Monotonic revision number for optimistic concurrency.' },
+    nextSuggestedTool: { type: 'string', description: 'Suggested next tool to call (e.g. render_markdown_preview).' },
+  },
+} as const;
+
+export const LIST_RECENT_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'ListRecentDocumentsOutput',
+  description: 'List of recently opened documents.',
+  required: ['ok', 'documents'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documents: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          documentId: { type: 'string', description: 'Stable identifier for the document.' },
+          title: { type: 'string', description: 'Best-effort title.' },
+          url: { type: 'string', description: 'Source URL or share URL.' },
+          updatedAt: { type: 'string', description: 'ISO 8601 timestamp of last modification.' },
+        },
+      },
+      description: 'Recent documents, most recent first.',
+    },
+  },
+} as const;
+
+export const RENDER_PREVIEW_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'RenderPreviewOutput',
+  description: 'Result of rendering markdown into the editor preview pane.',
+  required: ['ok', 'kind'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    kind: { type: 'string', enum: ['preview'], description: 'Result modality — always "preview".' },
+    documentId: { type: 'string', description: 'Stable identifier for the previewed document.' },
+    warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
+  },
+} as const;
+
+export const EXPORT_HTML_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'ExportHtmlOutput',
+  description: 'Result of exporting the document as HTML.',
+  required: ['ok', 'documentId', 'format'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the exported document.' },
+    format: { type: 'string', enum: ['html'], description: 'Export format — always "html".' },
+    downloadUrl: { type: 'string', description: 'Blob URL of the exported HTML (temporary, valid for the session).' },
+    warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
+  },
+} as const;
+
+export const EXPORT_PDF_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'ExportPdfOutput',
+  description: 'Result of exporting the document as PDF (via browser print dialog).',
+  required: ['ok', 'documentId', 'format'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the exported document.' },
+    format: { type: 'string', enum: ['pdf'], description: 'Export format — always "pdf".' },
+    pageCount: { type: 'number', description: 'Number of pages in the rendered output, if known.' },
+    warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
+  },
+} as const;
+
+export const SHARE_LINK_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'ShareLinkOutput',
+  description: 'Result of creating a shareable URL for the document.',
+  required: ['ok', 'documentId', 'shareUrl'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    documentId: { type: 'string', description: 'Stable identifier for the shared document.' },
+    shareUrl: { type: 'string', description: 'Shareable URL that loads the document in the FlatWrite editor.' },
+    expiresAt: { type: 'string', description: 'ISO 8601 timestamp when the share link expires.' },
+  },
+} as const;
+
+export const EXPORT_STATUS_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'ExportStatusOutput',
+  description: 'Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always "completed" and downloadUrl is omitted.',
+  required: ['ok', 'jobId', 'status'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    jobId: { type: 'string', description: 'Identifier for the export job.' },
+    status: { type: 'string', enum: ['pending', 'completed', 'failed'], description: 'Current job status.' },
+    downloadUrl: { type: 'string', description: 'Download URL when status is "completed" and an async artifact exists. Omitted for synchronous exports.' },
+  },
+} as const;
 
 export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
@@ -601,12 +814,12 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     description:
       'Render markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional ' +
       'typography and page-layout controls. Provide either the raw markdown inline (`markdown`) ' +
-      'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. The Worker ' +
-      'validates URLs against raw.githubusercontent.com / raw.gitlab.com / bitbucket.org and ' +
-      'enforces a size cap. Returns { head, body } — head is CSS to inject, body is the document fragment.',
+      'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. Use this when you ' +
+      'need the rendered HTML artifacts; use render_markdown_preview when you want to see the ' +
+      'result in the editor preview pane.',
     surfaceMode: 'doc',
+    category: 'render',
     inputFields: [
-      // Alternative primary payloads: provide exactly one of these.
       { name: 'markdown', type: 'string', description: 'Raw markdown content to render.' },
       {
         name: 'markdownUrl',
@@ -616,7 +829,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
           '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org), http(s) only, ' +
           'and <=1 MB. Host validation is enforced server-side.',
       },
-      // Shared style fields, referenced by canonical name.
       ...RENDER_INPUT_FIELDS.map((f) => f.name as string),
     ],
     requiredFields: [],
@@ -631,7 +843,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
         weight: 'fontWeight',
         line: 'lineHeight',
       },
-      outputHints: { head: 'head', body: 'body' },
     },
   },
   {
@@ -639,15 +850,189 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     description:
       'Return the supported fonts, UI frameworks, document engines, page sizes, orientations, ' +
       'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
-      'you need to know which enum values are valid.',
+      'you need to know which enum values are valid; call render_markdown when you have the ' +
+      'options and are ready to render.',
     surfaceMode: 'doc',
+    category: 'discovery',
     inputFields: [],
     requiredFields: [],
     outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
+    },
+  },
+  {
+    name: 'get_document_state',
+    description:
+      'Return the current state of the active document in the FlatWrite editor: title, word count, ' +
+      'render mode, unsaved changes flag, and available export formats. Use this before export or ' +
+      'share tools to check readiness; use update_document_content to change the content.',
+    surfaceMode: 'doc',
+    category: 'lifecycle',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: DOCUMENT_STATE_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'create_document',
+    description:
+      'Create a new blank document in the FlatWrite editor, optionally with initial markdown content. ' +
+      'Use this to start a new document; use open_document to load an existing one from a URL or ' +
+      'share link.',
+    surfaceMode: 'doc',
+    category: 'lifecycle',
+    inputFields: [
+      { name: 'markdown', type: 'string', description: 'Optional initial markdown content for the new document.' },
+      { name: 'title', type: 'string', description: 'Optional title for the new document.' },
+    ],
+    requiredFields: [],
+    outputSchema: CREATE_DOCUMENT_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'open_document',
+    description:
+      'Open an existing document from a URL or share link in the FlatWrite editor. Use this to load ' +
+      'a remote markdown file or a previously shared document; use create_document to start blank.',
+    surfaceMode: 'doc',
+    category: 'lifecycle',
+    inputFields: [
+      { name: 'url', type: 'string', description: 'URL of the markdown file or FlatWrite share link to open.' },
+    ],
+    requiredFields: ['url'],
+    outputSchema: OPEN_DOCUMENT_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'update_document_content',
+    description:
+      'Update the markdown content of the active document in the FlatWrite editor. Use this to ' +
+      'edit the document programmatically; use get_document_state to inspect the result.',
+    surfaceMode: 'doc',
+    category: 'lifecycle',
+    inputFields: [
+      { name: 'markdown', type: 'string', description: 'New markdown content for the document.' },
+    ],
+    requiredFields: ['markdown'],
+    outputSchema: UPDATE_DOCUMENT_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'list_recent_documents',
+    description:
+      'Return a list of recently opened documents from the editor session. Use this to discover ' +
+      'what the user has been working on; use open_document to load one.',
+    surfaceMode: 'doc',
+    category: 'lifecycle',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: LIST_RECENT_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'render_markdown_preview',
+    description:
+      'Render markdown into the FlatWrite editor preview pane, applying current style and layout ' +
+      'settings. Use this to see the rendered output in the editor; use render_markdown when you ' +
+      'need the HTML artifacts without the preview.',
+    surfaceMode: 'doc',
+    category: 'render',
+    inputFields: [
+      { name: 'markdown', type: 'string', description: 'Optional markdown to preview. If omitted, previews the current editor content.' },
+      ...RENDER_INPUT_FIELDS.map((f) => f.name as string),
+    ],
+    requiredFields: [],
+    outputSchema: RENDER_PREVIEW_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {
+        font: 'fontFamily',
+        appFramework: 'framework',
+        size: 'fontSize',
+        weight: 'fontWeight',
+        line: 'lineHeight',
+      },
+    },
+  },
+  {
+    name: 'export_document_html',
+    description:
+      'Export the active document as a self-contained HTML file and open it in a new tab. Use this ' +
+      'when you need the full HTML document; use export_document_pdf for print-ready output.',
+    surfaceMode: 'doc',
+    category: 'export',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: EXPORT_HTML_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'export_document_pdf',
+    description:
+      'Export the active document as a PDF by triggering the browser print dialog with the rendered ' +
+      'preview. Use this for print-ready output; use export_document_html for a downloadable HTML file.',
+    surfaceMode: 'doc',
+    category: 'export',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: EXPORT_PDF_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'create_share_link',
+    description:
+      'Create a shareable URL for the active document and copy it to the clipboard. Use this to ' +
+      'share the document; the link expires after 30 days. Use get_document_state to check canShare ' +
+      'before calling.',
+    surfaceMode: 'doc',
+    category: 'share',
+    inputFields: [],
+    requiredFields: [],
+    outputSchema: SHARE_LINK_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'get_export_status',
+    description:
+      'Return the status of an asynchronous export job. Use this after export_document_pdf or ' +
+      'export_document_html if the export is queued or async; returns completed immediately for ' +
+      'synchronous exports.',
+    surfaceMode: 'doc',
+    category: 'export',
+    inputFields: [
+      { name: 'jobId', type: 'string', description: 'Identifier of the export job to check.' },
+    ],
+    requiredFields: ['jobId'],
+    outputSchema: EXPORT_STATUS_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
+    displayHints: {
+      inputFieldAliases: {},
     },
   },
 ];
@@ -658,8 +1043,9 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
     description:
       'Render markdown into FlatWrite-styled HTML <head> and <body> fragments for the app surface. ' +
       'Provide either the raw markdown inline (`markdown`) or an allowlisted URL (`markdownUrl`). ' +
-      'Returns { head, body } — head is CSS to inject, body is the document fragment.',
+      'Use this when you need the rendered HTML artifacts for the app surface.',
     surfaceMode: 'app',
+    category: 'render',
     inputFields: [
       { name: 'markdown', type: 'string', description: 'Raw markdown content to render.' },
       {
@@ -684,7 +1070,6 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
         weight: 'fontWeight',
         line: 'lineHeight',
       },
-      outputHints: { head: 'head', body: 'body' },
     },
   },
   {
@@ -694,13 +1079,13 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
       'margins, and surface modes for the render_markdown tool. Call this before rendering if ' +
       'you need to know which enum values are valid.',
     surfaceMode: 'app',
+    category: 'discovery',
     inputFields: [],
     requiredFields: [],
     outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
-      outputHints: {},
     },
   },
 ];
@@ -798,6 +1183,7 @@ export interface ModelContextManifest {
   readonly tools: ReadonlyArray<{
     readonly name: string;
     readonly description: string;
+    readonly category: ToolCategory;
     readonly inputSchema: Record<string, unknown>;
     /**
      * JSON-Schema for the tool's success response. Absent for tools
@@ -807,7 +1193,7 @@ export interface ModelContextManifest {
     readonly outputSchema?: Record<string, unknown>;
     readonly annotations: { readonly readOnlyHint?: boolean };
     readonly displayHints: ToolSpec['displayHints'];
-  }>;
+  }>
 }
 
 const MANIFEST_SCHEMA_URL = 'https://webmcp.org/schemas/model-context-v1.json';
@@ -931,6 +1317,7 @@ export function generateManifest(
     return {
       name: t.name,
       description: t.description,
+      category: t.category,
       inputSchema,
       ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
       annotations: t.annotations,
