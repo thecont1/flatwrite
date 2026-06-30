@@ -144,61 +144,6 @@ export const ERROR_SCHEMA = {
 } as const;
 
 /**
- * Output shape every render tool returns. Uses a discriminated pattern
- * with `ok`, `kind`, `document` metadata, `artifacts` containing the
- * concrete HTML fragments, and a `warnings` array. Agents branch on
- * `ok` first, then `kind` to determine which artifact fields are present.
- */
-export const RENDER_OUTPUT_SCHEMA = {
-  type: 'object',
-  title: 'RenderOutput',
-  description: 'Rendered markdown as self-contained HTML fragments with document metadata.',
-  required: ['ok', 'kind', 'artifacts'],
-  additionalProperties: false,
-  properties: {
-    ok: { type: 'boolean', description: 'True on successful render.' },
-    kind: { type: 'string', enum: ['html'], description: 'Result modality — always "html" for render_markdown.' },
-    document: {
-      type: 'object',
-      description: 'Metadata about the rendered document.',
-      additionalProperties: false,
-      properties: {
-        title: { type: 'string', description: 'Best-effort title extracted from the first H1 or filename.' },
-        wordCount: { type: 'number', description: 'Approximate word count of the source markdown.' },
-        charCount: { type: 'number', description: 'Character count of the source markdown.' },
-      },
-    },
-    artifacts: {
-      type: 'object',
-      description: 'Concrete render artifacts.',
-      required: ['head', 'body'],
-      additionalProperties: false,
-      properties: {
-        head: {
-          type: 'string',
-          description:
-            'Self-contained <head> fragment: inlined @font-face declarations, document CSS, ' +
-            'and an optional <script defer> tag for the chosen docEngine. Inject verbatim ' +
-            'into the consumer page\'s <head>.',
-        },
-        body: {
-          type: 'string',
-          description:
-            'Self-contained <body> fragment: the rendered markdown wrapped in ' +
-            '<body class="fw-render" data-theme="..."><main>...</main></body>. Inject ' +
-            'verbatim into the consumer page\'s <body>.',
-        },
-      },
-    },
-    warnings: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Non-fatal warnings (e.g. unknown options ignored, URL size cap approached).',
-    },
-  },
-} as const;
-
-/**
  * Translate the public RenderStyle (fontFamily / framework / fontSize / ...)
  * to the canonical FlatWrite render frontmatter (font / appFramework / size
  * / ...). Strings are scale tokens; numbers are absolute values.
@@ -810,20 +755,6 @@ export const SHARE_LINK_OUTPUT_SCHEMA = {
   },
 } as const;
 
-export const EXPORT_STATUS_OUTPUT_SCHEMA = {
-  type: 'object',
-  title: 'ExportStatusOutput',
-  description: 'Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always "completed" and downloadUrl is omitted.',
-  required: ['ok', 'jobId', 'status'],
-  additionalProperties: false,
-  properties: {
-    ok: { type: 'boolean', description: 'Always true on success.' },
-    jobId: { type: 'string', description: 'Identifier for the export job.' },
-    status: { type: 'string', enum: ['pending', 'completed', 'failed'], description: 'Current job status.' },
-    downloadUrl: { type: 'string', description: 'Download URL when status is "completed" and an async artifact exists. Omitted for synchronous exports.' },
-  },
-} as const;
-
 export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown',
@@ -849,7 +780,9 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     ],
     requiredFields: [],
     requiredOneOf: [['markdown'], ['markdownUrl']],
-    outputSchema: RENDER_OUTPUT_SCHEMA,
+    // outputSchema is injected by build-manifest.mjs from the Zod
+    // RenderOutputSchema at build time, keeping a single source of truth.
+    outputSchema: undefined,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {
@@ -965,33 +898,28 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown_preview',
     description:
-      'Render markdown into the FlatWrite editor preview pane, applying current style and layout ' +
-      'settings. Use this to see the rendered output in the editor; use render_markdown when you ' +
-      'need the HTML artifacts without the preview.',
+      'Render markdown into the FlatWrite editor preview pane using the editor\'s current ' +
+      'style and layout settings. Use this to see the rendered output in the editor; use ' +
+      'render_markdown when you need the HTML artifacts without the preview.',
     surfaceMode: 'doc',
     category: 'render',
     inputFields: [
       { name: 'markdown', type: 'string', description: 'Optional markdown to preview. If omitted, previews the current editor content.' },
-      ...RENDER_INPUT_FIELDS.map((f) => f.name as string),
     ],
     requiredFields: [],
     outputSchema: RENDER_PREVIEW_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: false },
     displayHints: {
-      inputFieldAliases: {
-        font: 'fontFamily',
-        appFramework: 'framework',
-        size: 'fontSize',
-        weight: 'fontWeight',
-        line: 'lineHeight',
-      },
+      inputFieldAliases: {},
     },
   },
   {
     name: 'export_document_html',
     description:
-      'Export the active document as a self-contained HTML file and open it in a new tab. Use this ' +
-      'when you need the full HTML document; use export_document_pdf for print-ready output.',
+      'Export the active document as a self-contained HTML file. Completes synchronously and ' +
+      'returns a downloadUrl. The export opens in a new browser tab for human users; agents ' +
+      'should open the downloadUrl if they need the content. Use export_document_pdf for ' +
+      'print-ready output.',
     surfaceMode: 'doc',
     category: 'export',
     inputFields: [],
@@ -1006,7 +934,9 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     name: 'export_document_pdf',
     description:
       'Export the active document as a PDF by triggering the browser print dialog with the rendered ' +
-      'preview. Use this for print-ready output; use export_document_html for a downloadable HTML file.',
+      'preview. Completes synchronously and returns a downloadUrl. The print dialog opens for human ' +
+      'users; agents should open the downloadUrl if they need the content. Use export_document_html ' +
+      'for a downloadable HTML file.',
     surfaceMode: 'doc',
     category: 'export',
     inputFields: [],
@@ -1029,24 +959,6 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     requiredFields: [],
     outputSchema: SHARE_LINK_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: false },
-    displayHints: {
-      inputFieldAliases: {},
-    },
-  },
-  {
-    name: 'get_export_status',
-    description:
-      'Return the status of an asynchronous export job. Use this after export_document_pdf or ' +
-      'export_document_html if the export is queued or async; returns completed immediately for ' +
-      'synchronous exports.',
-    surfaceMode: 'doc',
-    category: 'export',
-    inputFields: [
-      { name: 'jobId', type: 'string', description: 'Identifier of the export job to check.' },
-    ],
-    requiredFields: ['jobId'],
-    outputSchema: EXPORT_STATUS_OUTPUT_SCHEMA,
-    annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
     },
@@ -1076,7 +988,9 @@ export const RENDER_TOOLS_APPS: readonly ToolSpec[] = [
     ],
     requiredFields: [],
     requiredOneOf: [['markdown'], ['markdownUrl']],
-    outputSchema: RENDER_OUTPUT_SCHEMA,
+    // outputSchema is injected by build-manifest.mjs from the Zod
+    // RenderOutputSchema at build time, keeping a single source of truth.
+    outputSchema: undefined,
     annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {
@@ -1242,11 +1156,6 @@ function buildProperties(inputFields: ReadonlyArray<string | InputFieldSpec>): R
     const f = typeof entry === 'string' ? fieldByName(entry) : entry;
     out[f.name] = fieldToJsonSchema(f);
     seen.add(f.name);
-  }
-  for (const f of RENDER_INPUT_FIELDS) {
-    if (!seen.has(f.name)) {
-      out[f.name] = fieldToJsonSchema(f);
-    }
   }
   return out;
 }
