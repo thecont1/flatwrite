@@ -734,8 +734,7 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
       'Render markdown into FlatWrite-styled HTML <head> and <body> fragments, with optional ' +
       'typography and page-layout controls. Provide either the raw markdown inline (`markdown`) ' +
       'or an allowlisted URL (`markdownUrl`) pointing to raw markdown content. Use this when you ' +
-      'need the rendered HTML artifacts; use render_markdown_preview when you want to see the ' +
-      'result in the editor preview pane.',
+      'need the rendered HTML artifacts.',
     surfaceMode: 'doc',
     category: 'render',
     inputFields: [
@@ -870,9 +869,8 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown_preview',
     description:
-      'Render markdown into the FlatWrite editor preview pane using the editor\'s current ' +
-      'style and layout settings. Use this to see the rendered output in the editor; use ' +
-      'render_markdown when you need the HTML artifacts without the preview.',
+      'Triggers the editor\'s built-in preview pane. No HTML is returned — this tool produces a ' +
+      'visual side-effect only. Agents that need HTML output must use render_markdown instead.',
     surfaceMode: 'doc',
     category: 'render',
     inputFields: [
