@@ -1,4 +1,5 @@
 // Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
+// @version 1782830410
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 
@@ -259,8 +260,7 @@ export const DOC_TOOLS = [
         "size": "fontSize",
         "weight": "fontWeight",
         "line": "lineHeight"
-      },
-      "outputHints": {}
+      }
     }
   },
   {
@@ -532,8 +532,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": true
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -783,8 +782,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": true
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -990,8 +988,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -1200,8 +1197,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -1405,8 +1401,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -1612,8 +1607,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": true
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -1821,8 +1815,7 @@ export const DOC_TOOLS = [
         "size": "fontSize",
         "weight": "fontWeight",
         "line": "lineHeight"
-      },
-      "outputHints": {}
+      }
     }
   },
   {
@@ -2025,8 +2018,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -2229,8 +2221,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -2423,8 +2414,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": false
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   },
   {
@@ -2593,7 +2583,7 @@ export const DOC_TOOLS = [
     "outputSchema": {
       "type": "object",
       "title": "ExportStatusOutput",
-      "description": "Status of an asynchronous export job.",
+      "description": "Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always \"completed\" and downloadUrl is omitted.",
       "required": [
         "ok",
         "jobId",
@@ -2620,7 +2610,7 @@ export const DOC_TOOLS = [
         },
         "downloadUrl": {
           "type": "string",
-          "description": "Download URL when status is \"completed\"."
+          "description": "Download URL when status is \"completed\" and an async artifact exists. Omitted for synchronous exports."
         }
       }
     },
@@ -2628,8 +2618,7 @@ export const DOC_TOOLS = [
       "readOnlyHint": true
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   }
 ];
@@ -2891,8 +2880,7 @@ export const APP_TOOLS = [
         "size": "fontSize",
         "weight": "fontWeight",
         "line": "lineHeight"
-      },
-      "outputHints": {}
+      }
     }
   },
   {
@@ -3164,8 +3152,7 @@ export const APP_TOOLS = [
       "readOnlyHint": true
     },
     "displayHints": {
-      "inputFieldAliases": {},
-      "outputHints": {}
+      "inputFieldAliases": {}
     }
   }
 ];

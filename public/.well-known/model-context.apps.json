@@ -272,8 +272,7 @@
           "size": "fontSize",
           "weight": "fontWeight",
           "line": "lineHeight"
-        },
-        "outputHints": {}
+        }
       }
     },
     {
@@ -545,8 +544,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     }
   ]

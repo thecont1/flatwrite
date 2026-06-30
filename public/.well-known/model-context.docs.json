@@ -283,8 +283,7 @@
           "size": "fontSize",
           "weight": "fontWeight",
           "line": "lineHeight"
-        },
-        "outputHints": {}
+        }
       }
     },
     {
@@ -556,8 +555,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -807,8 +805,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -1014,8 +1011,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -1224,8 +1220,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -1429,8 +1424,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -1636,8 +1630,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -1845,8 +1838,7 @@
           "size": "fontSize",
           "weight": "fontWeight",
           "line": "lineHeight"
-        },
-        "outputHints": {}
+        }
       }
     },
     {
@@ -2049,8 +2041,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -2253,8 +2244,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -2447,8 +2437,7 @@
         "readOnlyHint": false
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     },
     {
@@ -2617,7 +2606,7 @@
       "outputSchema": {
         "type": "object",
         "title": "ExportStatusOutput",
-        "description": "Status of an asynchronous export job.",
+        "description": "Status of an asynchronous export job. Today FlatWrite exports are synchronous, so status is always \"completed\" and downloadUrl is omitted.",
         "required": [
           "ok",
           "jobId",
@@ -2644,7 +2633,7 @@
           },
           "downloadUrl": {
             "type": "string",
-            "description": "Download URL when status is \"completed\"."
+            "description": "Download URL when status is \"completed\" and an async artifact exists. Omitted for synchronous exports."
           }
         }
       },
@@ -2652,8 +2641,7 @@
         "readOnlyHint": true
       },
       "displayHints": {
-        "inputFieldAliases": {},
-        "outputHints": {}
+        "inputFieldAliases": {}
       }
     }
   ]

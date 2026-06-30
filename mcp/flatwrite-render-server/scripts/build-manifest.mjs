@@ -132,9 +132,14 @@ for (const surface of REGISTERED_SURFACES) {
 // webmcp.js imports DOC_TOOLS and APP_TOOLS from here and only adds
 // execute handlers. Eliminates hand-sync between manifests and the
 // page-side registerTool() calls.
+//
+// A // @version header is written so maintainers can verify freshness
+// at a glance. public/version.json carries the same ID for tooling.
 // ---------------------------------------------------------------------------
+const BUILD_ID = process.env.BUILD_ID || String(Math.floor(Date.now() / 1000));
 const RUNTIME_TOOLS_PATH = resolve(REPO_ROOT, "public/webmcp-tools.js");
 const runtimeModule = `// Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
+// @version ${BUILD_ID}
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 
@@ -144,8 +149,21 @@ export const APP_TOOLS = ${JSON.stringify(runtimeToolsBySurface.app ?? [], null,
 `;
 writeFileSync(RUNTIME_TOOLS_PATH, runtimeModule, "utf-8");
 console.log(
-  `  wrote ${relative(REPO_ROOT, RUNTIME_TOOLS_PATH)} (runtime tool definitions)`,
+  `  wrote ${relative(REPO_ROOT, RUNTIME_TOOLS_PATH)} (runtime tool definitions, @version ${BUILD_ID})`,
 );
+
+// ---------------------------------------------------------------------------
+// Emit public/version.json — informational build ID for cache-bust
+// tooling. The ?v= strings in index.html remain the source of truth
+// for client-side cache busting; this file is for build verification.
+// ---------------------------------------------------------------------------
+const VERSION_PATH = resolve(REPO_ROOT, "public/version.json");
+writeFileSync(
+  VERSION_PATH,
+  JSON.stringify({ "webmcp-tools": BUILD_ID }, null, 2) + "\n",
+  "utf-8",
+);
+console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
 
 console.log(
   `build-manifest: ${written} manifest file${written === 1 ? "" : "s"} written + 1 runtime module.`,
