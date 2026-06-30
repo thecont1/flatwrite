@@ -407,10 +407,18 @@ export const RENDER_INPUT_FIELDS = [
             'Free-form (alphanumeric, dash, underscore) — common values are "light" and "dark".',
     },
 ];
+/**
+ * Sentinel value for tools whose `outputSchema` will be injected by
+ * `build-manifest.mjs` from the Zod `RenderOutputSchema` at build time.
+ * Using this typed marker instead of `undefined` makes the build-time
+ * injection contract explicit and catches accidental omission at
+ * TypeScript compile time.
+ */
+export const INJECT_RENDER_OUTPUT = Symbol('INJECT_RENDER_OUTPUT');
 export const RENDER_OPTIONS_OUTPUT_SCHEMA = {
     type: 'object',
     title: 'RenderOptionsOutput',
-    description: 'Supported values for the render_markdown tool, wrapped in a discriminated envelope.',
+    description: 'Supported values for the render_markdown tool, wrapped in a typed envelope.',
     required: ['ok', 'options'],
     additionalProperties: false,
     properties: {
@@ -612,7 +620,7 @@ export const RENDER_TOOLS_DOCS = [
         requiredOneOf: [['markdown'], ['markdownUrl']],
         // outputSchema is injected by build-manifest.mjs from the Zod
         // RenderOutputSchema at build time, keeping a single source of truth.
-        outputSchema: undefined,
+        outputSchema: INJECT_RENDER_OUTPUT,
         annotations: { readOnlyHint: true },
         displayHints: {
             inputFieldAliases: {
@@ -738,10 +746,9 @@ export const RENDER_TOOLS_DOCS = [
     },
     {
         name: 'export_document_html',
-        description: 'Export the active document as a self-contained HTML file. Completes synchronously and ' +
-            'returns a downloadUrl. The export opens in a new browser tab for human users; agents ' +
-            'should open the downloadUrl if they need the content. Use export_document_pdf for ' +
-            'print-ready output.',
+        description: 'Export the active document as a self-contained HTML file. The export opens in ' +
+            'a new browser tab for human users. Completes synchronously. Use export_document_pdf ' +
+            'for print-ready output.',
         surfaceMode: 'doc',
         category: 'export',
         inputFields: [],
@@ -755,9 +762,8 @@ export const RENDER_TOOLS_DOCS = [
     {
         name: 'export_document_pdf',
         description: 'Export the active document as a PDF by triggering the browser print dialog with the rendered ' +
-            'preview. Completes synchronously and returns a downloadUrl. The print dialog opens for human ' +
-            'users; agents should open the downloadUrl if they need the content. Use export_document_html ' +
-            'for a downloadable HTML file.',
+            'preview. Completes synchronously. The print dialog opens for human users. Use ' +
+            'export_document_html for a downloadable HTML file.',
         surfaceMode: 'doc',
         category: 'export',
         inputFields: [],
@@ -807,7 +813,7 @@ export const RENDER_TOOLS_APPS = [
         requiredOneOf: [['markdown'], ['markdownUrl']],
         // outputSchema is injected by build-manifest.mjs from the Zod
         // RenderOutputSchema at build time, keeping a single source of truth.
-        outputSchema: undefined,
+        outputSchema: INJECT_RENDER_OUTPUT,
         annotations: { readOnlyHint: true },
         displayHints: {
             inputFieldAliases: {
@@ -978,12 +984,15 @@ export function generateManifest(surface, tools, handlers, options = {}) {
         if (t.requiredOneOf) {
             inputSchema.oneOf = t.requiredOneOf.map((group) => ({ required: group }));
         }
+        const outputSchema = t.outputSchema && typeof t.outputSchema !== 'symbol'
+            ? t.outputSchema
+            : undefined;
         return {
             name: t.name,
             description: t.description,
             category: t.category,
             inputSchema,
-            ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
+            ...(outputSchema ? { outputSchema } : {}),
             annotations: t.annotations,
             displayHints: t.displayHints,
         };

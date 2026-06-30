@@ -206,13 +206,13 @@
             "enum": [
               "html"
             ],
-            "description": "Result modality — always \"html\"."
+            "description": "Output format — always \"html\" for render tools."
           },
           "document": {
             "type": "object",
             "properties": {
               "title": {
-                "description": "Best-effort title from first H1 or filename.",
+                "description": "Best-effort title extracted from the first H1 heading.",
                 "type": "string"
               },
               "wordCount": {
@@ -285,7 +285,7 @@
       "outputSchema": {
         "type": "object",
         "title": "RenderOptionsOutput",
-        "description": "Supported values for the render_markdown tool, wrapped in a discriminated envelope.",
+        "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
         "required": [
           "ok",
           "options"

@@ -14,7 +14,7 @@
  * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
  */
 // Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
-// @version 1782845881
+// @version 1782847269
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 
@@ -209,13 +209,13 @@ export const DOC_TOOLS = [
           "enum": [
             "html"
           ],
-          "description": "Result modality — always \"html\"."
+          "description": "Output format — always \"html\" for render tools."
         },
         "document": {
           "type": "object",
           "properties": {
             "title": {
-              "description": "Best-effort title from first H1 or filename.",
+              "description": "Best-effort title extracted from the first H1 heading.",
               "type": "string"
             },
             "wordCount": {
@@ -288,7 +288,7 @@ export const DOC_TOOLS = [
     "outputSchema": {
       "type": "object",
       "title": "RenderOptionsOutput",
-      "description": "Supported values for the render_markdown tool, wrapped in a discriminated envelope.",
+      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
       "required": [
         "ok",
         "options"
@@ -795,7 +795,7 @@ export const DOC_TOOLS = [
   },
   {
     "name": "export_document_html",
-    "description": "Export the active document as a self-contained HTML file. Completes synchronously and returns a downloadUrl. The export opens in a new browser tab for human users; agents should open the downloadUrl if they need the content. Use export_document_pdf for print-ready output.",
+    "description": "Export the active document as a self-contained HTML file. The export opens in a new browser tab for human users. Completes synchronously. Use export_document_pdf for print-ready output.",
     "category": "export",
     "inputSchema": {
       "type": "object",
@@ -850,7 +850,7 @@ export const DOC_TOOLS = [
   },
   {
     "name": "export_document_pdf",
-    "description": "Export the active document as a PDF by triggering the browser print dialog with the rendered preview. Completes synchronously and returns a downloadUrl. The print dialog opens for human users; agents should open the downloadUrl if they need the content. Use export_document_html for a downloadable HTML file.",
+    "description": "Export the active document as a PDF by triggering the browser print dialog with the rendered preview. Completes synchronously. The print dialog opens for human users. Use export_document_html for a downloadable HTML file.",
     "category": "export",
     "inputSchema": {
       "type": "object",
@@ -1141,13 +1141,13 @@ export const APP_TOOLS = [
           "enum": [
             "html"
           ],
-          "description": "Result modality — always \"html\"."
+          "description": "Output format — always \"html\" for render tools."
         },
         "document": {
           "type": "object",
           "properties": {
             "title": {
-              "description": "Best-effort title from first H1 or filename.",
+              "description": "Best-effort title extracted from the first H1 heading.",
               "type": "string"
             },
             "wordCount": {
@@ -1220,7 +1220,7 @@ export const APP_TOOLS = [
     "outputSchema": {
       "type": "object",
       "title": "RenderOptionsOutput",
-      "description": "Supported values for the render_markdown tool, wrapped in a discriminated envelope.",
+      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
       "required": [
         "ok",
         "options"
