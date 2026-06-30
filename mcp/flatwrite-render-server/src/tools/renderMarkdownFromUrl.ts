@@ -40,7 +40,7 @@ import {
   callRender,
 } from '../renderClient.js';
 import { renderErrorResult } from './error.js';
-import { RenderOutputSchema } from '../shared/renderOutputSchema.js';
+import { RenderOutputSchema, buildRenderEnvelope } from '../shared/renderOutputSchema.js';
 
 const InputSchema = z
   .object({
@@ -227,13 +227,7 @@ export function registerRenderMarkdownFromUrlTool(
       });
       try {
         const result = await callRender(body, { apiKey, baseUrl });
-        const envelope = {
-          ok: true,
-          kind: 'html' as const,
-          document: { title: '', wordCount: 0, charCount: 0 },
-          artifacts: { head: result.head, body: result.body },
-          warnings: [] as string[],
-        };
+        const envelope = buildRenderEnvelope(result);
         return {
           content: [
             {

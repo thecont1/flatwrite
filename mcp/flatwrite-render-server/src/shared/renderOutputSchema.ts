@@ -18,10 +18,11 @@
  * Single source of truth for the render tool output schema.
  *
  * Defined as Zod so the server-side MCP tools (renderMarkdown.ts,
- * renderMarkdownFromUrl.ts) get runtime validation and TypeScript types.
- * The build-manifest.mjs script derives a JSON-Schema object from this
- * at build time and injects it into the WebMCP manifest tool specs,
- * so the manifest and the server stay in sync without hand-mirroring.
+ * renderMarkdownFromUrl.ts, streamableHttpServer.ts) get runtime
+ * validation and TypeScript types. The build-manifest.mjs script
+ * derives a JSON-Schema object from this at build time and injects
+ * it into the WebMCP manifest tool specs, so the manifest and the
+ * server stay in sync without hand-mirroring.
  */
 
 import { z } from 'zod';
@@ -29,10 +30,10 @@ import { z } from 'zod';
 export const RenderOutputSchema = z
   .object({
     ok: z.boolean().describe('True on successful render.'),
-    kind: z.enum(['html']).describe('Result modality — always "html".'),
+    kind: z.enum(['html']).describe('Output format — always "html" for render tools.'),
     document: z
       .object({
-        title: z.string().optional().describe('Best-effort title from first H1 or filename.'),
+        title: z.string().optional().describe('Best-effort title extracted from the first H1 heading.'),
         wordCount: z.number().optional().describe('Approximate word count of source markdown.'),
         charCount: z.number().optional().describe('Character count of source markdown.'),
       })
@@ -44,3 +45,31 @@ export const RenderOutputSchema = z
     warnings: z.array(z.string()).optional().describe('Non-fatal warnings.'),
   })
   .describe('Rendered markdown as self-contained HTML fragments with document metadata.');
+
+export type RenderOutput = z.infer<typeof RenderOutputSchema>;
+
+/**
+ * Build a render output envelope from a render result and optional
+ * markdown source. When markdown source is provided (inline path),
+ * document metadata (title, wordCount, charCount) is extracted from
+ * it. When omitted (URL path), metadata fields are zeroed.
+ *
+ * Used by renderMarkdown.ts, renderMarkdownFromUrl.ts, and
+ * streamableHttpServer.ts to avoid triplicating envelope logic.
+ */
+export function buildRenderEnvelope(
+  result: { head: string; body: string },
+  markdownSource?: string,
+): RenderOutput {
+  const md = markdownSource || '';
+  const titleMatch = md.match(/^#\s+(.+)$/m);
+  const title = titleMatch ? titleMatch[1].trim() : '';
+  const wordCount = md.trim().split(/\s+/).filter(Boolean).length;
+  return {
+    ok: true,
+    kind: 'html',
+    document: { title, wordCount, charCount: md.length },
+    artifacts: { head: result.head, body: result.body },
+    warnings: [],
+  };
+}

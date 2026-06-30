@@ -52,7 +52,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { callRender } from './renderClient.js';
-import { RenderOutputSchema } from './shared/renderOutputSchema.js';
+import { RenderOutputSchema, buildRenderEnvelope } from './shared/renderOutputSchema.js';
 import {
   buildRawMarkdownBody,
   buildRemoteMarkdownBody,
@@ -144,17 +144,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       const body = buildRawMarkdownBody(markdown, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
-        const md = markdown || '';
-        const titleMatch = md.match(/^#\s+(.+)$/m);
-        const title = titleMatch ? titleMatch[1].trim() : '';
-        const wordCount = md.trim().split(/\s+/).filter(Boolean).length;
-        const envelope = {
-          ok: true,
-          kind: 'html' as const,
-          document: { title, wordCount, charCount: md.length },
-          artifacts: { head: result.head, body: result.body },
-          warnings: [] as string[],
-        };
+        const envelope = buildRenderEnvelope(result, markdown);
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(envelope, null, 2) }],
           structuredContent: envelope,
@@ -188,13 +178,7 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
       const body = buildRemoteMarkdownBody(check.url, style);
       try {
         const result = await callRender(body, { apiKey, baseUrl });
-        const envelope = {
-          ok: true,
-          kind: 'html' as const,
-          document: { title: '', wordCount: 0, charCount: 0 },
-          artifacts: { head: result.head, body: result.body },
-          warnings: [] as string[],
-        };
+        const envelope = buildRenderEnvelope(result);
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(envelope, null, 2) }],
           structuredContent: envelope,
