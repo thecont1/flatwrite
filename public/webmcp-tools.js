@@ -14,7 +14,7 @@
  * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
  */
 // Auto-generated from mcpShared.ts by build-manifest.mjs — do not edit.
-// @version 1782847269
+// @version 1782850109
 // Tool definitions for WebMCP registerTool() calls. webmcp.js imports
 // these and binds execute handlers to each tool by name.
 
@@ -286,14 +286,8 @@ export const DOC_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "RenderOptionsOutput",
-      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
-      "required": [
-        "ok",
-        "options"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -301,17 +295,6 @@ export const DOC_TOOLS = [
         },
         "options": {
           "type": "object",
-          "description": "Supported enum values for each render option category.",
-          "required": [
-            "fonts",
-            "frameworks",
-            "docEngines",
-            "pageSizes",
-            "orientations",
-            "margins",
-            "surfaceModes"
-          ],
-          "additionalProperties": false,
           "properties": {
             "fonts": {
               "type": "array",
@@ -362,36 +345,53 @@ export const DOC_TOOLS = [
               },
               "description": "Surface mode hints that can be passed as surfaceMode."
             }
-          }
+          },
+          "required": [
+            "fonts",
+            "frameworks",
+            "docEngines",
+            "pageSizes",
+            "orientations",
+            "margins",
+            "surfaceModes"
+          ],
+          "additionalProperties": false,
+          "description": "Supported enum values for each render option category."
         },
         "defaults": {
-          "type": "object",
           "description": "Default values used when an option is omitted.",
-          "additionalProperties": false,
+          "type": "object",
           "properties": {
             "font": {
-              "type": "string",
-              "description": "Default font family."
+              "description": "Default font family.",
+              "type": "string"
             },
             "docEngine": {
-              "type": "string",
-              "description": "Default document engine."
+              "description": "Default document engine.",
+              "type": "string"
             },
             "surfaceMode": {
-              "type": "string",
-              "description": "Default surface mode."
+              "description": "Default surface mode.",
+              "type": "string"
             },
             "pageSize": {
-              "type": "string",
-              "description": "Default page size."
+              "description": "Default page size.",
+              "type": "string"
             },
             "orientation": {
-              "type": "string",
-              "description": "Default orientation."
+              "description": "Default orientation.",
+              "type": "string"
             }
-          }
+          },
+          "additionalProperties": false
         }
-      }
+      },
+      "required": [
+        "ok",
+        "options"
+      ],
+      "additionalProperties": false,
+      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope."
     },
     "annotations": {
       "readOnlyHint": true
@@ -753,14 +753,8 @@ export const DOC_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "RenderPreviewOutput",
-      "description": "Result of rendering markdown into the editor preview pane.",
-      "required": [
-        "ok",
-        "kind"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -774,17 +768,23 @@ export const DOC_TOOLS = [
           "description": "Result modality — always \"preview\"."
         },
         "documentId": {
-          "type": "string",
-          "description": "Stable identifier for the previewed document."
+          "description": "Stable identifier for the previewed document.",
+          "type": "string"
         },
         "warnings": {
+          "description": "Non-fatal warnings.",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "Non-fatal warnings."
+          }
         }
-      }
+      },
+      "required": [
+        "ok",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "description": "Result of rendering markdown into the editor preview pane."
     },
     "annotations": {
       "readOnlyHint": false
@@ -803,15 +803,8 @@ export const DOC_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "ExportHtmlOutput",
-      "description": "Result of exporting the document as HTML.",
-      "required": [
-        "ok",
-        "documentId",
-        "format"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -829,17 +822,24 @@ export const DOC_TOOLS = [
           "description": "Export format — always \"html\"."
         },
         "downloadUrl": {
-          "type": "string",
-          "description": "Blob URL of the exported HTML (temporary, valid for the session)."
+          "description": "Blob URL of the exported HTML (temporary, valid for the session).",
+          "type": "string"
         },
         "warnings": {
+          "description": "Non-fatal warnings.",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "Non-fatal warnings."
+          }
         }
-      }
+      },
+      "required": [
+        "ok",
+        "documentId",
+        "format"
+      ],
+      "additionalProperties": false,
+      "description": "Result of exporting the document as HTML."
     },
     "annotations": {
       "readOnlyHint": false
@@ -858,15 +858,8 @@ export const DOC_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "ExportPdfOutput",
-      "description": "Result of exporting the document as PDF (via browser print dialog).",
-      "required": [
-        "ok",
-        "documentId",
-        "format"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -884,17 +877,24 @@ export const DOC_TOOLS = [
           "description": "Export format — always \"pdf\"."
         },
         "pageCount": {
-          "type": "number",
-          "description": "Number of pages in the rendered output, if known."
+          "description": "Number of pages in the rendered output, if known.",
+          "type": "number"
         },
         "warnings": {
+          "description": "Non-fatal warnings.",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "Non-fatal warnings."
+          }
         }
-      }
+      },
+      "required": [
+        "ok",
+        "documentId",
+        "format"
+      ],
+      "additionalProperties": false,
+      "description": "Result of exporting the document as PDF (via browser print dialog)."
     },
     "annotations": {
       "readOnlyHint": false
@@ -913,15 +913,8 @@ export const DOC_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "ShareLinkOutput",
-      "description": "Result of creating a shareable URL for the document.",
-      "required": [
-        "ok",
-        "documentId",
-        "shareUrl"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -936,10 +929,17 @@ export const DOC_TOOLS = [
           "description": "Shareable URL that loads the document in the FlatWrite editor."
         },
         "expiresAt": {
-          "type": "string",
-          "description": "ISO 8601 timestamp when the share link expires."
+          "description": "ISO 8601 timestamp when the share link expires.",
+          "type": "string"
         }
-      }
+      },
+      "required": [
+        "ok",
+        "documentId",
+        "shareUrl"
+      ],
+      "additionalProperties": false,
+      "description": "Result of creating a shareable URL for the document."
     },
     "annotations": {
       "readOnlyHint": false
@@ -1218,14 +1218,8 @@ export const APP_TOOLS = [
       "required": []
     },
     "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "title": "RenderOptionsOutput",
-      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
-      "required": [
-        "ok",
-        "options"
-      ],
-      "additionalProperties": false,
       "properties": {
         "ok": {
           "type": "boolean",
@@ -1233,17 +1227,6 @@ export const APP_TOOLS = [
         },
         "options": {
           "type": "object",
-          "description": "Supported enum values for each render option category.",
-          "required": [
-            "fonts",
-            "frameworks",
-            "docEngines",
-            "pageSizes",
-            "orientations",
-            "margins",
-            "surfaceModes"
-          ],
-          "additionalProperties": false,
           "properties": {
             "fonts": {
               "type": "array",
@@ -1294,36 +1277,53 @@ export const APP_TOOLS = [
               },
               "description": "Surface mode hints that can be passed as surfaceMode."
             }
-          }
+          },
+          "required": [
+            "fonts",
+            "frameworks",
+            "docEngines",
+            "pageSizes",
+            "orientations",
+            "margins",
+            "surfaceModes"
+          ],
+          "additionalProperties": false,
+          "description": "Supported enum values for each render option category."
         },
         "defaults": {
-          "type": "object",
           "description": "Default values used when an option is omitted.",
-          "additionalProperties": false,
+          "type": "object",
           "properties": {
             "font": {
-              "type": "string",
-              "description": "Default font family."
+              "description": "Default font family.",
+              "type": "string"
             },
             "docEngine": {
-              "type": "string",
-              "description": "Default document engine."
+              "description": "Default document engine.",
+              "type": "string"
             },
             "surfaceMode": {
-              "type": "string",
-              "description": "Default surface mode."
+              "description": "Default surface mode.",
+              "type": "string"
             },
             "pageSize": {
-              "type": "string",
-              "description": "Default page size."
+              "description": "Default page size.",
+              "type": "string"
             },
             "orientation": {
-              "type": "string",
-              "description": "Default orientation."
+              "description": "Default orientation.",
+              "type": "string"
             }
-          }
+          },
+          "additionalProperties": false
         }
-      }
+      },
+      "required": [
+        "ok",
+        "options"
+      ],
+      "additionalProperties": false,
+      "description": "Supported values for the render_markdown tool, wrapped in a typed envelope."
     },
     "annotations": {
       "readOnlyHint": true

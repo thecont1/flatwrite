@@ -54,6 +54,14 @@ export type RenderOutput = z.infer<typeof RenderOutputSchema>;
  * document metadata (title, wordCount, charCount) is extracted from
  * it. When omitted (URL path), metadata fields are zeroed.
  *
+ * H1 extraction skips fenced code blocks (``` and ~~~) and inline
+ * backticks so an H1 inside a code sample isn't mistaken for the
+ * document title. Indented 4-space code blocks are NOT recognized —
+ * best-effort only.
+ *
+ * wordCount and charCount are derived from the ORIGINAL (not
+ * stripped) markdown so they match what was actually rendered.
+ *
  * Used by renderMarkdown.ts, renderMarkdownFromUrl.ts, and
  * streamableHttpServer.ts to avoid triplicating envelope logic.
  */
@@ -61,14 +69,17 @@ export function buildRenderEnvelope(
   result: { head: string; body: string },
   markdownSource?: string,
 ): RenderOutput {
-  const md = markdownSource || '';
-  const titleMatch = md.match(/^#\s+(.+)$/m);
+  const mdRaw = markdownSource || '';
+  const stripped = mdRaw
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, '')
+    .replace(/`[^`]+`/g, '');
+  const titleMatch = stripped.match(/^#\s+(.+)$/m);
   const title = titleMatch ? titleMatch[1].trim() : '';
-  const wordCount = md.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = mdRaw.trim().split(/\s+/).filter(Boolean).length;
   return {
     ok: true,
     kind: 'html',
-    document: { title, wordCount, charCount: md.length },
+    document: { title, wordCount, charCount: mdRaw.length },
     artifacts: { head: result.head, body: result.body },
     warnings: [],
   };

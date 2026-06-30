@@ -283,14 +283,8 @@
         "required": []
       },
       "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "title": "RenderOptionsOutput",
-        "description": "Supported values for the render_markdown tool, wrapped in a typed envelope.",
-        "required": [
-          "ok",
-          "options"
-        ],
-        "additionalProperties": false,
         "properties": {
           "ok": {
             "type": "boolean",
@@ -298,17 +292,6 @@
           },
           "options": {
             "type": "object",
-            "description": "Supported enum values for each render option category.",
-            "required": [
-              "fonts",
-              "frameworks",
-              "docEngines",
-              "pageSizes",
-              "orientations",
-              "margins",
-              "surfaceModes"
-            ],
-            "additionalProperties": false,
             "properties": {
               "fonts": {
                 "type": "array",
@@ -359,36 +342,53 @@
                 },
                 "description": "Surface mode hints that can be passed as surfaceMode."
               }
-            }
+            },
+            "required": [
+              "fonts",
+              "frameworks",
+              "docEngines",
+              "pageSizes",
+              "orientations",
+              "margins",
+              "surfaceModes"
+            ],
+            "additionalProperties": false,
+            "description": "Supported enum values for each render option category."
           },
           "defaults": {
-            "type": "object",
             "description": "Default values used when an option is omitted.",
-            "additionalProperties": false,
+            "type": "object",
             "properties": {
               "font": {
-                "type": "string",
-                "description": "Default font family."
+                "description": "Default font family.",
+                "type": "string"
               },
               "docEngine": {
-                "type": "string",
-                "description": "Default document engine."
+                "description": "Default document engine.",
+                "type": "string"
               },
               "surfaceMode": {
-                "type": "string",
-                "description": "Default surface mode."
+                "description": "Default surface mode.",
+                "type": "string"
               },
               "pageSize": {
-                "type": "string",
-                "description": "Default page size."
+                "description": "Default page size.",
+                "type": "string"
               },
               "orientation": {
-                "type": "string",
-                "description": "Default orientation."
+                "description": "Default orientation.",
+                "type": "string"
               }
-            }
+            },
+            "additionalProperties": false
           }
-        }
+        },
+        "required": [
+          "ok",
+          "options"
+        ],
+        "additionalProperties": false,
+        "description": "Supported values for the render_markdown tool, wrapped in a typed envelope."
       },
       "annotations": {
         "readOnlyHint": true

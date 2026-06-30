@@ -37,8 +37,8 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const WEBMCP_JS = readFileSync(
@@ -920,5 +920,62 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     for (const tool of exportTools) {
       expect(tool.outputSchema.required).toContain("format");
     }
+  });
+});
+
+/**
+ * Snapshot baseline of the generated manifests. Acts as a regression
+ * gate for the build pipeline — any change to the generated
+ * `public/.well-known/model-context.*.json` files must be reflected in
+ * `test/__snapshots__/manifest-baseline.json` via an explicit snapshot
+ * update (delete the file and re-run, then commit the new baseline).
+ *
+ * Local dev: the test auto-bootstraps the baseline on first run so the
+ * developer doesn't have to remember the dance. CI: the test fails
+ * loudly if the baseline is missing so a fresh clone (or a lost
+ * baseline) cannot pass CI without an explicit commit of the snapshot.
+ */
+describe("manifest snapshot baseline", () => {
+  const SNAPSHOT_PATH = resolve(
+    REPO_ROOT,
+    "test",
+    "__snapshots__",
+    "manifest-baseline.json",
+  );
+  const DOCS_MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.docs.json",
+  );
+  const APPS_MANIFEST_PATH = resolve(
+    REPO_ROOT,
+    "public/.well-known/model-context.apps.json",
+  );
+
+  test("current manifests match baseline (or initializes it on first local run)", () => {
+    const docs = JSON.parse(readFileSync(DOCS_MANIFEST_PATH, "utf-8"));
+    const apps = JSON.parse(readFileSync(APPS_MANIFEST_PATH, "utf-8"));
+    const current = { docs, apps };
+
+    if (!existsSync(SNAPSHOT_PATH)) {
+      if (process.env.CI) {
+        throw new Error(
+          `manifest-baseline.json missing at ${SNAPSHOT_PATH}. ` +
+          "Run `bun run build && bun test test/webmcp.test.js` locally and " +
+          "commit the generated baseline before pushing.",
+        );
+      }
+      mkdirSync(dirname(SNAPSHOT_PATH), { recursive: true });
+      writeFileSync(
+        SNAPSHOT_PATH,
+        JSON.stringify(current, null, 2) + "\n",
+        "utf-8",
+      );
+      console.warn(
+        "Initialized manifest-baseline.json snapshot. Re-run tests to enforce it.",
+      );
+      return;
+    }
+    const baseline = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf-8"));
+    expect(current).toEqual(baseline);
   });
 });

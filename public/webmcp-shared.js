@@ -408,51 +408,51 @@ export const RENDER_INPUT_FIELDS = [
     },
 ];
 /**
- * Sentinel value for tools whose `outputSchema` will be injected by
- * `build-manifest.mjs` from the Zod `RenderOutputSchema` at build time.
- * Using this typed marker instead of `undefined` makes the build-time
+ * Sentinel values for tools whose `outputSchema` will be injected by
+ * `build-manifest.mjs` from a Zod schema at build time. Each sentinel
+ * maps to one schema; the build script maintains a `SENTINEL → schema`
+ * lookup table.
+ *
+ * Using typed markers instead of `undefined` makes the build-time
  * injection contract explicit and catches accidental omission at
  * TypeScript compile time.
+ *
+ * Symbols are primitives, so a single sentinel instance survives
+ * `new Function()` eval boundaries — the build script captures the
+ * same Symbol from the compiled module via export-stripping.
  */
 export const INJECT_RENDER_OUTPUT = Symbol('INJECT_RENDER_OUTPUT');
-export const RENDER_OPTIONS_OUTPUT_SCHEMA = {
-    type: 'object',
-    title: 'RenderOptionsOutput',
-    description: 'Supported values for the render_markdown tool, wrapped in a typed envelope.',
-    required: ['ok', 'options'],
-    additionalProperties: false,
-    properties: {
-        ok: { type: 'boolean', description: 'Always true for successful options listing.' },
-        options: {
-            type: 'object',
-            description: 'Supported enum values for each render option category.',
-            required: ['fonts', 'frameworks', 'docEngines', 'pageSizes', 'orientations', 'margins', 'surfaceModes'],
-            additionalProperties: false,
-            properties: {
-                fonts: { type: 'array', items: { type: 'string' }, description: 'Bundled font families that can be passed as fontFamily.' },
-                frameworks: { type: 'array', items: { type: 'string' }, description: 'UI frameworks that can be passed as framework when surfaceMode is "app".' },
-                docEngines: { type: 'array', items: { type: 'string' }, description: 'Document engines that can be passed as docEngine.' },
-                pageSizes: { type: 'array', items: { type: 'string' }, description: 'Page size presets that can be passed as pageSize.' },
-                orientations: { type: 'array', items: { type: 'string' }, description: 'Page orientations that can be passed as orientation.' },
-                margins: { type: 'array', items: { type: 'string' }, description: 'Page margin presets that can be passed as marginsLR or marginsTB.' },
-                surfaceModes: { type: 'array', items: { type: 'string' }, description: 'Surface mode hints that can be passed as surfaceMode.' },
-            },
-        },
-        defaults: {
-            type: 'object',
-            description: 'Default values used when an option is omitted.',
-            additionalProperties: false,
-            properties: {
-                font: { type: 'string', description: 'Default font family.' },
-                docEngine: { type: 'string', description: 'Default document engine.' },
-                surfaceMode: { type: 'string', description: 'Default surface mode.' },
-                pageSize: { type: 'string', description: 'Default page size.' },
-                orientation: { type: 'string', description: 'Default orientation.' },
-            },
-        },
-    },
+export const INJECT_RENDER_OPTIONS_OUTPUT = Symbol('INJECT_RENDER_OPTIONS_OUTPUT');
+export const INJECT_RENDER_PREVIEW_OUTPUT = Symbol('INJECT_RENDER_PREVIEW_OUTPUT');
+export const INJECT_EXPORT_HTML_OUTPUT = Symbol('INJECT_EXPORT_HTML_OUTPUT');
+export const INJECT_EXPORT_PDF_OUTPUT = Symbol('INJECT_EXPORT_PDF_OUTPUT');
+export const INJECT_SHARE_LINK_OUTPUT = Symbol('INJECT_SHARE_LINK_OUTPUT');
+/**
+ * Per-tool lookup from canonical tool name to its outputSchema
+ * sentinel. The build-manifest.mjs script mirrors this map (via the
+ * compiled module) to resolve `t.outputSchema` sentinels to the
+ * derived JSON-Schema objects.
+ */
+export const SENTINEL_BY_TOOL_NAME = {
+    render_markdown: INJECT_RENDER_OUTPUT,
+    render_markdown_preview: INJECT_RENDER_PREVIEW_OUTPUT,
+    list_render_options: INJECT_RENDER_OPTIONS_OUTPUT,
+    export_document_html: INJECT_EXPORT_HTML_OUTPUT,
+    export_document_pdf: INJECT_EXPORT_PDF_OUTPUT,
+    create_share_link: INJECT_SHARE_LINK_OUTPUT,
 };
 /* ── Lifecycle / export / share output schemas ─────────────────────────── */
+/**
+ * Output schemas for the lifecycle / export / share tools. The 5
+ * tools whose schemas previously lived as hand-written constants
+ * (render_options, render_preview, export_html, export_pdf,
+ * share_link) are now derived from Zod schemas at build time via
+ * `SENTINEL_BY_TOOL_NAME` — see the corresponding files in
+ * `src/shared/<name>OutputSchema.ts`.
+ *
+ * The schemas that remain hand-written below are tools that have
+ * not yet been migrated to the sentinel pattern.
+ */
 export const DOCUMENT_STATE_OUTPUT_SCHEMA = {
     type: 'object',
     title: 'DocumentStateOutput',
@@ -541,60 +541,6 @@ export const LIST_RECENT_OUTPUT_SCHEMA = {
         },
     },
 };
-export const RENDER_PREVIEW_OUTPUT_SCHEMA = {
-    type: 'object',
-    title: 'RenderPreviewOutput',
-    description: 'Result of rendering markdown into the editor preview pane.',
-    required: ['ok', 'kind'],
-    additionalProperties: false,
-    properties: {
-        ok: { type: 'boolean', description: 'Always true on success.' },
-        kind: { type: 'string', enum: ['preview'], description: 'Result modality — always "preview".' },
-        documentId: { type: 'string', description: 'Stable identifier for the previewed document.' },
-        warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
-    },
-};
-export const EXPORT_HTML_OUTPUT_SCHEMA = {
-    type: 'object',
-    title: 'ExportHtmlOutput',
-    description: 'Result of exporting the document as HTML.',
-    required: ['ok', 'documentId', 'format'],
-    additionalProperties: false,
-    properties: {
-        ok: { type: 'boolean', description: 'Always true on success.' },
-        documentId: { type: 'string', description: 'Stable identifier for the exported document.' },
-        format: { type: 'string', enum: ['html'], description: 'Export format — always "html".' },
-        downloadUrl: { type: 'string', description: 'Blob URL of the exported HTML (temporary, valid for the session).' },
-        warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
-    },
-};
-export const EXPORT_PDF_OUTPUT_SCHEMA = {
-    type: 'object',
-    title: 'ExportPdfOutput',
-    description: 'Result of exporting the document as PDF (via browser print dialog).',
-    required: ['ok', 'documentId', 'format'],
-    additionalProperties: false,
-    properties: {
-        ok: { type: 'boolean', description: 'Always true on success.' },
-        documentId: { type: 'string', description: 'Stable identifier for the exported document.' },
-        format: { type: 'string', enum: ['pdf'], description: 'Export format — always "pdf".' },
-        pageCount: { type: 'number', description: 'Number of pages in the rendered output, if known.' },
-        warnings: { type: 'array', items: { type: 'string' }, description: 'Non-fatal warnings.' },
-    },
-};
-export const SHARE_LINK_OUTPUT_SCHEMA = {
-    type: 'object',
-    title: 'ShareLinkOutput',
-    description: 'Result of creating a shareable URL for the document.',
-    required: ['ok', 'documentId', 'shareUrl'],
-    additionalProperties: false,
-    properties: {
-        ok: { type: 'boolean', description: 'Always true on success.' },
-        documentId: { type: 'string', description: 'Stable identifier for the shared document.' },
-        shareUrl: { type: 'string', description: 'Shareable URL that loads the document in the FlatWrite editor.' },
-        expiresAt: { type: 'string', description: 'ISO 8601 timestamp when the share link expires.' },
-    },
-};
 export const RENDER_TOOLS_DOCS = [
     {
         name: 'render_markdown',
@@ -642,7 +588,7 @@ export const RENDER_TOOLS_DOCS = [
         category: 'discovery',
         inputFields: [],
         requiredFields: [],
-        outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
+        outputSchema: INJECT_RENDER_OPTIONS_OUTPUT,
         annotations: { readOnlyHint: true },
         displayHints: {
             inputFieldAliases: {},
@@ -738,7 +684,7 @@ export const RENDER_TOOLS_DOCS = [
             { name: 'markdown', type: 'string', description: 'Optional markdown to preview. If omitted, previews the current editor content.' },
         ],
         requiredFields: [],
-        outputSchema: RENDER_PREVIEW_OUTPUT_SCHEMA,
+        outputSchema: INJECT_RENDER_PREVIEW_OUTPUT,
         annotations: { readOnlyHint: false },
         displayHints: {
             inputFieldAliases: {},
@@ -753,7 +699,7 @@ export const RENDER_TOOLS_DOCS = [
         category: 'export',
         inputFields: [],
         requiredFields: [],
-        outputSchema: EXPORT_HTML_OUTPUT_SCHEMA,
+        outputSchema: INJECT_EXPORT_HTML_OUTPUT,
         annotations: { readOnlyHint: false },
         displayHints: {
             inputFieldAliases: {},
@@ -768,7 +714,7 @@ export const RENDER_TOOLS_DOCS = [
         category: 'export',
         inputFields: [],
         requiredFields: [],
-        outputSchema: EXPORT_PDF_OUTPUT_SCHEMA,
+        outputSchema: INJECT_EXPORT_PDF_OUTPUT,
         annotations: { readOnlyHint: false },
         displayHints: {
             inputFieldAliases: {},
@@ -783,7 +729,7 @@ export const RENDER_TOOLS_DOCS = [
         category: 'share',
         inputFields: [],
         requiredFields: [],
-        outputSchema: SHARE_LINK_OUTPUT_SCHEMA,
+        outputSchema: INJECT_SHARE_LINK_OUTPUT,
         annotations: { readOnlyHint: false },
         displayHints: {
             inputFieldAliases: {},
@@ -834,7 +780,7 @@ export const RENDER_TOOLS_APPS = [
         category: 'discovery',
         inputFields: [],
         requiredFields: [],
-        outputSchema: RENDER_OPTIONS_OUTPUT_SCHEMA,
+        outputSchema: INJECT_RENDER_OPTIONS_OUTPUT,
         annotations: { readOnlyHint: true },
         displayHints: {
             inputFieldAliases: {},
@@ -986,7 +932,12 @@ export function generateManifest(surface, tools, handlers, options = {}) {
         }
         const outputSchema = t.outputSchema && typeof t.outputSchema !== 'symbol'
             ? t.outputSchema
-            : undefined;
+            : (() => {
+                throw new Error(`generateManifest: tool "${t.name}" has a build-time outputSchema marker ` +
+                    `(${String(t.outputSchema)}) that wasn't injected. ` +
+                    `Check that build-manifest.mjs's injectSentinelSchemas() ran on this ` +
+                    `tools array before generateManifest() was called.`);
+            })();
         return {
             name: t.name,
             description: t.description,

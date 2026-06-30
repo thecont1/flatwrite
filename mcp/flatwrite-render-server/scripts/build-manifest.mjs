@@ -41,130 +41,199 @@ const DIST_RENDER_OUTPUT = resolve(__dirname, "../dist/shared/renderOutputSchema
 const PUBLIC_WELL_KNOWN = resolve(REPO_ROOT, "public/.well-known");
 
 // ---------------------------------------------------------------------------
-// Load the compiled shared module. Same artefact that gets copied to
-// public/webmcp-shared.js — keeping the load path identical to the
-// runtime consumer ensures the manifest and the runtime agree on
-// schema, allowlists, and tool descriptions.
+// Wrap the entire script body in a try/catch so any thrown error
+// produces a single, consistent `build-manifest: <message>` line and
+// a non-zero exit. Avoids ad-hoc `console.error + process.exit(1)`
+// sprinkled through the script.
 // ---------------------------------------------------------------------------
-
-if (!existsSync(DIST_SHARED)) {
-  console.error(
-    `build-manifest: ${DIST_SHARED} not found.\n` +
-      "Run `bun run build` (which runs `tsc` first) before this script.",
-  );
-  process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Load the compiled Zod RenderOutputSchema and derive a JSON-Schema object
-// from it. This is the single source of truth for the render tool output —
-// the server-side MCP tools import the Zod schema directly, and the
-// manifest gets the derived JSON-Schema injected at build time.
-// ---------------------------------------------------------------------------
-const { RenderOutputSchema } = await import(DIST_RENDER_OUTPUT);
-const renderOutputJsonSchema = z.toJSONSchema(RenderOutputSchema);
-
-const sharedSrc = readFileSync(DIST_SHARED, "utf-8");
-
-// Strip ESM `export` keywords so we can evaluate the file as a script
-// and read its bindings via a captured object. Same trick the
-// webmcp.test.js bundler uses.
-const stripped = sharedSrc
-  .replace(/export\s+const\s+/g, "const ")
-  .replace(/export\s+async\s+function\s+/g, "async function ")
-  .replace(/export\s+function\s+/g, "function ")
-  .replace(/export\s+type\s+/g, "type ")
-  .replace(/export\s+interface\s+/g, "interface ");
-
-const captured = {};
-// eslint-disable-next-line no-new-func
-new Function(
-  "captured",
-  `${stripped}\n;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.RENDER_TOOLS_APPS=RENDER_TOOLS_APPS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_DOCS_MCP=HANDLER_DOCS_MCP;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
-)(captured);
-
-const {
-  RENDER_TOOLS_DOCS,
-  RENDER_TOOLS_APPS,
-  HANDLER_DOCS,
-  HANDLER_DOCS_MCP,
-  HANDLER_APPS,
-  REGISTERED_SURFACES,
-  generateManifest,
-} = captured;
-
-if (!RENDER_TOOLS_DOCS || !RENDER_TOOLS_APPS || !REGISTERED_SURFACES || !generateManifest) {
-  console.error(
-    "build-manifest: shared module did not export expected symbols. " +
-      "Did the export-strip regex miss something?",
-  );
-  process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Inject the derived JSON-Schema into render tool specs marked with the
-// INJECT_RENDER_OUTPUT sentinel. We create shallow copies of the tools
-// arrays with the outputSchema replaced so the originals are not mutated.
-// ---------------------------------------------------------------------------
-function injectRenderOutputSchema(tools) {
-  return tools.map((t) =>
-    typeof t.outputSchema === "symbol" && t.name.startsWith("render_")
-      ? { ...t, outputSchema: renderOutputJsonSchema }
-      : t,
-  );
-}
-
-const TOOLS_BY_SURFACE = {
-  doc: injectRenderOutputSchema(RENDER_TOOLS_DOCS),
-  app: injectRenderOutputSchema(RENDER_TOOLS_APPS),
-};
-
-/**
- * Handlers per surface, in preferred-first order. The first entry
- * becomes the manifest's "default" handler; consumers should iterate
- * the array to discover alternatives. Adding a new transport for an
- * existing surface is a one-line edit here.
- */
-const HANDLERS_BY_SURFACE = {
-  doc: [HANDLER_DOCS_MCP, HANDLER_DOCS].filter(Boolean),
-  app: [HANDLER_APPS].filter(Boolean),
-};
-
-mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
-
-let written = 0;
-const runtimeToolsBySurface = {};
-
-for (const surface of REGISTERED_SURFACES) {
-  const tools = TOOLS_BY_SURFACE[surface.id] ?? [];
-  const handlers = HANDLERS_BY_SURFACE[surface.id];
-  if (!handlers || handlers.length === 0) {
-    console.error(
-      `build-manifest: no handlers registered for surface "${surface.id}". ` +
-        `Add at least one HANDLER_${surface.id.toUpperCase()}* to mcpShared.ts.`,
+try {
+  // -------------------------------------------------------------------------
+  // Load the compiled shared module. Same artefact that gets copied to
+  // public/webmcp-shared.js — keeping the load path identical to the
+  // runtime consumer ensures the manifest and the runtime agree on
+  // schema, allowlists, and tool descriptions.
+  // -------------------------------------------------------------------------
+  if (!existsSync(DIST_SHARED)) {
+    throw new Error(
+      `${DIST_SHARED} not found.\n` +
+        "Run `bun run build` (which runs `tsc` first) before this script.",
     );
-    process.exit(1);
   }
-  const manifest = generateManifest(surface.id, tools, handlers, {
-    status: surface.status,
-  });
-  // manifestFile is `.well-known/model-context.<surface>.json`; strip
-  // the leading `.well-known/` to get the path under PUBLIC_WELL_KNOWN.
-  const relativePath = surface.manifestFile.replace(/^\.well-known\//, "");
-  const outPath = resolve(PUBLIC_WELL_KNOWN, relativePath);
-  writeFileSync(outPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(
-    `  wrote ${relative(REPO_ROOT, outPath)} (${tools.length} tool${
-      tools.length === 1 ? "" : "s"
-    }, status=${surface.status})`,
-  );
-  written++;
 
-  // Collect the manifest's tool definitions (without execute handlers)
-  // for the runtime module. webmcp.js imports this and binds execute
-  // handlers to each tool by name.
-  runtimeToolsBySurface[surface.id] = manifest.tools;
-}
+  // -------------------------------------------------------------------------
+  // Load all the Zod output schemas and derive a JSON-Schema object for
+  // each. Each schema is the single source of truth for its tool's
+  // output — the server-side MCP tools import the Zod schema directly,
+  // and the manifest gets the derived JSON-Schema injected at build
+  // time.
+  // -------------------------------------------------------------------------
+  const { RenderOutputSchema } = await import(DIST_RENDER_OUTPUT);
+  const { RenderOptionsOutputSchema } = await import(
+    resolve(__dirname, "../dist/shared/renderOptionsOutputSchema.js")
+  );
+  const { RenderPreviewOutputSchema } = await import(
+    resolve(__dirname, "../dist/shared/renderPreviewOutputSchema.js")
+  );
+  const { ExportHtmlOutputSchema } = await import(
+    resolve(__dirname, "../dist/shared/exportHtmlOutputSchema.js")
+  );
+  const { ExportPdfOutputSchema } = await import(
+    resolve(__dirname, "../dist/shared/exportPdfOutputSchema.js")
+  );
+  const { ShareLinkOutputSchema } = await import(
+    resolve(__dirname, "../dist/shared/shareLinkOutputSchema.js")
+  );
+
+  const sharedSrc = readFileSync(DIST_SHARED, "utf-8");
+
+  // Strip ESM `export` keywords so we can evaluate the file as a script
+  // and read its bindings via a captured object. Same trick the
+  // webmcp.test.js bundler uses.
+  const stripped = sharedSrc
+    .replace(/export\s+const\s+/g, "const ")
+    .replace(/export\s+async\s+function\s+/g, "async function ")
+    .replace(/export\s+function\s+/g, "function ")
+    .replace(/export\s+type\s+/g, "type ")
+    .replace(/export\s+interface\s+/g, "interface ");
+
+  const captured = {};
+  // eslint-disable-next-line no-new-func
+  new Function(
+    "captured",
+    `${stripped}\n;captured.SENTINEL_BY_TOOL_NAME=SENTINEL_BY_TOOL_NAME;captured.RENDER_TOOLS_DOCS=RENDER_TOOLS_DOCS;captured.RENDER_TOOLS_APPS=RENDER_TOOLS_APPS;captured.HANDLER_DOCS=HANDLER_DOCS;captured.HANDLER_DOCS_MCP=HANDLER_DOCS_MCP;captured.HANDLER_APPS=HANDLER_APPS;captured.REGISTERED_SURFACES=REGISTERED_SURFACES;captured.generateManifest=generateManifest;`,
+  )(captured);
+
+  const {
+    SENTINEL_BY_TOOL_NAME,
+    RENDER_TOOLS_DOCS,
+    RENDER_TOOLS_APPS,
+    HANDLER_DOCS,
+    HANDLER_DOCS_MCP,
+    HANDLER_APPS,
+    REGISTERED_SURFACES,
+    generateManifest,
+  } = captured;
+
+  if (!RENDER_TOOLS_DOCS || !RENDER_TOOLS_APPS || !REGISTERED_SURFACES || !generateManifest) {
+    throw new Error(
+      "shared module did not export expected symbols. " +
+        "Did the export-strip regex miss something?",
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Single source of truth for the tool-name → Zod-schema mapping.
+  // Adding a new sentinel-migrated tool means one new entry here AND
+  // a matching entry in mcpShared.ts's SENTINEL_BY_TOOL_NAME. The
+  // post-loop assertion below catches drift at build time.
+  // -------------------------------------------------------------------------
+  const SCHEMAS_BY_TOOL_NAME = {
+    render_markdown: RenderOutputSchema,
+    list_render_options: RenderOptionsOutputSchema,
+    render_markdown_preview: RenderPreviewOutputSchema,
+    export_document_html: ExportHtmlOutputSchema,
+    export_document_pdf: ExportPdfOutputSchema,
+    create_share_link: ShareLinkOutputSchema,
+  };
+
+  const JSON_SCHEMA_BY_TOOL_NAME = Object.fromEntries(
+    Object.entries(SCHEMAS_BY_TOOL_NAME).map(([name, schema]) => [
+      name,
+      z.toJSONSchema(schema),
+    ]),
+  );
+
+  // Inverse lookup: sentinel Symbol → JSON-Schema object. Built from
+  // SENTINEL_BY_TOOL_NAME (the declared source of truth in mcpShared.ts)
+  // so a missing entry fails here, at the lookup site, with a useful
+  // message — rather than as a downstream sentinel-not-injected throw.
+  const SENTINEL_TO_SCHEMA = new Map();
+  for (const [toolName, sentinel] of Object.entries(SENTINEL_BY_TOOL_NAME)) {
+    const jsonSchema = JSON_SCHEMA_BY_TOOL_NAME[toolName];
+    if (jsonSchema === undefined) {
+      throw new Error(
+        `no Zod schema registered for tool "${toolName}" in SENTINEL_BY_TOOL_NAME. ` +
+        `Add an entry to SCHEMAS_BY_TOOL_NAME in build-manifest.mjs.`,
+      );
+    }
+    SENTINEL_TO_SCHEMA.set(sentinel, jsonSchema);
+  }
+
+  // Catch the reverse drift: an entry in SCHEMAS_BY_TOOL_NAME that no
+  // tool declares (would silently never be injected).
+  for (const toolName of Object.keys(JSON_SCHEMA_BY_TOOL_NAME)) {
+    if (!(toolName in SENTINEL_BY_TOOL_NAME)) {
+      throw new Error(
+        `tool "${toolName}" is in SCHEMAS_BY_TOOL_NAME but missing from ` +
+        `mcpShared.ts's SENTINEL_BY_TOOL_NAME. Either add the tool to ` +
+        `RENDER_TOOLS_DOCS/RENDER_TOOLS_APPS or remove its schema.`,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Inject the derived JSON-Schema into tool specs marked with a
+  // BuildTimeSentinel. We create shallow copies of the tools arrays
+  // with the outputSchema replaced so the originals are not mutated.
+  // -------------------------------------------------------------------------
+  function injectSentinelSchemas(tools) {
+    return tools.map((t) =>
+      typeof t.outputSchema === "symbol"
+        ? { ...t, outputSchema: SENTINEL_TO_SCHEMA.get(t.outputSchema) ?? undefined }
+        : t,
+    );
+  }
+
+  const TOOLS_BY_SURFACE = {
+    doc: injectSentinelSchemas(RENDER_TOOLS_DOCS),
+    app: injectSentinelSchemas(RENDER_TOOLS_APPS),
+  };
+
+  /**
+   * Handlers per surface, in preferred-first order. The first entry
+   * becomes the manifest's "default" handler; consumers should iterate
+   * the array to discover alternatives. Adding a new transport for an
+   * existing surface is a one-line edit here.
+   */
+  const HANDLERS_BY_SURFACE = {
+    doc: [HANDLER_DOCS_MCP, HANDLER_DOCS].filter(Boolean),
+    app: [HANDLER_APPS].filter(Boolean),
+  };
+
+  mkdirSync(PUBLIC_WELL_KNOWN, { recursive: true });
+
+  let written = 0;
+  const runtimeToolsBySurface = {};
+
+  for (const surface of REGISTERED_SURFACES) {
+    const tools = TOOLS_BY_SURFACE[surface.id] ?? [];
+    const handlers = HANDLERS_BY_SURFACE[surface.id];
+    if (!handlers || handlers.length === 0) {
+      throw new Error(
+        `no handlers registered for surface "${surface.id}". ` +
+          `Add at least one HANDLER_${surface.id.toUpperCase()}* to mcpShared.ts.`,
+      );
+    }
+    const manifest = generateManifest(surface.id, tools, handlers, {
+      status: surface.status,
+    });
+    // manifestFile is `.well-known/model-context.<surface>.json`; strip
+    // the leading `.well-known/` to get the path under PUBLIC_WELL_KNOWN.
+    const relativePath = surface.manifestFile.replace(/^\.well-known\//, "");
+    const outPath = resolve(PUBLIC_WELL_KNOWN, relativePath);
+    writeFileSync(outPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+    console.log(
+      `  wrote ${relative(REPO_ROOT, outPath)} (${tools.length} tool${
+        tools.length === 1 ? "" : "s"
+      }, status=${surface.status})`,
+    );
+    written++;
+
+    // Collect the manifest's tool definitions (without execute handlers)
+    // for the runtime module. webmcp.js imports this and binds execute
+    // handlers to each tool by name.
+    runtimeToolsBySurface[surface.id] = manifest.tools;
+  }
 
 // ---------------------------------------------------------------------------
 // Emit the runtime tool definitions module (public/webmcp-tools.js).
@@ -223,13 +292,13 @@ writeFileSync(
 console.log(`  wrote ${relative(REPO_ROOT, VERSION_PATH)}`);
 
 // ---------------------------------------------------------------------------
-// Post-build validation: verify every render tool has a non-empty
-// outputSchema in both generated manifests.
+// Post-build validation: verify every tool has a non-empty outputSchema
+// in both generated manifests. (Originally scoped to render_-prefixed
+// tools; expanded to all tools once the sentinel pattern generalized.)
 // ---------------------------------------------------------------------------
-function validateRenderOutputSchemas(manifestPath, surfaceName) {
+function validateOutputSchemas(manifestPath, surfaceName) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  const renderTools = manifest.tools.filter((t) => t.name.startsWith("render_"));
-  const missing = renderTools.filter(
+  const missing = manifest.tools.filter(
     (t) => !t.outputSchema || Object.keys(t.outputSchema).length === 0,
   );
   if (missing.length > 0) {
@@ -240,16 +309,20 @@ function validateRenderOutputSchemas(manifestPath, surfaceName) {
   }
 }
 
-validateRenderOutputSchemas(
+validateOutputSchemas(
   resolve(PUBLIC_WELL_KNOWN, "model-context.docs.json"),
   "docs",
 );
-validateRenderOutputSchemas(
+validateOutputSchemas(
   resolve(PUBLIC_WELL_KNOWN, "model-context.apps.json"),
   "apps",
 );
-console.log("\u2713 All render tools have outputSchema (docs + apps)");
+console.log("\u2713 All tools have outputSchema (docs + apps)");
 
 console.log(
   `build-manifest: ${written} manifest file${written === 1 ? "" : "s"} written + 1 runtime module.`,
 );
+} catch (e) {
+  console.error(`build-manifest: ${e.message}`);
+  process.exit(1);
+}
