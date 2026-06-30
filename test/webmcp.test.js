@@ -13,6 +13,10 @@
  *   7. Mint a short-lived token from /mcp-token and send it as
  *      X-Mcp-Token (NOT X-Api-Key) — the long-lived key must never
  *      appear in shipped JS.
+ *   8. Call the executor as `t.execute(args)` — Chrome's WebMCP API
+ *      uses the `execute` property on a registered tool. The previous
+ *      version of webmcp.js used `handler`, which threw inside
+ *      registerTool() and prevented BOTH tools from registering.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -69,6 +73,9 @@ function fakeResponse(status, body) {
  * The fakeFetch here is the "minimal" version: it returns a SENTINEL
  * error on any URL. Tests that need real token/render behavior use
  * sandboxWithFetch() below.
+ *
+ * Tests that exercise the tool function call it as `t.execute(args)`
+ * — mirroring the WebMCP spec property name Chrome 146+ expects.
  */
 function loadWebmcp() {
   const tools = [];
@@ -329,15 +336,15 @@ describe("webmcp.js — render_markdown handler", () => {
   test("rejects empty/missing markdown with INVALID_INPUT", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
-    await expect(t.handler({})).rejects.toThrow(/INVALID_INPUT/);
-    await expect(t.handler({ markdown: "" })).rejects.toThrow(/INVALID_INPUT/);
+    await expect(t.execute({})).rejects.toThrow(/INVALID_INPUT/);
+    await expect(t.execute({ markdown: "" })).rejects.toThrow(/INVALID_INPUT/);
   });
 
   test("rejects unknown fontFamily with INVALID_FONT_FAMILY", async () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown");
     await expect(
-      t.handler({ markdown: "# Hi", fontFamily: "Comic Sans" }),
+      t.execute({ markdown: "# Hi", fontFamily: "Comic Sans" }),
     ).rejects.toThrow(/INVALID_FONT_FAMILY/);
   });
 
@@ -352,7 +359,7 @@ describe("webmcp.js — render_markdown handler", () => {
     const t = findTool(tools, "render_markdown");
     for (const f of bundled) {
       await expect(
-        t.handler({ markdown: "# Hi", fontFamily: f }),
+        t.execute({ markdown: "# Hi", fontFamily: f }),
       ).rejects.toThrow("SENTINEL");
     }
   });
@@ -361,7 +368,7 @@ describe("webmcp.js — render_markdown handler", () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
-    const result = await t.handler({
+    const result = await t.execute({
       markdown: "# Hi",
       fontFamily: "Comfortaa",
       framework: "spectre",
@@ -397,7 +404,7 @@ describe("webmcp.js — render_markdown handler", () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
-    await t.handler({
+    await t.execute({
       markdown: "# Hi",
       fontFamily: "Playfair Display",
       fontSize: "-1",
@@ -424,7 +431,7 @@ describe("webmcp.js — render_markdown handler", () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown");
-    await t.handler({
+    await t.execute({
       markdown: "# Theme test",
       theme: "dark",
     });
@@ -438,7 +445,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown_from_url");
     await expect(
-      t.handler({ url: "https://github.com/foo/bar/blob/main/README.md" }),
+      t.execute({ url: "https://github.com/foo/bar/blob/main/README.md" }),
     ).rejects.toThrow(/DISALLOWED_HOST/);
   });
 
@@ -448,7 +455,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const t = findTool(tools, "render_markdown_from_url");
     // Older agents send `url`; the handler must still translate it to
     // the canonical `markdownUrl` on the wire.
-    const result = await t.handler({
+    const result = await t.execute({
       url: "https://raw.githubusercontent.com/foo/bar/main/README.md",
     });
     const renderCall = calls.find((c) => c.url.endsWith("/render"));
@@ -462,7 +469,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown_from_url");
-    await t.handler({
+    await t.execute({
       url: "https://wrong-host.example.com/rejected.md",
       markdownUrl: "https://raw.githubusercontent.com/foo/bar/main/README.md",
     });
@@ -476,7 +483,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown_from_url");
     await expect(
-      t.handler({ url: "ftp://example.com/file.md" }),
+      t.execute({ url: "ftp://example.com/file.md" }),
     ).rejects.toThrow(/UNSUPPORTED_SCHEME/);
   });
 
@@ -484,7 +491,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const tools = loadWebmcp();
     const t = findTool(tools, "render_markdown_from_url");
     await expect(
-      t.handler({ url: "not a url at all" }),
+      t.execute({ url: "not a url at all" }),
     ).rejects.toThrow(/INVALID_URL/);
   });
 
@@ -492,7 +499,7 @@ describe("webmcp.js — render_markdown_from_url handler", () => {
     const { fakeFetch, calls } = fakeFetchWithTokenMint();
     const tools = sandboxWithFetch(fakeFetch);
     const t = findTool(tools, "render_markdown_from_url");
-    const result = await t.handler({
+    const result = await t.execute({
       url: "https://raw.githubusercontent.com/foo/bar/main/README.md",
       fontFamily: "Comfortaa",
     });

@@ -33,6 +33,12 @@ import {
   ALLOWED_MARGINS,
 } from './webmcp-shared.js';
 
+// WebMCP / navigator.modelContext.registerTool({ ..., execute }) —
+// Chrome 146+ uses the `execute` property. Earlier drafts of the
+// spec used `handler`; that's been renamed. The previous version of
+// this file used `handler:`, which caused registerTool() to throw
+// and prevented BOTH tools from registering on current Chrome.
+// Scanner feedback (2026-06-30, webmcp.com): tools must use `execute`.
 // navigator.modelContext is the WebMCP entry point. If absent (older
 // browsers, or the DevTrial flag is off), gracefully bail.
 if (typeof navigator === 'undefined' || !navigator.modelContext) {
@@ -239,7 +245,7 @@ else {
     annotations: {
       readOnlyHint: true,
     },
-    handler: function (args) {
+    execute: function (args) {
       if (!args || typeof args.markdown !== 'string' || args.markdown.length === 0) {
         return Promise.reject(new Error('markdown is required and must be a non-empty string [INVALID_INPUT]'));
       }
@@ -279,7 +285,7 @@ else {
     annotations: {
       readOnlyHint: true,
     },
-    handler: function (args) {
+    execute: function (args) {
       // Accept either the canonical `markdownUrl` or the deprecated
       // `url` alias. Canonical wins if both are sent.
       var rawUrl = (args && typeof args.markdownUrl === 'string' && args.markdownUrl.length > 0)
