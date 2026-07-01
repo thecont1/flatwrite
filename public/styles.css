@@ -207,15 +207,10 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* Opaque background with rounded corners — sits behind the glass
-     .main-inner and prevents the body gradient from bleeding past
-     the pane's rounded corners. The glass blur effect is still
-     visible through the semi-transparent .main-inner on top. */
-  background: #ffffff;
-  border-radius: var(--radius-outer);
 }
 
 .main-inner {
+  position: relative;
   background: var(--surface-canvas);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -232,6 +227,19 @@ body {
      placeholder) to the rounded shape so they don't bleed past the
      pane's corners. */
   overflow: hidden;
+}
+
+/* Glass background layer behind the main-inner content — semi-transparent
+   so the body gradient shows through the parent's backdrop-filter blur,
+   matching the .sidebar crystal-glass effect. The 1px inset and the
+   matching border-radius keep the rounded corners clean. */
+.main-inner::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: var(--surface-canvas);
+  border-radius: calc(var(--radius-outer) - 1px);
+  z-index: -1;
 }
 
 /* ==========================================================================
@@ -1695,13 +1703,9 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: repeating-linear-gradient(
-    45deg,
-    #f0f0f0 0px,
-    #f0f0f0 16px,
-    #ffffff 16px,
-    #ffffff 32px
-  );
+  /* Glass surface — lets the body's rainbow gradient show through
+     .main-inner's backdrop-filter blur, matching the sidebar. */
+  background: var(--surface-canvas);
 }
 
 /* Fade-in from top when entering Read/View mode */
