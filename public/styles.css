@@ -216,10 +216,10 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-outer);
   box-shadow: 0 4px 16px oklch(0.2 0.01 80 / 0.08);
-  padding: var(--space-5) var(--space-6) var(--space-6);
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex: 1;
   min-height: 0;
   /* Clip child backgrounds (notably the .preview-wrap diagonal-stripe
@@ -2165,10 +2165,9 @@ body {
   }
 
   .main-inner {
-    /* Equal padding on all four sides — the textarea pane now has
-       a uniform margin (var(--space-3)) regardless of where the
-       fixed header elements are. */
-    padding: var(--space-3);
+    /* Equal padding on all four sides — halved from desktop for a
+       tighter textarea pane in mobile. */
+    padding: 6px;
     border-radius: var(--radius-inner);
     /* Remove backdrop-filter so toolbar z-index is not trapped in a stacking context */
     backdrop-filter: none;
