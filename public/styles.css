@@ -1002,7 +1002,7 @@ body {
 .export-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: clamp(8px, 1.2vw, 20px);
   position: absolute;
   /* top: set dynamically by JS to align with textarea */
   left: 100%;
@@ -1020,7 +1020,9 @@ body {
   border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
   /* No separate shadow — the tab should read as part of the center pane. */
   box-shadow: none;
-  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
+  /* Responsive padding — shrinks with viewport so the tab stays tucked
+     inside the canvas glass edge instead of spilling off-screen. */
+  padding: clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(6px, 0.75vw, 12px);
 }
 
 .export-icon {
@@ -1029,7 +1031,7 @@ body {
   color: #1a1a1a;
   opacity: 1;
   cursor: pointer;
-  padding: 6px;
+  padding: clamp(2px, 0.4vw, 6px);
   transition: opacity 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
@@ -1037,8 +1039,10 @@ body {
 }
 
 .export-icon svg {
-  width: 33px;
-  height: 33px;
+  /* Icons scale down at narrower viewports so the tab bubble fits within the
+     available canvas-edge space. Floor at 16px so glyphs stay legible. */
+  width: clamp(16px, 2.3vw, 33px);
+  height: clamp(16px, 2.3vw, 33px);
 }
 
 .export-icon:hover {
