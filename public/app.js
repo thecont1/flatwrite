@@ -837,6 +837,7 @@
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
             fontPickerLabel.textContent = comfortFont;
+      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
           }
           if (fm.size !== undefined)   sizeStep   = clampInt(fm.size,   SIZE_MIN,   SIZE_MAX,   sizeStep);
           if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
@@ -963,6 +964,7 @@
         comfortFont = t.family;
       }
       fontPickerLabel.textContent = comfortFont;
+      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
       if (t.sizeStep !== undefined)   sizeStep   = clampInt(t.sizeStep,   SIZE_MIN,   SIZE_MAX,   sizeStep);
       if (t.weightStep !== undefined) weightStep = clampInt(t.weightStep, WEIGHT_MIN, WEIGHT_MAX, weightStep);
       if (t.lineStep !== undefined)   lineStep   = clampInt(t.lineStep,   LINE_MIN,   LINE_MAX,   lineStep);
@@ -1126,6 +1128,7 @@
         lineStep = 0;
         comfortFont = "Inter";
         fontPickerLabel.textContent = "Inter";
+        fontPickerLabel.style.fontFamily = '"Inter", system-ui, sans-serif';
         zoomStep = 100;
         zoomSlider.value = 100;
         zoomValue.textContent = "100%";
@@ -1430,6 +1433,7 @@
       if (!item) return;
       comfortFont = item.dataset.font;
       fontPickerLabel.textContent = comfortFont;
+      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
       fontPickerList.querySelectorAll(".font-dropdown-item").forEach(function (el) {
         el.classList.toggle("selected", el.dataset.font === comfortFont);
       });
@@ -2031,28 +2035,29 @@
         + '  if (!style) {'
         + '    style = document.createElement("style");'
         + '    style.id = "vivl-scroll-style";'
-        + '    style.textContent = "html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; } body, #vivl-viewport { background: transparent !important; } [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: hidden !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: 100% !important; align-items: center !important; zoom: 1 !important; transform: none !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: 100% !important; background: transparent !important; }";'
+        + '    style.textContent = "html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; background-attachment: fixed !important; } body, #vivl-viewport { background: transparent !important; } [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: 100% !important; align-items: flex-start !important; zoom: 1 !important; transform: none !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: 100% !important; background: transparent !important; }";'
         + '    document.head.appendChild(style);'
         + '  }'
-        + '  var scale = _computeZoom();'
-        + '  var cw = Math.round(_pageW * scale);'
-        + '  var ch = Math.round(_pageH * scale);'
-        + '  var pageMargin = Math.round(8 * scale);'
+        + '  var zoomedW = Math.round(_pageW * _zoomFactor);'
+        + '  var zoomedH = Math.round(_pageH * _zoomFactor);'
+        + '  var pageMargin = Math.round(8 * _zoomFactor);'
         + '  var pages = document.querySelectorAll("[data-vivliostyle-page-container]");'
         + '  for (var i = 0; i < pages.length; i++) {'
         + '    var child = pages[i].firstElementChild;'
         + '    if (!child) continue;'
         + '    pages[i].style.zoom = 1;'
-        + '    pages[i].style.width = cw + "px";'
-        + '    pages[i].style.height = ch + "px";'
-        + '    child.style.width = _pageW + "px";'
-        + '    child.style.height = _pageH + "px";'
-        + '    child.style.maxWidth = _pageW + "px";'
-        + '    child.style.maxHeight = _pageH + "px";'
-        + '    child.style.transform = "scale(" + scale + ")";'
-        + '    child.style.transformOrigin = "top left";'
+        + '    pages[i].style.width = zoomedW + "px";'
+        + '    pages[i].style.height = zoomedH + "px";'
+        + '    child.style.width = zoomedW + "px";'
+        + '    child.style.height = zoomedH + "px";'
+        + '    child.style.maxWidth = zoomedW + "px";'
+        + '    child.style.maxHeight = zoomedH + "px";'
+        + '    child.style.transform = "none";'
+        + '    child.style.transformOrigin = "";'
         + '    var bottomMargin = (i === pages.length - 1) ? pageMargin : 0;'
-        + '    pages[i].style.setProperty("margin", pageMargin + "px auto " + bottomMargin + "px", "important");'
+        /* Use fixed left margin instead of auto so zoomed pages overflow
+           the viewport and trigger horizontal scroll for panning. */
+        + '    pages[i].style.setProperty("margin", pageMargin + "px 0 " + bottomMargin + "px 0", "important");'
         + '  }'
         + '}'
         + 'function _vivlNotify() {'
@@ -2252,22 +2257,29 @@
       + '    if (_isPaged) {'
       + '      _fitPage();'
       + '    } else {'
+      /* Non-paged path: enable document scrolling so the pan handlers
+         can move the zoomed content. Without this, html/body are
+         overflow:hidden and the content is locked. */
+      + '      document.documentElement.style.overflow = "auto";'
+      + '      document.body.style.overflow = "auto";'
+      + '      document.body.style.overflowX = "auto";'
       + '      document.body.style.zoom = _zoomFactor;'
       + '      parent.postMessage({type:"zoomChanged"}, "*");'
       + '    }'
       + '    _updatePanCursor();'
       + '  }'
       + '});'
+      + 'function _overflows() {'
+      + '  var de = document.documentElement;'
+      + '  return de.scrollWidth > de.clientWidth || de.scrollHeight > de.clientHeight'
+      + '    || document.body.scrollWidth > document.body.clientWidth || document.body.scrollHeight > document.body.clientHeight;'
+      + '}'
       + 'function _updatePanCursor() {'
-      + '  var overflowsX = document.documentElement.scrollWidth > document.documentElement.clientWidth;'
-      + '  var overflowsY = document.documentElement.scrollHeight > document.documentElement.clientHeight;'
-      + '  document.documentElement.style.cursor = (overflowsX || overflowsY) ? "grab" : "";'
+      + '  document.documentElement.style.cursor = _overflows() ? "grab" : "";'
       + '}'
       + 'var _pan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };'
       + 'document.addEventListener("pointerdown", function(e) {'
-      + '  var overflowsX = document.documentElement.scrollWidth > document.documentElement.clientWidth;'
-      + '  var overflowsY = document.documentElement.scrollHeight > document.documentElement.clientHeight;'
-      + '  if (!overflowsX && !overflowsY) return;'
+      + '  if (!_overflows()) return;'
       + '  _pan.active = true;'
       + '  _pan.x = e.clientX; _pan.y = e.clientY;'
       + '  _pan.sx = window.scrollX; _pan.sy = window.scrollY;'

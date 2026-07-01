@@ -886,6 +886,11 @@ body {
   box-sizing: border-box;
 }
 
+.font-dropdown-label {
+  /* The selected font renders in its own typeface — set via JS
+     style.fontFamily on the label element. */
+}
+
 .font-dropdown-btn:hover {
   border-color: var(--accent);
 }
@@ -907,6 +912,16 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 1000;
   padding: 4px 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.font-dropdown-list:not(.hidden) {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .font-dropdown-item {
@@ -929,6 +944,17 @@ body {
   background: rgba(176, 106, 179, 0.18);
   color: var(--accent);
   font-weight: 600;
+  position: relative;
+}
+
+.font-dropdown-item.selected::after {
+  content: "✓";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: var(--accent);
 }
 
 /* ---------- UI Components Panel (Sidebar) ---------- */
