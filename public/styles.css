@@ -69,7 +69,7 @@
 
   /* Surface hierarchy */
   --surface-rail: rgba(255, 255, 255, 0.22);
-  --surface-canvas: rgba(255, 255, 255, 1);
+  --surface-canvas: rgba(255, 255, 255, 0.38);
   --surface-doc: rgba(255, 255, 255, 0.92);
 }
 
@@ -207,6 +207,12 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Opaque background with rounded corners — sits behind the glass
+     .main-inner and prevents the body gradient from bleeding past
+     the pane's rounded corners. The glass blur effect is still
+     visible through the semi-transparent .main-inner on top. */
+  background: #ffffff;
+  border-radius: var(--radius-outer);
 }
 
 .main-inner {
