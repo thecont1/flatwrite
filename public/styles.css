@@ -145,6 +145,13 @@ body {
   max-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Cover the body gradient behind the sidebar-inner's rounded corners.
+     Without this, the fixed body gradient bleeds past the 24px radius
+     and creates an "excess background" fringe at the corners. */
+  background: var(--surface-rail);
+  border-radius: var(--radius-outer);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: var(--glass-shadow);
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.4s ease;
   scrollbar-width: thin;
@@ -789,8 +796,10 @@ body {
 }
 
 .typo-btn {
-  width: 32px;
-  height: 32px;
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  min-height: 50px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1019,7 +1028,10 @@ body {
   background: var(--surface-canvas);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  /* Solid, visible border — the default glass-border is white-on-white
+     and disappears against the textarea. Use the button-border tone
+     so the tab reads as a defined element on any surface. */
+  border: 1px solid var(--btn-border);
   border-left: none;
   border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
   /* No separate shadow — the tab should read as part of the center pane. */
@@ -1420,8 +1432,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
-  width: 44px;
+  height: 50px;
+  width: 50px;
+  min-height: 50px;
+  min-width: 50px;
   position: relative;
   overflow: visible;
 }
@@ -1889,30 +1903,37 @@ body {
 
 /* Stage B: Standard desktop, 1180px – 1439px */
 @media (max-width: 1439px) {
+  /* The share tab still hangs outside the canvas here (the flip to
+     inside is deferred to the Stage C breakpoint), so the reserve
+     column must stay active to make room for the tab. */
   :root {
-    --reserve-min: 40px;
+    --reserve-min: 56px;
   }
 
-  /* Flip the export tab to hang INSIDE the canvas. Below this point the
-     clamp() begins shrinking the icons, and the tab's natural width starts
-     eating into the viewport. Anchoring the tab to the canvas's right edge
-     (right: 0) keeps it tucked in regardless of how narrow the shell gets.
-     Mirror-image of the desktop layout: square right edge, rounded left edge. */
-  .export-actions {
-    left: auto;
-    right: 0;
-    /* Flush with the canvas's right edge — was -1px which left the tab hanging
-       1px past the pane, breaking the visual seam with the glass border. */
-    margin-left: 0;
-    margin-right: 0;
-    border-left: 1px solid var(--glass-border);
-    border-right: none;
-    border-radius: var(--radius-outer) 0 0 var(--radius-outer);
+  /* Tab still hangs OUTSIDE the canvas here — the reserve column is
+     active (--reserve-min restored below) so the tab has room.
+     The flip to inside is deferred to a narrower viewport (Stage C
+     at max-width: 1100px) so the tab stays visible while the icons
+     are still wide enough to be comfortably tappable. */
+
+  /* Let the canvas scale linearly with the viewport while keeping a
+     constant right margin (the shell's 16px padding). Now that the
+     tab hangs inside the pane (right: 0), it doesn't consume external
+     space, so the main-panel can shrink in lockstep with the viewport
+     instead of pinning to canvas-max. The shell scrolls only when
+     the pane hits the 3×-sidebar floor. */
+  .main-panel {
+    min-width: 528px;             /* 2 × sidebar (264px) */
+    max-width: var(--canvas-max, 1100px);
   }
 }
 
-/* Stage C: Tight desktop, 980px – 1179px */
-@media (max-width: 1179px) {
+/* Stage C: Tab flips inside the canvas. At this breakpoint the
+   share tab is too wide to hang outside the main-panel without
+   forcing excessive shell scrolling, so it anchors to the canvas's
+   right edge (right: 0) instead. The reserve column is removed
+   because the tab no longer consumes external space. */
+@media (max-width: 1100px) {
   :root {
     --reserve-min: 0px;
   }
@@ -1921,6 +1942,16 @@ body {
     flex: 0 0 0px;
     min-width: 0;
     overflow: hidden;
+  }
+
+  .export-actions {
+    left: auto;
+    right: 0;
+    margin-left: 0;
+    margin-right: 0;
+    border-left: 1px solid var(--btn-border);
+    border-right: none;
+    border-radius: var(--radius-outer) 0 0 var(--radius-outer);
   }
 }
 
@@ -1957,8 +1988,17 @@ body {
   }
 }
 
-/* Stage E: Mobile / narrow tablet, below 760px */
-@media (max-width: 759px) {
+/* Stage E: Mobile / narrow tablet, kicks in once the desktop layout
+   has run out of room for the main-panel. The shell starts horizontal
+   scrolling below ~1100px because the sidebar + gap + padding already
+   pin the main-panel to its 3×-sidebar floor (792px). At that point the
+   mobile drawer (hamburger + collapsible sidebar) is the better answer.
+   The shell keeps its equal padding (var(--space-3) on all four sides)
+   so the main-panel has uniform margin around the canvas. */
+/* Stage D: Mobile kicks in when the main-panel reaches its
+   2×-sidebar floor (528px). At this width the desktop layout has
+   no more room to give the canvas, so the mobile drawer takes over. */
+@media (max-width: 845px) {
   html, body {
     overflow: hidden;
   }
@@ -2009,10 +2049,53 @@ body {
     transform: translateX(0);
   }
 
-  /* Hide sidebar title + tagline — logo is now the fixed header */
-  .sidebar .app-title,
+  /* Drawer header — show the app title + tagline inside the drawer modal.
+     Generous spacing since the drawer is the full content area. */
+  .sidebar .app-title {
+    display: block;
+    font-size: 1.8rem;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-2);
+  }
+
   .sidebar .tagline {
-    display: none;
+    display: block;
+    font-size: 1rem;
+    font-style: italic;
+    color: var(--text-muted);
+    margin-top: 0;
+    margin-bottom: var(--space-6);
+    opacity: 0.9;
+  }
+
+  .sidebar-divider {
+    margin: var(--space-5) 0;
+  }
+
+  .sidebar-section-label {
+    font-size: 0.95rem;
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-3);
+    letter-spacing: 0.04em;
+  }
+
+  .components-grid {
+    gap: var(--space-3);
+  }
+
+  .component-btn {
+    min-height: 56px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .load-buttons {
+    gap: var(--space-3);
+  }
+
+  .load-btn {
+    min-height: 52px;
+    padding: var(--space-3) var(--space-4);
+    font-size: 0.95rem;
   }
 
   .sidebar-inner {
@@ -2055,15 +2138,25 @@ body {
     pointer-events: none;
   }
 
-  /* Main panel fills remaining height */
+  /* Main panel fills remaining height. The 60px top padding reserves
+     space for the fixed hamburger + logo + mode-switch row at the
+     top of the viewport — previously this lived on .main-inner and
+     broke the "equal margin all around the textarea pane" rule.
+     min-width: 0 overrides the Stage B 792px floor so the pane fits
+     within narrow viewports instead of extending past the right edge. */
   .main-panel {
     flex: 1 1 0;
     min-height: 0;
+    min-width: 0;
     max-width: 100%;
+    padding-top: 60px;
   }
 
   .main-inner {
-    padding: 60px var(--space-3) var(--space-4);
+    /* Equal padding on all four sides — the textarea pane now has
+       a uniform margin (var(--space-3)) regardless of where the
+       fixed header elements are. */
+    padding: var(--space-3);
     border-radius: var(--radius-inner);
     /* Remove backdrop-filter so toolbar z-index is not trapped in a stacking context */
     backdrop-filter: none;
@@ -2405,7 +2498,7 @@ body {
 }
 
 /* Mobile Read mode: everything vanishes except logo + close button */
-@media (max-width: 759px) {
+@media (max-width: 845px) {
   .app-shell.focus-mode .mobile-hamburger {
     opacity: 1;
     pointer-events: auto;
