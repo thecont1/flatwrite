@@ -42,11 +42,22 @@ app = FastAPI(
 def _internal_secret() -> str | None:
     """Read the shared HMAC secret from the environment.
 
-    Optional at runtime (skips verification when unset) but the deploy
-    must set it — the Worker will return 500 if its counterpart is
-    missing, so asymmetric config makes the deploy surface obvious.
+    Optional at runtime when EXTRACT_HMAC_REQUIRED is not true (skips
+    verification when unset). Production fly.toml sets
+    EXTRACT_HMAC_REQUIRED=true, so a missing secret there becomes a
+    401 MISSING_SECRET rather than an open endpoint.
     """
     return os.environ.get("INTERNAL_EXTRACT_KEY") or None
+
+
+def _hmac_required() -> bool:
+    """Return True when the deployment mandates HMAC verification.
+
+    Mirrors the EXTRACT_HMAC_REQUIRED env var set in fly.toml.
+    Defaults to False so local development remains reachable without a
+    Worker in the loop.
+    """
+    return os.environ.get("EXTRACT_HMAC_REQUIRED", "false").lower() == "true"
 
 
 @app.get("/health")
@@ -67,7 +78,9 @@ async def extract(
     secret = _internal_secret()
     ts = request.headers.get("X-Extract-Timestamp")
     sig = request.headers.get("X-Extract-Signature")
-    auth = verify_extract_request(secret, ts, sig, method="POST", path="/extract")
+    auth = verify_extract_request(
+        secret, ts, sig, method="POST", path="/extract", required=_hmac_required()
+    )
     if not auth.ok:
         # Map structured auth failure → HTTP. Every reject logs without
         # exposing the offending headers themselves (just the code).

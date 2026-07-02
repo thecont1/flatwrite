@@ -54,6 +54,7 @@ def verify_extract_request(
     timestamp_header: str | None,
     signature_header: str | None,
     *,
+    required: bool = False,
     method: str = "POST",
     path: str = "/extract",
     now: int | None = None,
@@ -66,11 +67,18 @@ def verify_extract_request(
       - INVALID_TIMESTAMP    (401)
       - EXPIRED              (401)
       - BAD_SIGNATURE        (401)
+      - MISSING_SECRET       (401)  # only when required=True and secret is absent
     """
     if not secret:
+        if required:
+            return AuthResult(
+                ok=False,
+                code="MISSING_SECRET",
+                reason="HMAC verification required but INTERNAL_EXTRACT_KEY is not configured",
+            )
         # No secret configured on this service — skip verification. The
         # Worker's matching secret check returns 500 MISCONFIGURED, so
-        # this asymmetry means a misconfigured deploy still refuses to
+        # this asymmetry means a misconfigured dev deploy still refuses to
         # accidentally authenticate as a Worker.
         return AuthResult(ok=True, code=None, reason="auth disabled (no secret configured)")
 

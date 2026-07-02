@@ -217,12 +217,26 @@ def test_extract_accepts_signed_request_when_secret_set(authed_client: TestClien
     assert "a" in j["markdown"]
 
 
-def test_extract_accepts_unsigned_request_when_secret_not_set(client: TestClient):
-    """When the deploy hasn't set INTERNAL_EXTRACT_KEY (e.g. local dev),
-    auth is skipped. This pins the asymmetric-default behavior."""
-    # The default `client` fixture does NOT patch the secret, so
-    # `_internal_secret()` returns None.
+def test_extract_accepts_unsigned_request_when_secret_not_set_and_hmac_not_required(
+    client: TestClient, monkeypatch
+):
+    """When the deploy hasn't set INTERNAL_EXTRACT_KEY and HMAC is not
+    required (e.g. local dev), auth is skipped."""
+    monkeypatch.setenv("EXTRACT_HMAC_REQUIRED", "false")
     body = b"a,b\n1,2\n"
     files = {"file": ("data.csv", io.BytesIO(body), "text/csv")}
     r = client.post("/extract", files=files)
     assert r.status_code == 200
+
+
+def test_extract_rejects_unsigned_request_when_hmac_required_but_secret_missing(
+    client: TestClient, monkeypatch
+):
+    """Production misconfiguration: fly.toml sets EXTRACT_HMAC_REQUIRED=true
+    but INTERNAL_EXTRACT_KEY is missing. The service must fail closed."""
+    monkeypatch.setenv("EXTRACT_HMAC_REQUIRED", "true")
+    body = b"a,b\n1,2\n"
+    files = {"file": ("data.csv", io.BytesIO(body), "text/csv")}
+    r = client.post("/extract", files=files)
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "MISSING_SECRET"

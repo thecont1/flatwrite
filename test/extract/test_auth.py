@@ -67,18 +67,28 @@ class TestVerifyHappyPath:
 
 
 class TestVerifyRejects:
-    def test_rejects_when_secret_unset_but_headers_present(self):
-        # If the deploy forgot to set INTERNAL_EXTRACT_KEY but some caller
-        # sent a signed header anyway, we should NOT pretend to verify it.
-        # The auth.verify code currently returns ok=True when secret is
-        # None (skips). This test pins that behavior so it stays loud if
-        # someone flips the default to "fail closed".
+    def test_skips_verification_when_secret_unset_and_not_required(self):
+        # Local dev: if INTERNAL_EXTRACT_KEY is missing and HMAC is not
+        # required, auth is skipped so developers can call /extract directly.
         now = int(time.time())
         h = _signed_headers(KEY, ts=now)
-        r = verify_extract_request(None, h["X-Extract-Timestamp"], h["X-Extract-Signature"], now=now)
-        # Skipped verification returns ok=True with a marker reason.
+        r = verify_extract_request(
+            None, h["X-Extract-Timestamp"], h["X-Extract-Signature"], required=False, now=now
+        )
         assert r.ok
         assert "disabled" in (r.reason or "")
+
+    def test_rejects_when_secret_unset_but_hmac_required(self):
+        # Production: fly.toml sets EXTRACT_HMAC_REQUIRED=true. If the secret
+        # is missing, the service must fail closed rather than expose an
+        # unauthenticated endpoint.
+        now = int(time.time())
+        h = _signed_headers(KEY, ts=now)
+        r = verify_extract_request(
+            None, h["X-Extract-Timestamp"], h["X-Extract-Signature"], required=True, now=now
+        )
+        assert not r.ok
+        assert r.code == "MISSING_SECRET"
 
     def test_rejects_missing_timestamp(self):
         r = verify_extract_request(KEY, None, "abc", now=int(time.time()))
