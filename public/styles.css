@@ -2213,12 +2213,17 @@ body {
     -webkit-backdrop-filter: none;
     background: rgba(255, 255, 255, 0.92);
     gap: 4px;
+    z-index: 0;
     scrollbar-width: none;
     -ms-overflow-style: none;
     transition: padding 0.45s cubic-bezier(0.16, 1, 0.3, 1),
                 border-radius 0.45s cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 0.45s ease,
                 box-shadow 0.45s ease;
+  }
+
+  .main-inner::before {
+    border-radius: calc(var(--radius-inner) - 1px);
   }
 
   .main-inner::-webkit-scrollbar {
