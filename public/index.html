@@ -100,7 +100,7 @@
             <button class="comp-btn load-btn" id="btn-load-url" type="button">From URL</button>
             <button class="comp-btn load-btn" id="btn-load-local" type="button">From Disk</button>
           </div>
-          <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" aria-label="Load markdown file from disk" />
+          <input type="file" id="load-file-input" class="sr-only" accept=".md,.markdown,.txt,.pdf,.pptx,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.epub,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.ogg,.flac" aria-label="Load file from disk" />
         </div>
 
         <hr class="sidebar-divider" />
@@ -339,7 +339,8 @@
 
   </div>
 
-  <!-- Load from URL modal (replaces component modal) -->
+  <!-- Load from URL modal (supports any file the extract endpoint
+       accepts: PDF, PPTX, DOCX, XLSX, CSV, JSON, images, audio, etc.) -->
   <div class="load-modal-overlay hidden" id="load-modal-overlay">
     <div class="load-modal" id="load-modal">
       <div class="load-modal-header">
@@ -347,8 +348,8 @@
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close">&times;</button>
       </div>
       <div class="load-modal-body" id="load-modal-body">
-          <label for="load-url-input" class="load-modal-label">Markdown URL</label>
-          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.md" autocomplete="off" />
+          <label for="load-url-input" class="load-modal-label">File URL (.md, .pdf, .pptx, .docx, .xlsx, .csv, .json, images, audio…)</label>
+          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.pdf" autocomplete="off" />
           <p class="load-url-status" id="load-url-status"></p>
         </div>
       <div class="load-modal-footer">

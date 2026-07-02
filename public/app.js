@@ -688,6 +688,30 @@
     return currentMarkdownUrl || url;
   }
 
+  /**
+   * Extract a sensible filename from a URL for routing purposes.
+   * The router uses the extension to decide whether to send a file
+   * to the extract endpoint (.pdf, .pptx, etc.) or read it as
+   * plain text (.md, .markdown, .txt). If the URL has no
+   * recognizable filename (e.g. an API endpoint or a bare host),
+   * we return a generic name — the dispatcher will then route to
+   * extract, which is the right default for unknown formats.
+   */
+  function deriveFilenameFromUrl(url) {
+    try {
+      var u = new URL(url);
+      var path = u.pathname || "";
+      var base = path.split("/").filter(Boolean).pop() || "";
+      if (base && base.indexOf(".") >= 0) {
+        // Strip query string / fragment if they slipped into the base.
+        return base.split("?")[0].split("#")[0] || "remote";
+      }
+    } catch (_) {
+      // URL parsing failed — fall through to the default.
+    }
+    return "remote";
+  }
+
   function resolveRelativeUrls(html) {
     if (!githubBaseUrl) return html;
 
@@ -903,7 +927,26 @@
       var meta = data.metadata || {};
       showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
     } catch (e) {
-      showToast("Extract failed: " + (e && e.message ? e.message : e));
+      // Translate the opaque "Failed to fetch" message (thrown by the
+      // browser when the network request was blocked — usually CORS,
+      // offline, or DNS) into an actionable hint. Without this, the
+      // user sees "Failed to fetch" with no way to debug.
+      var rawMsg = (e && e.message) ? e.message : String(e);
+      var friendly;
+      if (/Failed to fetch|NetworkError|Load failed/i.test(rawMsg)) {
+        friendly = "network error (check your connection or the file size)";
+      } else if (/timeout|aborted/i.test(rawMsg)) {
+        friendly = "request timed out";
+      } else if (/413/i.test(rawMsg)) {
+        friendly = "file is too large (25 MB max)";
+      } else if (/415/i.test(rawMsg)) {
+        friendly = "this file type isn't supported";
+      } else if (/401/i.test(rawMsg)) {
+        friendly = "authentication failed — refresh the page";
+      } else {
+        friendly = rawMsg;
+      }
+      showToast("Extract failed: " + friendly);
       console.error("[extract]", e);
     }
   }
@@ -1394,7 +1437,21 @@
 
     loadFileInput.addEventListener("change", function () {
       var file = loadFileInput.files && loadFileInput.files[0];
-      handleFileUpload(file);
+      if (!file) return;
+      // Route through the dispatcher: .md/.markdown/.txt go via
+      // handleFileUpload (FileReader), everything else via the
+      // /extract endpoint. Mirrors the drag-and-drop behavior.
+      var route = window.FlatwriteExtractDrop
+        ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+        : routeDroppedFileInline(file.name);
+      if (route === "plain") {
+        handleFileUpload(file);
+      } else {
+        handleExtractDrop(file);
+      }
+      // Reset the input so picking the same file again still fires
+      // a change event (otherwise the second pick is silently dropped).
+      loadFileInput.value = "";
     });
 
     /* Drag-and-drop import — routes .md/.txt to handleFileUpload, everything
@@ -3331,26 +3388,45 @@
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
 
+      // Derive a filename from the URL so we can route through the
+      // same dispatcher as drops / disk picks. Falls back to "remote"
+      // if the URL has no recognizable basename.
+      var filename = deriveFilenameFromUrl(url);
+
+      // Always fetch as a Blob so binary files (PDF, PPTX, etc.) are
+      // preserved through the network hop. Routing is decided after
+      // we know the byte length and filename.
       fetch(rewriteGitHubUrl(url))
         .then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.text();
+          return res.blob();
         })
-        .then(function (text) {
+        .then(function (blob) {
           btnFetch.disabled = false;
           close();
-          if (isEditorDirty()) {
-            var ok = confirm("Replace current content with loaded markdown?");
-            if (!ok) return;
+          // Wrap the Blob in a File so the dispatcher's filename
+          // logic works as if the user had picked it from disk.
+          var file = new File([blob], filename, { type: blob.type || "" });
+          var route = window.FlatwriteExtractDrop
+            ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+            : routeDroppedFileInline(file.name);
+          if (route === "plain") {
+            // .md/.markdown/.txt — read as text directly. handleFileUpload
+            // also handles the dirty-check + renderPreview() in non-edit
+            // modes.
+            handleFileUpload(file);
+            showToast("Loaded markdown from URL");
+          } else {
+            handleExtractDrop(file);
           }
-          setEditorContent(text);
-          setMode("preview");
-          showToast("Loaded markdown from URL");
         })
-        .catch(function () {
+        .catch(function (err) {
           btnFetch.disabled = false;
-          status.textContent = "Could not load. Check the URL and try again.";
+          var detail = err && err.message ? err.message : "";
+          status.textContent = "Could not load. Check the URL and try again."
+            + (detail ? " (" + detail + ")" : "");
           status.className = "load-url-status error";
+          console.error("[load-url]", err);
         });
     }
 
