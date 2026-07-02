@@ -817,7 +817,7 @@
      ========================================================================== */
   var PLAIN_TEXT_EXTS_INLINE = { ".md": 1, ".markdown": 1, ".txt": 1 };
   function routeDroppedFileInline(filename) {
-    if (!filename || typeof filename !== "string") return "plain";
+    if (!filename || typeof filename !== "string") return "extract";
     var base = filename.split(/[\\/]/).pop();
     var dot = base.lastIndexOf(".");
     if (dot < 0) return "extract";
