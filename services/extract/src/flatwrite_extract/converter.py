@@ -9,7 +9,6 @@ Hard rules (per the plan):
 """
 from __future__ import annotations
 
-import os
 from io import BytesIO
 from markitdown import MarkItDown
 
@@ -42,24 +41,3 @@ def convert_bytes(content: bytes, source_name: str) -> str:
             f"MarkItDown returned unexpected type {type(result).__name__}"
         )
     return md
-
-
-def is_markitdown_llm_disabled() -> bool:
-    """Sanity check: confirm no LLM-touching plugin is loaded."""
-    # When enable_plugins=False, MarkItDown skips the plugin discovery that
-    # would otherwise register e.g. markitdown[azdocintel] and
-    # markitdown[youtube-transcript]. We assert that the registered
-    # converters don't include those well-known LLM-backed names.
-    llm_marker_modules = ("azdocintel", "youtube")
-    try:
-        registered = list(_CONVERTER._converters)  # type: ignore[attr-defined]
-    except AttributeError:
-        # Newer MarkItDown versions may not expose this — fall back to env
-        # check, which is what `enable_plugins=False` ultimately respects.
-        return os.environ.get("MARKITDOWN_DISABLE_PLUGINS") != "0"
-    for c in registered:
-        mod = type(c).__module__.lower()
-        for marker in llm_marker_modules:
-            if marker in mod:
-                return False
-    return True
