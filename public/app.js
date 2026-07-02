@@ -2389,7 +2389,7 @@
         // with many explicit stops so the stripes are drawn as one
         // continuous gradient — no tile boundary, no seams. The stripe
         // thickness scales with the iframe height (~40 stripes per 1280px).
-        + stripePlaceholderCss()
+        + '<style>' + stripePlaceholderCss()
         + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
