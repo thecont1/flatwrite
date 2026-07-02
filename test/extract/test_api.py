@@ -64,11 +64,37 @@ def test_extract_rejects_unsupported_extension(client: TestClient):
     assert r.json()["detail"]["code"] == "UNSUPPORTED_FILE_TYPE"
 
 
-def test_extract_rejects_empty_file(client: TestClient):
-    files = {"file": ("a.txt", io.BytesIO(b""), "text/plain")}
-    # .txt is not in the allowlist — but we expect 415 before 400.
+def test_extract_rejects_empty_filename(client: TestClient):
+    # A multipart part with an explicit empty-string filename (the wire
+    # shape a malformed client could send). httpx's file-tuple helper
+    # won't produce this directly — it either fabricates a filename or
+    # 422s client-side — so the raw multipart body is built by hand to
+    # pin the exact `Content-Disposition: ...; filename=""` case our
+    # handler must reject with 400, not the FastAPI-generated 422 or a
+    # 415 from treating it as an unsupported type.
+    boundary = "----flatwriteTestBoundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename=""\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n"
+        "x\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+    r = client.post(
+        "/extract",
+        content=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"]["code"] == "BAD_REQUEST"
+
+
+def test_extract_rejects_empty_body(client: TestClient):
+    # Allowed extension, but zero-byte body — this is the EMPTY_FILE path.
+    files = {"file": ("data.csv", io.BytesIO(b""), "text/csv")}
     r = client.post("/extract", files=files)
-    assert r.status_code == 415
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "EMPTY_FILE"
 
 
 def test_extract_rejects_oversize(client: TestClient):
@@ -137,22 +163,51 @@ def test_extract_image_returns_metadata_stub(client: TestClient):
     assert "Image metadata" in j["markdown"]
 
 
+def test_extract_500_does_not_leak_internal_paths(client: TestClient, monkeypatch, caplog):
+    """A conversion failure must not echo the raw exception (which can
+    contain absolute paths, library versions, etc.) into the response
+    body. The full detail is still available server-side via log.exception.
+    """
+    def _boom(content, source_name):
+        raise RuntimeError("file:///srv/secrets/db.sqlite not found")
+
+    monkeypatch.setattr("flatwrite_extract.main.convert_bytes", _boom)
+    body = b"col1,col2\na,1\n"
+    files = {"file": ("data.csv", io.BytesIO(body), "text/csv")}
+    with caplog.at_level("ERROR", logger="flatwrite-extract"):
+        r = client.post("/extract", files=files)
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert detail["code"] == "CONVERSION_FAILED"
+    assert "secrets" not in detail["error"]
+    assert "file://" not in detail["error"]
+    # The full exception must still be captured in the server log.
+    assert any("secrets" in rec.getMessage() or "db.sqlite" in str(rec.exc_info) for rec in caplog.records)
+
+
 def test_extract_audio_returns_metadata_stub(client: TestClient):
-    # Just enough bytes to be non-empty; MarkItDown may not be able to
-    # parse the actual file format, so we expect a 200 with the metadata
-    # stub OR a 500 if it really fails to convert. Accept either, but
-    # verify a real failure path returns 500 with the right code.
-    body = b"ID3\x03\x00\x00\x00\x00\x00\x21TPE1\x00\x00\x00\x0aTest Artist\x00\x00\x00\x00\x00\x00"
-    files = {"file": ("a.mp3", io.BytesIO(body), "audio/mpeg")}
+    # Minimal valid WAV file: RIFF header + fmt chunk + a single zero
+    # data sample. MarkItDown's audio converter should accept this and
+    # fall through to the metadata-only stub (no transcription in v1).
+    # This is a real, well-formed WAV — the test pins a strict 200
+    # contract rather than accepting a silent 500 regression.
+    wav = (
+        b"RIFF" + (36).to_bytes(4, "little") + b"WAVE"
+        + b"fmt " + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")   # PCM
+        + (1).to_bytes(2, "little")   # mono
+        + (44100).to_bytes(4, "little")  # sample rate
+        + (88200).to_bytes(4, "little")  # byte rate
+        + (2).to_bytes(2, "little")   # block align
+        + (16).to_bytes(2, "little")  # bits per sample
+        + b"data" + (0).to_bytes(4, "little")
+    )
+    files = {"file": ("a.wav", io.BytesIO(wav), "audio/wav")}
     r = client.post("/extract", files=files)
-    if r.status_code == 200:
-        j = r.json()
-        assert j["metadata"]["fileType"] == "audio"
-        assert "Audio metadata" in j["markdown"]
-    else:
-        # If the conversion truly fails, the error must be 500/CONVERSION_FAILED.
-        assert r.status_code == 500
-        assert r.json()["detail"]["code"] == "CONVERSION_FAILED"
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["metadata"]["fileType"] == "audio"
+    assert "Audio metadata" in j["markdown"]
 
 
 # ── Auth verification (when INTERNAL_EXTRACT_KEY is configured) ──────────

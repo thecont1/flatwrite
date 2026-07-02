@@ -93,6 +93,12 @@ async def extract(
 
     # filename is the only header we trust from the multipart envelope.
     filename = file.filename or ""
+    if not filename:
+        # No filename at all is a client error, not an unsupported type.
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "filename is empty", "code": "BAD_REQUEST"},
+        )
     try:
         type_info = infer_type(filename)
     except ValueError as e:
@@ -119,11 +125,13 @@ async def extract(
 
     try:
         raw_md = convert_bytes(content, source_name=filename)
-    except Exception as e:  # noqa: BLE001 — MarkItDown raises varied exception types
+    except Exception:  # noqa: BLE001 — MarkItDown raises varied exception types
+        # Log the full exception (paths, library internals) server-side only.
+        # The response body must never leak that detail to the caller.
         log.exception("convert failed for filename=%s size=%d", filename, len(content))
         raise HTTPException(
             status_code=500,
-            detail={"error": f"Conversion failed: {e}", "code": "CONVERSION_FAILED"},
+            detail={"error": "Conversion failed", "code": "CONVERSION_FAILED"},
         )
 
     final_md = apply_rules(
