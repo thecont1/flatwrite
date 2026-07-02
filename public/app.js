@@ -2082,7 +2082,7 @@
       var end = ((i + 1) * step).toFixed(4);
       stops += ', ' + color + ' ' + start + '%' + ', ' + color + ' ' + end + '%';
     }
-    return 'html { background: linear-gradient(135deg' + stops + ') !important; }';
+    return 'html { background: linear-gradient(135deg' + stops + ') fixed !important; background-size: 100% 100%; }';
   }
 
   /**
