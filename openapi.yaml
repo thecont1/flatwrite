@@ -12,9 +12,13 @@ info:
 servers:
   - url: https://render.flatwrite.md
     description: Production
+  - url: https://extract.flatwrite.md
+    description: Production (file-extract proxy)
 tags:
   - name: render
     description: Render markdown into HTML head/body fragments
+  - name: extract
+    description: Convert dropped files (PDF, DOCX, PPTX, XLSX, etc.) to Markdown
 security:
   - ApiKeyAuth: []
 paths:
@@ -127,6 +131,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /extract:
+    options:
+      summary: CORS preflight
+      description: |
+        Returns the CORS headers required for browser clients to call the
+        endpoint with a `multipart/form-data` body. Always returns 204
+        with no body.
+      security: []
+      responses:
+        '204':
+          description: CORS preflight accepted
+          headers:
+            Access-Control-Allow-Origin:
+              schema: { type: string }
+            Access-Control-Allow-Methods:
+              schema: { type: string }
+            Access-Control-Allow-Headers:
+              schema: { type: string }
+            Access-Control-Max-Age:
+              schema: { type: string }
+    post:
+      tags: [extract]
+      summary: Convert an uploaded file to Markdown
+      description: |
+        Accepts a single file via `multipart/form-data` and converts it to
+        deterministic Markdown. Supports PDF, PPTX, DOCX, XLSX/XLS, CSV,
+        JSON, XML, ZIP, EPUB, HTML, and common image and audio formats
+        (image and audio return a metadata-only stub in v1 — no OCR, no
+        transcription). 25 MB hard cap; no LLM calls; no disk writes.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to extract. Must have an allowlisted extension.
+      responses:
+        '200':
+          description: Extracted Markdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractResponse'
+        '400':
+          description: Empty file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid X-Api-Key / X-Mcp-Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Payload too large (25 MB cap)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported file extension
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Conversion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream (Fly.io) unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -200,8 +294,12 @@ components:
             - UPSTREAM_FETCH_FAILED
             - UPSTREAM_UNREACHABLE
             - UNSUPPORTED_MEDIA_TYPE
+            - UNSUPPORTED_FILE_TYPE
             - MISCONFIGURED
             - RENDER_FAILED
+            - EXTRACT_FAILED
+            - CONVERSION_FAILED
+            - EMPTY_FILE
             - BAD_REQUEST
         detail:
           type: string
@@ -211,3 +309,50 @@ components:
           format: int32
           nullable: true
           description: Seconds until the next request is allowed (RATE_LIMIT only).
+    ExtractResponse:
+      type: object
+      required: [markdown, metadata]
+      properties:
+        markdown:
+          type: string
+          description: The converted Markdown. For image/audio inputs this is a small metadata stub.
+        metadata:
+          type: object
+          required: [extractionType, filename, fileType, sizeBytes]
+          properties:
+            extractionType:
+              type: string
+              enum:
+                - powerpoint-notes
+                - word-body
+                - pdf-body
+                - excel-tables
+                - structured-data
+                - html-body
+                - zip-contents
+                - epub-body
+                - image-metadata
+                - audio-metadata
+                - raw
+            filename:
+              type: string
+              description: The original filename as supplied by the caller.
+            fileType:
+              type: string
+              enum:
+                - powerpoint
+                - word
+                - pdf
+                - excel
+                - csv
+                - json
+                - xml
+                - zip
+                - epub
+                - image
+                - audio
+                - html
+            sizeBytes:
+              type: integer
+              format: int32
+              description: Size of the upload in bytes.
