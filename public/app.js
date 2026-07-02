@@ -696,7 +696,9 @@
       if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
       if (/^\/\//i.test(url)) return url;
       try {
-        return new URL(url, githubBaseUrl).href;
+        var resolved = new URL(url, githubBaseUrl).href;
+        if (resolved.indexOf("?") === -1) resolved += "?raw=true";
+        return resolved;
       } catch (e) {
         return url;
       }
