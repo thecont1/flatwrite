@@ -379,3 +379,145 @@ def test_url_load_with_pdf_url_routes_through_extract(browser):
         assert "PDF Content" in editor.input_value()
     finally:
         page.close()
+
+
+def test_postmessage_dropped_files_rejected_from_unknown_source(browser):
+    """
+    The parent's `window.addEventListener("message", ...)` handler in
+    app.js MUST reject any `{type: "dropped-files", ...}` message whose
+    `event.source` is not the preview iframe. Otherwise, a script that
+    runs inside the preview (e.g. user-supplied markdown that slips
+    past DOMPurify, or a nested <iframe>) could CSRF the parent into
+    sending a request to /extract on the attacker's behalf, burning the
+    user's per-IP token quota.
+
+    This test simulates the attack by posting a well-formed "dropped-files"
+    message from the page's own window — which is the easiest "untrusted"
+    source to forge from a Playwright test (we cannot inject a script
+    into the sandboxed preview iframe from outside, but we can use
+    `window.parent.postMessage(..., window)` semantics by calling
+    `window.postMessage` from within the page; the parent's handler
+    must reject any source that isn't the preview's contentWindow).
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Capture the editor's current content so we can prove the
+        # malicious message didn't change it.
+        before = page.locator("#editor").input_value()
+
+        # Spy on fetch — if the parent's handler falls for the attack,
+        # it will call handleExtractDrop(), which will:
+        #   1. mint a token from /mcp-token
+        #   2. POST the File to /extract
+        # If the rejection works, neither call should happen.
+        page.evaluate(
+            """() => {
+                window.__suspiciousNetworkCalls = [];
+                const realFetch = window.fetch.bind(window);
+                window.fetch = async function (url, opts) {
+                    const s = String(url);
+                    if (s.includes('mcp-token') || s.includes('/extract')) {
+                        window.__suspiciousNetworkCalls.push(s);
+                    }
+                    return realFetch(url, opts);
+                };
+            }"""
+        )
+
+        # Forge a dropped-files message from the page's own window —
+        # the only sane way to drive `event.source` from a Playwright
+        # test. The parent's handler at app.js ~line 1833 must reject
+        # any source that isn't the preview iframe.
+        page.evaluate(
+            """() => {
+                const fakeFile = new File(['x'], 'evil.pptx', { type: 'application/octet-stream' });
+                window.postMessage(
+                    { type: 'dropped-files', files: [fakeFile] },
+                    '*'
+                );
+            }"""
+        )
+
+        # Give any (incorrect) async handler a chance to fire and the
+        # editor a chance to update. 500ms is plenty for a synchronous
+        # rejection and 10× the round-trip latency of a token mint.
+        page.wait_for_timeout(500)
+
+        after = page.locator("#editor").input_value()
+        suspicious = page.evaluate("() => window.__suspiciousNetworkCalls || []")
+        assert after == before, (
+            f"editor changed after a forged postMessage from an unknown "
+            f"source — CSRF defense failed. suspicious={suspicious!r}"
+        )
+        assert not suspicious, (
+            f"parent triggered extract/token network calls in response to "
+            f"a forged postMessage from an unknown source. "
+            f"suspicious={suspicious!r}"
+        )
+    finally:
+        page.close()
+
+
+def test_postmessage_unknown_source_does_not_trigger_extract(browser):
+    """
+    Companion to `test_postmessage_dropped_files_rejected_from_unknown_source`:
+    the parent MUST also reject *any* unknown-source postMessage that
+    could plausibly reach handleExtractDrop through a different path
+    (e.g. a future handler that uses a different `type`). The
+    source-check is the only line of defense — every other type guard
+    in the listener assumes the message is from a trusted frame.
+
+    This test confirms the source check runs *before* the type
+    dispatch by sending a message with an unknown type and a known
+    bad source; the editor must not change.
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        before = page.locator("#editor").input_value()
+
+        page.evaluate(
+            """() => {
+                window.__suspiciousNetworkCalls = [];
+                const realFetch = window.fetch.bind(window);
+                window.fetch = async function (url, opts) {
+                    const s = String(url);
+                    if (s.includes('mcp-token') || s.includes('/extract')) {
+                        window.__suspiciousNetworkCalls.push(s);
+                    }
+                    return realFetch(url, opts);
+                };
+            }"""
+        )
+
+        # Send a message with an unknown type. If the source check runs
+        # first (as it should), the handler returns before any
+        # type-specific logic — so even a hypothetical handler keyed on
+        # this unknown type cannot fire.
+        page.evaluate(
+            """() => {
+                window.postMessage(
+                    { type: 'some-future-handler-type', payload: 'whatever' },
+                    '*'
+                );
+            }"""
+        )
+
+        page.wait_for_timeout(300)
+
+        after = page.locator("#editor").input_value()
+        suspicious = page.evaluate("() => window.__suspiciousNetworkCalls || []")
+        assert after == before, "editor changed after a postMessage from an unknown source"
+        assert not suspicious, (
+            f"parent triggered network calls in response to a postMessage "
+            f"from an unknown source. suspicious={suspicious!r}"
+        )
+    finally:
+        page.close()
