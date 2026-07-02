@@ -226,3 +226,156 @@ def test_drop_md_file_in_view_mode_renders_preview(browser):
 def _read_b64(path: Path) -> str:
     import base64
     return base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def test_file_picker_accepts_pptx_and_routes_through_extract(browser):
+    """
+    Verify the "From Disk" button now accepts any file format and
+    routes non-text files through the /extract endpoint (same
+    dispatch as drag-and-drop). The user picks a .pptx via the
+    file input, and the editor gets the extracted markdown.
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(500)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Sanity-check the file input's accept attribute covers all
+        # the extractable types — without this regression users see
+        # the picker filtered down to .md/.txt.
+        accept = page.evaluate(
+            "() => document.getElementById('load-file-input').accept"
+        )
+        for ext in (".pdf", ".pptx", ".docx", ".xlsx", ".csv"):
+            assert ext in accept, f"missing {ext} from file input accept: {accept!r}"
+
+        # Simulate picking a .pptx. The fixture lives outside the
+        # public/ dir, so we read it via the Python side and inline
+        # the bytes into the page as a File.
+        pptx_b64 = _read_b64(FIXTURE)
+        page.evaluate(
+            """([name, b64]) => {
+                const bin = atob(b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const file = new File([bytes], name, { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const input = document.getElementById('load-file-input');
+                input.files = dt.files;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }""",
+            [FIXTURE.name, pptx_b64],
+        )
+
+        # Wait for the extract to complete and the editor to update.
+        page.wait_for_function(
+            "() => document.getElementById('editor') && "
+            "document.getElementById('editor').value.includes('greet the audience warmly')",
+            timeout=45_000,
+        )
+        assert "greet the audience warmly" in editor.input_value()
+    finally:
+        page.close()
+
+
+def test_url_load_with_md_url_loads_directly(browser):
+    """
+    Verify the "From URL" modal handles .md URLs by reading the
+    response as text and setting the editor content directly (no
+    extract round-trip).
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(500)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Stub fetch to return markdown content for any URL the modal
+        # fires (we don't want the test to depend on a real network).
+        page.evaluate(
+            """() => {
+                window.fetch = async function (url) {
+                    return new Response(
+                        '# Markdown from URL\\n\\nLoaded directly via the URL modal.',
+                        { status: 200, headers: { 'Content-Type': 'text/markdown' } }
+                    );
+                };
+            }"""
+        )
+
+        # Open the modal, type the URL, click Fetch.
+        page.locator("#btn-load-url").click()
+        page.wait_for_timeout(300)
+        page.locator("#load-url-input").fill("https://example.com/file.md")
+        page.locator("#load-modal-insert").click()
+
+        # Wait for the modal to close and the editor to update.
+        page.wait_for_function(
+            "() => document.getElementById('editor').value.includes('Markdown from URL')",
+            timeout=10_000,
+        )
+        assert "Loaded directly via the URL modal" in editor.input_value()
+    finally:
+        page.close()
+
+
+def test_url_load_with_pdf_url_routes_through_extract(browser):
+    """
+    Verify the "From URL" modal handles binary URLs (PDF, PPTX, …)
+    by fetching them as a Blob and forwarding to /extract. The
+    result is the extracted markdown in the editor.
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(500)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Stub fetch to return a fake PDF Blob for the user URL,
+        # and a fake token + fake extract response for the Worker
+        # calls. We can't route the real /extract here because
+        # we don't have a real PDF; this proves the *routing* works.
+        page.evaluate(
+            """() => {
+                window.fetch = async function (url, opts) {
+                    if (String(url).includes('mcp-token')) {
+                        return new Response(
+                            JSON.stringify({ token: 'fake-token', expiresAt: Math.floor(Date.now() / 1000) + 60 }),
+                            { status: 200, headers: { 'Content-Type': 'application/json' } }
+                        );
+                    }
+                    if (String(url).includes('extract.flatwrite.md/extract')) {
+                        return new Response(
+                            JSON.stringify({
+                                markdown: '# PDF Content\\n\\nExtracted from URL.',
+                                metadata: { fileType: 'pdf', extractionType: 'pdf-body', filename: 'doc.pdf', sizeBytes: 100 },
+                            }),
+                            { status: 200, headers: { 'Content-Type': 'application/json' } }
+                        );
+                    }
+                    return new Response(
+                        new Blob(['fake-pdf-bytes'], { type: 'application/pdf' }),
+                        { status: 200, headers: { 'Content-Type': 'application/pdf' } }
+                    );
+                };
+            }"""
+        )
+
+        page.locator("#btn-load-url").click()
+        page.wait_for_timeout(300)
+        page.locator("#load-url-input").fill("https://example.com/document.pdf")
+        page.locator("#load-modal-insert").click()
+
+        # Wait for the extract to round-trip and the editor to update.
+        page.wait_for_function(
+            "() => document.getElementById('editor').value.includes('Extracted from URL')",
+            timeout=15_000,
+        )
+        assert "PDF Content" in editor.input_value()
+    finally:
+        page.close()
