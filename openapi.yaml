@@ -160,6 +160,8 @@ paths:
         JSON, XML, ZIP, EPUB, HTML, and common image and audio formats
         (image and audio return a metadata-only stub in v1 — no OCR, no
         transcription). 25 MB hard cap; no LLM calls; no disk writes.
+      security:
+        - McpTokenAuth: []
       requestBody:
         required: true
         content:
@@ -227,6 +229,11 @@ components:
       type: apiKey
       in: header
       name: X-Api-Key
+    McpTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Mcp-Token
+      description: Browser-facing short-lived MCP token minted by the render Worker. Used by the /extract proxy path.
   schemas:
     MarkdownRenderRequest:
       type: object
