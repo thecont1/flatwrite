@@ -29,3 +29,12 @@ route = { pattern = "extract.flatwrite.md/*", zone_name = "flatwrite.md" }
 # Default upstream — overridable via secret for staging. The Worker never
 # serves /extract directly; it only forwards here.
 UPSTREAM_URL = "https://flatwrite-extract.fly.dev"
+
+# Comma-separated list of extra CORS origins to trust. Production leaves
+# this empty; the strict allowlist (https://flatwrite.md and
+# https://*.flatwrite.md) is the only thing that matters. Local dev and
+# CI can opt in to e.g. "http://127.0.0.1:8080,http://localhost:3000" so
+# the worker accepts requests from a local editor without a real DNS
+# hostname. Treat this like a secret — anyone in the list can call
+# /mcp-token and /extract.
+ALLOWED_DEV_ORIGINS = ""

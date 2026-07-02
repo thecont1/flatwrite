@@ -32,11 +32,11 @@ from playwright.sync_api import expect, sync_playwright
 PLAYWRIGHT_PY = "/Library/Developer/CommandLineTools/usr/bin/python3"
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "sample.pptx"
-# Default to the local editor served from public/ on port 8081
-# (started via `python3 -m http.server 8081` in the public/ dir).
+# Default to the local editor served from public/ on port 8080
+# (started via `cd public && python3 -m http.server 8080`).
 # Override with FLATWRITE_E2E_URL=https://flatwrite.md/ to run
 # against prod once the new frontend is deployed there.
-EDITOR_URL = os.environ.get("FLATWRITE_E2E_URL", "http://127.0.0.1:8081/")
+EDITOR_URL = os.environ.get("FLATWRITE_E2E_URL", "http://127.0.0.1:8080/")
 
 
 @pytest.fixture(scope="module")

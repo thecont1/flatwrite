@@ -54,6 +54,12 @@ fi
 
 cd "$WORKER_DIR"
 echo "→ running wrangler deploy (with --config to bypass parent wrangler.jsonc)"
-"$REPO_ROOT/node_modules/.bin/wrangler" deploy --config wrangler.toml
+# Local-dev convenience: pass ALLOWED_DEV_ORIGINS via the CLI so the
+# Worker accepts requests from http://127.0.0.1:8080 etc. Defaults to
+# empty (production-safe). Override with:
+#   ALLOWED_DEV_ORIGINS=http://127.0.0.1:8080 ./deploy.sh
+"${REPO_ROOT}/node_modules/.bin/wrangler" deploy \
+  --config wrangler.toml \
+  --var "ALLOWED_DEV_ORIGINS:${ALLOWED_DEV_ORIGINS:-}"
 
 # Restore happens via the EXIT trap above.

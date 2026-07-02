@@ -285,6 +285,57 @@ describe("extract Worker — CORS", () => {
     expect(r.status).toBe(204);
     expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  test("ALLOWED_DEV_ORIGINS unblocks localhost for local dev", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(
+      req({
+        method: "OPTIONS",
+        headers: {
+          "Origin": "http://127.0.0.1:8080",
+          "Access-Control-Request-Method": "POST",
+        },
+      }),
+      { ...env(), ALLOWED_DEV_ORIGINS: "http://127.0.0.1:8080,http://localhost:3000" },
+    );
+    expect(r.status).toBe(204);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:8080");
+  });
+
+  test("ALLOWED_DEV_ORIGINS does NOT relax the production allowlist", async () => {
+    const { default: worker } = await loadWorker();
+    // The dev-origin list contains 127.0.0.1, but the request origin is
+    // something else entirely — it must be rejected.
+    const r = await worker.fetch(
+      req({
+        method: "OPTIONS",
+        headers: {
+          "Origin": "https://attacker.example",
+          "Access-Control-Request-Method": "POST",
+        },
+      }),
+      { ...env(), ALLOWED_DEV_ORIGINS: "http://127.0.0.1:8080" },
+    );
+    expect(r.status).toBe(204);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  test("ALLOWED_DEV_ORIGINS enables mcp-token mint from localhost", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(
+      req({
+        url: "https://extract.flatwrite.md/mcp-token",
+        headers: {
+          "Origin": "http://127.0.0.1:8080",
+          "CF-Connecting-IP": "127.0.0.1",
+        },
+      }),
+      { ...env(), ALLOWED_DEV_ORIGINS: "http://127.0.0.1:8080" },
+    );
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(typeof j.token).toBe("string");
+  });
 });
 
 // ── /mcp-token minting ──────────────────────────────────────────────────

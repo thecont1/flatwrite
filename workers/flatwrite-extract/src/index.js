@@ -63,6 +63,18 @@ const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
 ]);
 
+/**
+ * Extra origins trusted for CORS, sourced from the `ALLOWED_DEV_ORIGINS`
+ * env var (set via `wrangler secret put` or `[vars]` in wrangler.toml).
+ * Production leaves this empty so the strict allowlist above is the
+ * only thing that matters. Local dev and CI can opt in to
+ * `http://127.0.0.1:8080` etc. Comma-separated.
+ */
+function parseDevOrigins(raw) {
+  if (!raw) return [];
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 function isTokenRateLimited(ip) {
   if (!ip) return false;
   const now = Date.now();
@@ -82,19 +94,20 @@ function isTokenRateLimited(ip) {
   return false;
 }
 
-function isTrustedOrigin(origin) {
+function isTrustedOrigin(origin, devOrigins) {
   if (!origin) return false;
   if (TRUSTED_ORIGINS.has(origin)) return true;
   if (/^https:\/\/[a-z0-9-]+\.flatwrite\.md$/i.test(origin)) return true;
+  if (devOrigins && devOrigins.includes(origin)) return true;
   return false;
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 
-function corsFor(req) {
+function corsFor(req, devOrigins) {
   const origin = req.headers.get('Origin');
   if (!origin) return {};
-  if (!isTrustedOrigin(origin)) return {};
+  if (!isTrustedOrigin(origin, devOrigins)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
     'Vary': 'Origin',
@@ -164,13 +177,13 @@ function preflightHeaders(cors, requested) {
   };
 }
 
-async function handleExtract(req, env) {
+async function handleExtract(req, env, devOrigins) {
   const method = req.method.toUpperCase();
   if (method !== 'POST') {
     return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' });
   }
 
-  const cors = corsFor(req);
+  const cors = corsFor(req, devOrigins);
   const auth = await authenticateRequest(req, env);
   if (!auth.ok) return jsonResponse(auth.status, auth.body, cors);
 
@@ -243,7 +256,7 @@ async function handleExtract(req, env) {
   });
 }
 
-async function handleMintToken(req, env) {
+async function handleMintToken(req, env, devOrigins) {
   const method = req.method.toUpperCase();
   if (method !== 'POST' && method !== 'OPTIONS') {
     return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' });
@@ -251,9 +264,9 @@ async function handleMintToken(req, env) {
   if (!env.API_KEY) {
     return jsonResponse(500, { error: 'Worker misconfigured', code: 'MISCONFIGURED' });
   }
-  const cors = corsFor(req);
+  const cors = corsFor(req, devOrigins);
   const origin = req.headers.get('Origin');
-  if (!origin || !isTrustedOrigin(origin)) {
+  if (!origin || !isTrustedOrigin(origin, devOrigins)) {
     return jsonResponse(403, { error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' }, cors);
   }
   const ip = req.headers.get('CF-Connecting-IP') || 'unknown';
@@ -268,19 +281,20 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const method = req.method.toUpperCase();
+    const devOrigins = parseDevOrigins(env.ALLOWED_DEV_ORIGINS);
 
     if (method === 'OPTIONS') {
-      const cors = corsFor(req);
+      const cors = corsFor(req, devOrigins);
       const requested = req.headers.get('Access-Control-Request-Headers');
       return new Response(null, { status: 204, headers: preflightHeaders(cors, requested) });
     }
 
     if (url.pathname === '/mcp-token') {
-      return handleMintToken(req, env);
+      return handleMintToken(req, env, devOrigins);
     }
 
     if (url.pathname === '/extract' || url.pathname === '/' || url.pathname === '') {
-      return handleExtract(req, env);
+      return handleExtract(req, env, devOrigins);
     }
 
     return jsonResponse(404, { error: 'Not Found', code: 'NOT_FOUND' });
