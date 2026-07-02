@@ -209,6 +209,32 @@ describe("api/render.js", () => {
     expect(res._body.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/app-screenshot.png");
     expect(res._body.body).toContain("https://raw.githubusercontent.com/thecont1/ngl-storyteller/main/assets/generations/x.jpg");
   });
+
+  test("invalid JSON body → 400", async () => {
+    const req = mockReq({ headers: hmacHeaders(SECRET, "POST", "/api/render"), body: null });
+    req.on = (event, cb) => {
+      if (event === "data") cb("not json {{{");
+      if (event === "end") cb();
+    };
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(400);
+    expect(res._body.error).toContain("JSON");
+  });
+
+  test("oversized body → 413", async () => {
+    const big = "x".repeat(512 * 1024 + 1);
+    const req = mockReq({ headers: hmacHeaders(SECRET, "POST", "/api/render"), body: null });
+    req.on = (event, cb) => {
+      if (event === "data") cb(big);
+      if (event === "end") cb();
+    };
+    const res = mockRes();
+    process.env.INTERNAL_RENDER_KEY = SECRET;
+    await handler(req, res);
+    expect(res._status).toBe(413);
+  });
 });
 
 // ── core/rate-limit.js ──────────────────────────────────────────────────
@@ -239,6 +265,15 @@ describe("core/rate-limit.js", () => {
     rl.check("w");
     rl.reset();
     expect(rl.check("w").allowed).toBe(true);
+  });
+
+  test("window expiry allows new requests", async () => {
+    const rl = createRateLimiter({ windowMs: 50, max: 1 });
+    rl.check("z");
+    expect(rl.check("z").allowed).toBe(false);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(rl.check("z").allowed).toBe(true);
+    rl.reset();
   });
 });
 
@@ -407,6 +442,25 @@ describe("renderToDocument", () => {
       expect(html.body).toContain('class="task-list-item"');
       expect(html.body).not.toMatch(/<ol\s+start=/);
     }
+  });
+
+  test("extra unknown fields are ignored", async () => {
+    const fm = { title: "T", evil: "<script>alert(1)</script>" };
+    const html = await renderToDocument("# Hi", fm);
+    expect(html.head).not.toContain("evil");
+    expect(html.head).not.toContain("<script>");
+  });
+
+  test("null/undefined frontmatter uses defaults", async () => {
+    const html = await renderToDocument("# Hi", null);
+    expect(html.head).toContain("Inter");
+    expect(html.head).toContain("font-size: 16px");
+  });
+
+  test("surfaceMode: app is ignored", async () => {
+    const html = await renderToDocument("# Hi", { surfaceMode: "app", framework: "spectre" });
+    expect(html.head).not.toContain("spectre");
+    expect(html.head).toContain("font-size:");
   });
 });
 
