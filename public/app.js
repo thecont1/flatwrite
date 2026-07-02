@@ -767,8 +767,39 @@
       setEditorContent(reader.result);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
+      // Re-render the preview if we're not in Edit mode — without
+      // this, dropping a .md in View or Read mode leaves a blank
+      // preview pane (the textarea is hidden, so the new content
+      // isn't visible until something else triggers a render).
+      if (mode !== "edit") renderPreview();
     };
     reader.readAsText(file);
+  }
+
+  /* ==========================================================================
+     Inline drop-routing helper.
+
+     Mirrors the public/extract-drop.js helper but is bundled directly
+     into app.js so the routing decision is always available — even if
+     extract-drop.js failed to load (script tag typo, cache miss,
+     deploy lag). Without this fallback, .md/.markdown/.txt drops
+     would be misrouted to the extract endpoint on production and
+     415-rejected by the Fly service (markdown isn't in the Fly
+     extension allowlist — see services/extract/validators.py).
+
+     The standalone public/extract-drop.js is kept for bun-test
+     coverage of the routing logic and as a small public API for
+     future integrations.
+     ========================================================================== */
+  var PLAIN_TEXT_EXTS_INLINE = { ".md": 1, ".markdown": 1, ".txt": 1 };
+  function routeDroppedFileInline(filename) {
+    if (!filename || typeof filename !== "string") return "plain";
+    var base = filename.split(/[\\/]/).pop();
+    var dot = base.lastIndexOf(".");
+    if (dot < 0) return "extract";
+    var ext = base.slice(dot).toLowerCase();
+    if (PLAIN_TEXT_EXTS_INLINE[ext]) return "plain";
+    return "extract";
   }
 
   /* ==========================================================================
@@ -832,7 +863,7 @@
     }
     var routing = window.FlatwriteExtractDrop
       ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
-      : "extract";
+      : routeDroppedFileInline(file.name);
     if (routing === "plain") {
       // Defensive: this should already have been routed to handleFileUpload
       // by the drop listener, but if handleExtractDrop is called directly
@@ -890,9 +921,12 @@
     // v1 — single file only.
     var file = files[0];
     if (!file || !file.name) return;
+    // Use the bundled inline router by default so this works even if
+    // extract-drop.js failed to load (deploy lag, cache miss). Fall
+    // back to the helper when present so test edits there propagate.
     var route = window.FlatwriteExtractDrop
       ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
-      : "extract";
+      : routeDroppedFileInline(file.name);
     if (route === "plain") {
       handleFileUpload(file);
     } else {
@@ -1916,6 +1950,48 @@
     return css;
   }
 
+  /**
+   * Build the diagonal-stripe background CSS used in View/Preview mode
+   * (the "draft paper" effect behind page content). The previous
+   * implementation used `repeating-linear-gradient` with hard 16px
+   * grey/white stops, which produced visible horizontal seams at
+   * each tile boundary (browser sub-pixel rounding at the gradient
+   * wrap — visible as faint horizontal lines every ~32px on tall
+   * documents).
+   *
+   * This version uses a single non-repeating `linear-gradient` with
+   * explicit stop pairs that draw the stripes as ONE continuous
+   * gradient. No tile boundary, no seams, stripes continue "until
+   * infinity" within the iframe. Stripe thickness scales with
+   * iframe height (the gradient stretches to fill 100% of the
+   * element in both axes), giving ~30-40 stripes per typical 1280px
+   * viewport — close to the old 16px stripe density.
+   *
+   * Colors match the original `#f0f0f0` / `#ffffff` palette.
+   */
+  function stripePlaceholderCss() {
+    var n = 40; // total stripes (must be even: half grey, half white)
+    var step = 100 / n; // percentage width of one stripe
+    var stops = '';
+    for (var i = 0; i < n; i++) {
+      var color = (i % 2 === 0) ? '#f0f0f0' : '#ffffff';
+      var start = (i * step).toFixed(4);
+      var end = ((i + 1) * step).toFixed(4);
+      stops += ', ' + color + ' ' + start + '%' + ', ' + color + ' ' + end + '%';
+    }
+    return 'html { background: linear-gradient(135deg' + stops + ') !important; }';
+  }
+
+  /**
+   * CSS reset + transparent body used by the Vivliostyle iframe
+   * sandbox so the stripe placeholder background shows through to
+   * the page area.
+   */
+  function htmlResetCss() {
+    return 'html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; } '
+      + 'body, #vivl-viewport { background: transparent !important; } ';
+  }
+
   function syncDocControlsUI() {
     if (pageSizeSel)     pageSizeSel.value = pageSize;
     var orientBtn = document.getElementById("toggle-orient");
@@ -2201,7 +2277,16 @@
         + '</head><body><main>' + renderedHTML + '</main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-        + '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}html{background:repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px)!important;}body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        // Stripe placeholder background for View/Preview mode. The old
+        // implementation used `repeating-linear-gradient` with hard 16px
+        // grey/white stops, which produced visible horizontal seams at
+        // each tile boundary (browser sub-pixel rounding at the gradient
+        // wrap). This version uses a single non-repeating `linear-gradient`
+        // with many explicit stops so the stripes are drawn as one
+        // continuous gradient — no tile boundary, no seams. The stripe
+        // thickness scales with the iframe height (~40 stripes per 1280px).
+        + stripePlaceholderCss()
+        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
         + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
@@ -2234,7 +2319,9 @@
         + '  if (!style) {'
         + '    style = document.createElement("style");'
         + '    style.id = "vivl-scroll-style";'
-        + '    style.textContent = "html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; } body, #vivl-viewport { background: transparent !important; } [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
+        + '    style.textContent = "'
+        + htmlResetCss()
+        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
         + '    document.head.appendChild(style);'
         + '  }'
         + '  /* Smooth zoom: apply CSS transform: scale() to the spread container'
@@ -2369,9 +2456,7 @@
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
         + '</style>'
-        + (mode !== "read" ? '<style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; }'
-          + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
-          + '</style>' : '')
+        + (mode !== "read" ? '<style id="_fw_stripe">' + stripePlaceholderCss() + ' .pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }</style>' : '')
         + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
