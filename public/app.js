@@ -837,8 +837,14 @@
      round-trip to the server for a raw text read.
      ========================================================================== */
 
-  var EXTRACT_URL = "https://extract.flatwrite.md/extract";
-  var EXTRACT_TOKEN_URL = "https://extract.flatwrite.md/mcp-token";
+  // Local dev override: when the editor itself is served from localhost,
+  // point at a locally-running `wrangler dev` instance of the extract
+  // Worker (see workers/flatwrite-extract/README.md § Local dev) instead
+  // of the production endpoint. Production hosts are unaffected.
+  var IS_LOCAL_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  var EXTRACT_BASE = IS_LOCAL_DEV ? "http://127.0.0.1:8787" : "https://extract.flatwrite.md";
+  var EXTRACT_URL = EXTRACT_BASE + "/extract";
+  var EXTRACT_TOKEN_URL = EXTRACT_BASE + "/mcp-token";
   var EXTRACT_MAX_BYTES = 25 * 1024 * 1024;
   var _extractCachedToken = null;
   var _extractInflightToken = null;
