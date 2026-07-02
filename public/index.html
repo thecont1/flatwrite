@@ -57,7 +57,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script type="module" src="webmcp.js?v=8"></script>
-  <script src="app.js?v=104" defer></script>
+  <script src="extract-drop.js?v=1" defer></script>
+  <script src="app.js?v=109" defer></script>
 
   <!-- Google AdSense -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3564536130489009" crossorigin="anonymous"></script>
@@ -74,6 +75,17 @@
     <!-- Drawer backdrop (visible < 760px when sidebar open) -->
     <div class="drawer-backdrop" id="drawer-backdrop"></div>
 
+    <!-- Drag-and-drop banner. Hidden by default; shown when a file is
+         being dragged over the window. See bindDropZone() in app.js. -->
+    <div class="fw-drop-banner" id="fw-drop-banner" hidden>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <span>Drop file to extract as Markdown</span>
+    </div>
+
     <!-- ===== SIDEBAR (Left Utility Rail) ===== -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-inner">
@@ -88,7 +100,7 @@
             <button class="comp-btn load-btn" id="btn-load-url" type="button">From URL</button>
             <button class="comp-btn load-btn" id="btn-load-local" type="button">From Disk</button>
           </div>
-          <input type="file" id="load-file-input" class="sr-only" accept=".md,.txt" aria-label="Load markdown file from disk" />
+          <input type="file" id="load-file-input" class="sr-only" accept=".md,.markdown,.txt,.pdf,.pptx,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.epub,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.tiff,.tif,.mp3,.wav,.m4a,.ogg,.flac" aria-label="Load file from disk" />
         </div>
 
         <hr class="sidebar-divider" />
@@ -327,7 +339,8 @@
 
   </div>
 
-  <!-- Load from URL modal (replaces component modal) -->
+  <!-- Load from URL modal (supports any file the extract endpoint
+       accepts: PDF, PPTX, DOCX, XLSX, CSV, JSON, images, audio, etc.) -->
   <div class="load-modal-overlay hidden" id="load-modal-overlay">
     <div class="load-modal" id="load-modal">
       <div class="load-modal-header">
@@ -335,8 +348,8 @@
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close">&times;</button>
       </div>
       <div class="load-modal-body" id="load-modal-body">
-          <label for="load-url-input" class="load-modal-label">Markdown URL</label>
-          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.md" autocomplete="off" />
+          <label for="load-url-input" class="load-modal-label">File URL (.md, .pdf, .pptx, .docx, .xlsx, .csv, .json, images, audio…)</label>
+          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.pdf" autocomplete="off" />
           <p class="load-url-status" id="load-url-status"></p>
         </div>
       <div class="load-modal-footer">
