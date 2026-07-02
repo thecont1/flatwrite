@@ -1827,6 +1827,68 @@ body {
 }
 
 /* ==========================================================================
+   DRAG-AND-DROP OVERLAY
+   Toggled on .app-shell by bindDropZone() in app.js when a file is being
+   dragged over the window. The overlay covers the canvas with a soft
+   accent-tinted wash and an inline-SVG drop icon + label.
+   ========================================================================== */
+
+.app-shell.drop-target::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  /* Same accent token as the editor focus ring — keeps the affordance
+     consistent with the rest of the UI without introducing a new color. */
+  background: color-mix(in srgb, var(--fw-accent, var(--accent)) 8%, transparent);
+  border: 2px dashed color-mix(in srgb, var(--fw-accent, var(--accent)) 60%, transparent);
+  border-radius: 12px;
+  z-index: 1500;
+  pointer-events: none;
+  animation: fw-drop-target-pulse 1.2s ease-in-out infinite;
+}
+
+.app-shell.drop-target .fw-drop-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1501;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #2d2a3e;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: 3px solid var(--fw-accent, var(--accent));
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* The `hidden` attribute would otherwise override `display: flex` here.
+   When .app-shell.drop-target is active, force the banner visible. */
+.app-shell.drop-target .fw-drop-banner[hidden] {
+  display: flex;
+}
+
+.app-shell.drop-target .fw-drop-banner svg {
+  width: 32px;
+  height: 32px;
+  color: var(--fw-accent, var(--accent));
+}
+
+@keyframes fw-drop-target-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* ==========================================================================
    ACCENT THEMING (Phase 4: --fw-accent tints editor + toolbar)
    ========================================================================== */
 

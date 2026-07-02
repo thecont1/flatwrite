@@ -772,6 +772,174 @@
   }
 
   /* ==========================================================================
+     File import — drag-and-drop extract flow
+     ==========================================================================
+     Routes any dropped file that isn't a plain-text file (`.md`, `.txt`,
+     `.markdown`) through the new /extract endpoint, which converts it to
+     Markdown via the MarkItDown service behind extract.flatwrite.md.
+
+     Plain-text files still go through handleFileUpload() — no need to
+     round-trip to the server for a raw text read.
+     ========================================================================== */
+
+  var EXTRACT_URL = "https://extract.flatwrite.md/extract";
+  var EXTRACT_TOKEN_URL = "https://extract.flatwrite.md/mcp-token";
+  var EXTRACT_MAX_BYTES = 25 * 1024 * 1024;
+  var _extractCachedToken = null;
+  var _extractInflightToken = null;
+
+  async function getExtractToken() {
+    if (_extractCachedToken && _extractCachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
+      return _extractCachedToken;
+    }
+    if (_extractInflightToken) return _extractInflightToken;
+    _extractInflightToken = (async () => {
+      try {
+        var r = await fetch(EXTRACT_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!r.ok) {
+          throw new Error("token mint failed: HTTP " + r.status);
+        }
+        var body = await r.json();
+        if (!body || !body.token || !body.expiresAt) {
+          throw new Error("token mint returned malformed body");
+        }
+        _extractCachedToken = body;
+        return body;
+      } finally {
+        _extractInflightToken = null;
+      }
+    })();
+    return _extractInflightToken;
+  }
+
+  /**
+   * POST a dropped file to /extract and load the returned markdown into
+   * the editor. Re-uses the Worker's mcp-token flow for browser-safe auth,
+   * mirroring webmcp.js's render-worker call site.
+   */
+  async function handleExtractDrop(file) {
+    if (!file) return;
+    if (file.size > EXTRACT_MAX_BYTES) {
+      showToast("File too large (25 MB max)");
+      return;
+    }
+    if (isEditorDirty()) {
+      var ok = confirm("Replace current content with extracted file?");
+      if (!ok) return;
+    }
+    var routing = window.FlatwriteExtractDrop
+      ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+      : "extract";
+    if (routing === "plain") {
+      // Defensive: this should already have been routed to handleFileUpload
+      // by the drop listener, but if handleExtractDrop is called directly
+      // we honor the same path.
+      handleFileUpload(file);
+      return;
+    }
+    showToast("Extracting " + file.name + "…");
+    try {
+      var token = await getExtractToken();
+      var fd = new FormData();
+      fd.append("file", file, file.name);
+      var resp = await fetch(EXTRACT_URL, {
+        method: "POST",
+        headers: { "X-Mcp-Token": token.token },
+        body: fd,
+      });
+      var text = await resp.text();
+      var data;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      if (!resp.ok) {
+        if (resp.status === 401) _extractCachedToken = null;
+        var errCode = (data && data.detail && data.detail.code) || (data && data.code) || "EXTRACT_FAILED";
+        var errMsg = (data && data.detail && data.detail.error) || (data && data.error) || ("HTTP " + resp.status);
+        showToast("Extract failed: " + errMsg);
+        console.error("[extract]", errCode, errMsg);
+        return;
+      }
+      if (!data || typeof data.markdown !== "string") {
+        showToast("Extract failed: malformed response");
+        return;
+      }
+      setEditorContent(data.markdown);
+      currentMarkdownUrl = "";
+      githubBaseUrl = "";
+      if (mode !== "edit") renderPreview();
+      var meta = data.metadata || {};
+      showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
+    } catch (e) {
+      showToast("Extract failed: " + (e && e.message ? e.message : e));
+      console.error("[extract]", e);
+    }
+  }
+
+  /**
+   * Global drag/drop dispatcher. Called from the listeners attached in
+   * bindEvents(). Routes .md/.txt/.markdown to handleFileUpload, everything
+   * else to handleExtractDrop. Toggles the `drop-target` class on
+   * .app-shell so the CSS overlay appears.
+   */
+  function onDroppedFiles(e) {
+    if (!e.dataTransfer || !e.dataTransfer.files) return;
+    var files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    // v1 — single file only.
+    var file = files[0];
+    if (!file || !file.name) return;
+    var route = window.FlatwriteExtractDrop
+      ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+      : "extract";
+    if (route === "plain") {
+      handleFileUpload(file);
+    } else {
+      handleExtractDrop(file);
+    }
+  }
+
+  function bindDropZone() {
+    var appShell = document.getElementById("app-shell");
+    if (!appShell) return;
+    var dragDepth = 0;
+    // We only show the overlay for drags that actually carry files. Plain
+    // text/HTML drags are common in editors and shouldn't trigger the
+    // overlay (they'd just create dead UI flicker).
+    function hasFile(e) {
+      if (!e.dataTransfer || !e.dataTransfer.types) return false;
+      for (var i = 0; i < e.dataTransfer.types.length; i++) {
+        if (e.dataTransfer.types[i] === "Files") return true;
+      }
+      return false;
+    }
+    document.addEventListener("dragenter", function (e) {
+      if (!hasFile(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      appShell.classList.add("drop-target");
+    });
+    document.addEventListener("dragover", function (e) {
+      if (!hasFile(e)) return;
+      // Required so the `drop` event fires.
+      e.preventDefault();
+    });
+    document.addEventListener("dragleave", function (e) {
+      if (!hasFile(e)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) appShell.classList.remove("drop-target");
+    });
+    document.addEventListener("drop", function (e) {
+      if (!hasFile(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      appShell.classList.remove("drop-target");
+      onDroppedFiles(e);
+    });
+  }
+
+  /* ==========================================================================
      Init
      ========================================================================== */
 
@@ -1194,6 +1362,10 @@
       var file = loadFileInput.files && loadFileInput.files[0];
       handleFileUpload(file);
     });
+
+    /* Drag-and-drop import — routes .md/.txt to handleFileUpload, everything
+       else to handleExtractDrop. See bindDropZone() and handleExtractDrop(). */
+    bindDropZone();
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
