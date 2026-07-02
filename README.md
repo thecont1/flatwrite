@@ -53,7 +53,7 @@ FlatWrite exposes the same renderer that powers the editor as a public HTTP API 
 ```bash
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: application/json' \
-  -H 'X-Api-Key: *** \
+  -H 'X-Api-Key: ***' \
   -d '{"markdown":"# Hello, FlatWrite"}'
 ```
 
