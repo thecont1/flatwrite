@@ -3517,7 +3517,7 @@
   function showToast(message) {
     var toast = document.createElement("div");
     toast.className = "fw-toast";
-    toast.innerHTML = message;
+    toast.textContent = message;
     getToastStack().appendChild(toast);
     toast.offsetHeight;
     toast.classList.add("fw-toast-visible");
