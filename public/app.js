@@ -691,30 +691,55 @@
   function resolveRelativeUrls(html) {
     if (!githubBaseUrl) return html;
 
-    function resolveUrl(url) {
+    var ghHostOk;
+    try {
+      var host = new URL(githubBaseUrl).hostname;
+      ghHostOk = /^(?:raw\.)?githubusercontent\.com$|^github\.com$/.test(host);
+    } catch (_) {
+      ghHostOk = false;
+    }
+
+    function stampRaw(u) {
+      if (!ghHostOk) return u;
+      try {
+        var parsed = new URL(u);
+        if (!parsed.searchParams.has("raw")) parsed.searchParams.set("raw", "true");
+        return parsed.toString();
+      } catch (_) {
+        return u;
+      }
+    }
+
+    function resolveAgainst(url) {
       if (!url) return url;
       if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
       if (/^\/\//i.test(url)) return url;
       try {
-        var resolved = new URL(url, githubBaseUrl).href;
-        if (resolved.indexOf("?") === -1) resolved += "?raw=true";
-        return resolved;
+        return new URL(url, githubBaseUrl).href;
       } catch (e) {
         return url;
       }
     }
 
-    html = html.replace(/(<(?:img|video|source)\s[^>]*?)src=(["'])([^"']+)\2/gi,
-      function (match, prefix, quote, src) {
-        var r = resolveUrl(src);
-        return r !== src ? prefix + "src=" + quote + r + quote : match;
+    // Image-like src — apply ?raw=true on GitHub
+    html = html.replace(
+      /<(?:img|video|source)\s[^>]*?src=(["'])([^"']+)\1/gi,
+      function (match, q, src) {
+        var resolved = resolveAgainst(src);
+        if (resolved === src) return match;
+        return match.slice(0, match.length - src.length - q.length - 1)
+          + "src=" + q + stampRaw(resolved) + q;
       }
     );
 
-    html = html.replace(/(<a\s[^>]*?)href=(["'])([^"']+)\2/gi,
-      function (match, prefix, quote, href) {
-        var r = resolveUrl(href);
-        return r !== href ? prefix + "href=" + quote + r + quote : match;
+    // Anchor href — never stamp ?raw=true (would break link navigation)
+    html = html.replace(
+      /<a\s[^>]*?href=(["'])([^"']+)\1/gi,
+      function (match, q, href) {
+        var resolved = resolveAgainst(href);
+        if (resolved === href) return match;
+        var idx = match.indexOf("href");
+        return match.slice(0, idx + 5) + q + resolved + q + match.slice(idx + 6 + href.length);
       }
     );
 
@@ -2061,7 +2086,8 @@
         + '    var scaledW = Math.round(_pageW * s);'
         + '    var scaledH = 0;'
         + '    for (var pi = 0; pi < pages.length; pi++) {'
-        + '      scaledH += Math.round(_pageH * s) + Math.round(16 * s);'
+        + '      scaledH += Math.round(_pageH * s);'
+        + '      if (pi < pages.length - 1) scaledH += Math.round(16 * s);'
         + '    }'
         + '    outerZoom.style.setProperty("width", scaledW + "px", "important");'
         + '    outerZoom.style.setProperty("min-width", scaledW + "px", "important");'
