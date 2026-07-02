@@ -926,6 +926,10 @@
         showToast("Extract failed: malformed response");
         return;
       }
+      if (data.markdown.length === 0) {
+        showToast("No text could be extracted from " + file.name);
+        return;
+      }
       setEditorContent(data.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
@@ -2082,7 +2086,7 @@
       var end = ((i + 1) * step).toFixed(4);
       stops += ', ' + color + ' ' + start + '%' + ', ' + color + ' ' + end + '%';
     }
-    return 'html { background: linear-gradient(135deg' + stops + ') fixed !important; background-size: 100% 100%; }';
+    return 'html { background: linear-gradient(45deg' + stops + ') fixed !important; background-size: 100% 100%; }';
   }
 
   /**
