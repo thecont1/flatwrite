@@ -958,17 +958,13 @@
   }
 
   /**
-   * Global drag/drop dispatcher. Called from the listeners attached in
-   * bindEvents(). Routes .md/.txt/.markdown to handleFileUpload, everything
-   * else to handleExtractDrop. Toggles the `drop-target` class on
-   * .app-shell so the CSS overlay appears.
+   * Shared routing decision for any dropped/picked file, regardless of
+   * where the drop landed (the outer document in Edit mode, or a
+   * sandboxed preview iframe in View/Read mode — see
+   * `iframeDropForwardScript()`). Routes .md/.txt/.markdown to
+   * handleFileUpload, everything else to handleExtractDrop.
    */
-  function onDroppedFiles(e) {
-    if (!e.dataTransfer || !e.dataTransfer.files) return;
-    var files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    // v1 — single file only.
-    var file = files[0];
+  function processDroppedFile(file) {
     if (!file || !file.name) return;
     // Use the bundled inline router by default so this works even if
     // extract-drop.js failed to load (deploy lag, cache miss). Fall
@@ -981,6 +977,47 @@
     } else {
       handleExtractDrop(file);
     }
+  }
+
+  /**
+   * Global drag/drop dispatcher. Called from the listeners attached in
+   * bindEvents(). Toggles the `drop-target` class on .app-shell so the
+   * CSS overlay appears.
+   */
+  function onDroppedFiles(e) {
+    if (!e.dataTransfer || !e.dataTransfer.files) return;
+    var files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    // v1 — single file only.
+    processDroppedFile(files[0]);
+  }
+
+  /**
+   * The preview pane is a sandboxed same-origin-opaque iframe with its own
+   * Document. Native file drag-and-drop events landing on the iframe are
+   * delivered to *that* document, not the outer one — so the top-level
+   * `document.addEventListener("drop", ...)` in bindDropZone() never fires
+   * for drops over the preview in View/Read mode, and the browser's
+   * default action (navigate the frame to the dropped file) takes over
+   * instead: .md files render as a raw-text navigation (which the
+   * `allow-popups-to-escape-sandbox` flag turns into a new tab), and
+   * binary files like .pptx just fail silently.
+   *
+   * Every generated preview document embeds this snippet so it forwards
+   * dropped File objects to the parent via postMessage instead (File is
+   * structured-cloneable, so this works regardless of the iframe's
+   * sandboxed origin). The parent's "message" listener in bindEvents()
+   * then runs the exact same processDroppedFile() routing as a native
+   * drop on the outer document.
+   */
+  function iframeDropForwardScript() {
+    return 'document.addEventListener("dragover", function(e){ e.preventDefault(); });'
+      + 'document.addEventListener("drop", function(e){'
+      + '  e.preventDefault();'
+      + '  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {'
+      + '    parent.postMessage({type:"dropped-files", files: Array.prototype.slice.call(e.dataTransfer.files)}, "*");'
+      + '  }'
+      + '});';
   }
 
   function bindDropZone() {
@@ -1807,6 +1844,9 @@
       if (e.data && e.data.type === "zoomChanged") {
         positionWidthHandles();
       }
+      if (e.data && e.data.type === "dropped-files" && e.data.files && e.data.files.length) {
+        processDroppedFile(e.data.files[0]);
+      }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
         editor.focus();
@@ -2257,6 +2297,7 @@
         + '  if (!word) return;'
         + '  parent.postMessage({type:"dblclick", word:word, ctx:""}, "*");'
         + '});'
+        + iframeDropForwardScript()
         + '<' + '/script>'
         + '</body></html>';
 
@@ -2493,6 +2534,7 @@
         + '  viewport.style.userSelect = "";'
         + '  _updateVivlPanCursor();'
         + '});'
+        + iframeDropForwardScript()
         + '</script>'
         + '</body></html>';
     } else {
@@ -2708,6 +2750,7 @@
       + '  }'
       + '  parent.postMessage({type:"dblclick", word:word, ctx:textBefore}, "*");'
       + '});'
+      + iframeDropForwardScript()
       + '<' + '/script>'
       + '</body></html>';
     }
@@ -3460,11 +3503,22 @@
      Toast feedback
      ========================================================================== */
 
+  function getToastStack() {
+    var stack = document.querySelector(".fw-toast-stack");
+    if (stack) return stack;
+    stack = document.createElement("div");
+    stack.className = "fw-toast-stack";
+    // Anchored to the editor/preview surface (bottom-center) rather than
+    // the viewport — falls back to <body> if that wrapper is missing.
+    (mainPanelWrapper || document.body).appendChild(stack);
+    return stack;
+  }
+
   function showToast(message) {
     var toast = document.createElement("div");
     toast.className = "fw-toast";
     toast.innerHTML = message;
-    document.body.appendChild(toast);
+    getToastStack().appendChild(toast);
     toast.offsetHeight;
     toast.classList.add("fw-toast-visible");
     setTimeout(function () {
