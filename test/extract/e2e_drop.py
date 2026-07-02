@@ -126,6 +126,103 @@ def test_drop_pptx_extracts_notes_into_editor(browser):
         page.close()
 
 
+def test_drop_md_file_in_edit_mode(browser):
+    """
+    Drag-and-drop a .md onto the editor in Edit mode.
+    Expect the textarea to be populated with the file contents
+    immediately (no extract round-trip) and the mode to remain Edit.
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Drop a .md file
+        md_content = "# Hello Markdown\n\nThis is dropped directly into the editor."
+        page.evaluate(
+            """([name, content]) => {
+                const file = new File([content], name, { type: 'text/markdown' });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                document.dispatchEvent(new DragEvent('drop', {
+                    bubbles: true, cancelable: true, dataTransfer: dt,
+                }));
+            }""",
+            ["hello.md", md_content],
+        )
+        # Wait briefly for FileReader.readAsText to complete
+        page.wait_for_function(
+            f"() => document.getElementById('editor').value.includes('Hello Markdown')",
+            timeout=5000,
+        )
+        assert "Hello Markdown" in editor.input_value()
+        assert "dropped directly" in editor.input_value()
+        # Mode is still Edit
+        mode_class = page.evaluate(
+            "() => [...document.getElementById('app-shell').classList].find(c => c.startsWith('mode-'))"
+        )
+        assert mode_class == "mode-edit", f"expected mode-edit, got {mode_class}"
+    finally:
+        page.close()
+
+
+def test_drop_md_file_in_view_mode_renders_preview(browser):
+    """
+    Drag-and-drop a .md onto the editor in View mode. Expect:
+      - The textarea receives the content
+      - The preview pane re-renders (the user actually sees the
+        new content — previously the textarea was hidden in
+        View mode so a drop with no renderPreview() left a blank
+        preview)
+      - Mode remains View
+    """
+    page = browser.new_page()
+    try:
+        page.goto(EDITOR_URL, wait_until="domcontentloaded", timeout=30_000)
+        editor = page.locator("#editor")
+        expect(editor).to_be_visible(timeout=15_000)
+
+        # Switch to View mode
+        page.locator(".mode-switch-label:has-text('View')").click()
+        page.wait_for_timeout(300)
+        assert page.evaluate(
+            "() => [...document.getElementById('app-shell').classList].find(c => c.startsWith('mode-'))"
+        ) == "mode-preview"
+
+        # Drop a .md
+        md_content = "# View Mode Drop\n\nVisible in the preview pane."
+        page.evaluate(
+            """([name, content]) => {
+                const file = new File([content], name, { type: 'text/markdown' });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                document.dispatchEvent(new DragEvent('drop', {
+                    bubbles: true, cancelable: true, dataTransfer: dt,
+                }));
+            }""",
+            ["hello.md", md_content],
+        )
+
+        # Wait for the preview to render the new content. The
+        # preview iframe is rebuilt on renderPreview(), so wait
+        # for the visible preview text instead of the textarea
+        # value.
+        page.wait_for_function(
+            "() => { const f = document.getElementById('preview-frame');"
+            " return f && f.contentDocument && f.contentDocument.body &&"
+            " f.contentDocument.body.textContent.includes('View Mode Drop'); }",
+            timeout=10_000,
+        )
+
+        # Mode preserved
+        assert page.evaluate(
+            "() => [...document.getElementById('app-shell').classList].find(c => c.startsWith('mode-'))"
+        ) == "mode-preview"
+    finally:
+        page.close()
+
+
 def _read_b64(path: Path) -> str:
     import base64
     return base64.b64encode(path.read_bytes()).decode("ascii")
