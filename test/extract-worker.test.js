@@ -119,6 +119,17 @@ describe("extract Worker — auth + method", () => {
     expect(r.status).toBe(415);
   });
 
+  test("rejects multipart/form-data with a missing boundary (400)", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(
+      req({ headers: { "X-Api-Key": KEY, "Content-Type": "multipart/form-data" }, body: "ignored" }),
+      env(),
+    );
+    expect(r.status).toBe(400);
+    const j = await r.json();
+    expect(j.code).toBe("BAD_REQUEST");
+  });
+
   test("rejects oversized upload at the edge (413)", async () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
@@ -367,5 +378,37 @@ describe("extract Worker — /mcp-token", () => {
     expect(typeof j.token).toBe("string");
     expect(j.token.split(".")).toHaveLength(2);
     expect(j.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+});
+
+// ── Rate-limit Map bound ─────────────────────────────────────────────────
+
+describe("extract Worker — token rate-limit Map bound", () => {
+  test("stays bounded at MAX_TRACKED_IPS under an IP-rotation attack", async () => {
+    const { __testing } = await loadWorker();
+    const { tokenRequestLog, MAX_TRACKED_IPS, isTokenRateLimited } = __testing;
+    tokenRequestLog.clear();
+
+    const extra = 50;
+    for (let i = 0; i < MAX_TRACKED_IPS + extra; i++) {
+      isTokenRateLimited(`10.0.${Math.floor(i / 256)}.${i % 256}`);
+    }
+
+    expect(tokenRequestLog.size).toBeLessThanOrEqual(MAX_TRACKED_IPS);
+    tokenRequestLog.clear();
+  });
+
+  test("still rate-limits a single IP after other IPs are evicted", async () => {
+    const { __testing } = await loadWorker();
+    const { tokenRequestLog, isTokenRateLimited } = __testing;
+    tokenRequestLog.clear();
+
+    const targetIp = "203.0.113.42";
+    for (let i = 0; i < 10; i++) {
+      expect(isTokenRateLimited(targetIp)).toBe(false);
+    }
+    // The 11th request within the window must be rejected.
+    expect(isTokenRateLimited(targetIp)).toBe(true);
+    tokenRequestLog.clear();
   });
 });

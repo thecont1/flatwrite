@@ -59,6 +59,12 @@ const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_TOKENS_PER_IP = 10;
 const tokenRequestLog = new Map(); // ip -> array of timestamps
 
+// Hard cap on distinct tracked IPs to bound memory under an IP-rotation
+// attack. This is a stop-gap for a single-isolate in-memory Map; a
+// production deploy should back this with Workers KV or a Durable Object
+// (with TTL) instead.
+const MAX_TRACKED_IPS = 10_000;
+
 const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
 ]);
@@ -81,6 +87,12 @@ function isTokenRateLimited(ip) {
   const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
   let log = tokenRequestLog.get(ip);
   if (!log) {
+    if (tokenRequestLog.size >= MAX_TRACKED_IPS) {
+      // Maps preserve insertion order — evict the oldest tracked IP to
+      // make room, rather than letting the Map grow without bound.
+      const oldestKey = tokenRequestLog.keys().next().value;
+      tokenRequestLog.delete(oldestKey);
+    }
     log = [];
     tokenRequestLog.set(ip, log);
   }
@@ -178,12 +190,11 @@ function preflightHeaders(cors, requested) {
 }
 
 async function handleExtract(req, env, devOrigins) {
-  const method = req.method.toUpperCase();
-  if (method !== 'POST') {
-    return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' });
+  const cors = corsFor(req, devOrigins);
+  if (req.method.toUpperCase() !== 'POST') {
+    return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' }, cors);
   }
 
-  const cors = corsFor(req, devOrigins);
   const auth = await authenticateRequest(req, env);
   if (!auth.ok) return jsonResponse(auth.status, auth.body, cors);
 
@@ -204,6 +215,17 @@ async function handleExtract(req, env, devOrigins) {
     return jsonResponse(415, {
       error: 'Content-Type must be multipart/form-data',
       code: 'UNSUPPORTED_MEDIA_TYPE',
+    }, cors);
+  }
+
+  // A multipart body without a usable boundary is malformed — reject at
+  // the edge rather than paying for an upstream round-trip that would
+  // just fail the same way.
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
+  if (!boundaryMatch || !(boundaryMatch[1] || boundaryMatch[2])) {
+    return jsonResponse(400, {
+      error: 'multipart/form-data boundary missing',
+      code: 'BAD_REQUEST',
     }, cors);
   }
 
@@ -257,14 +279,15 @@ async function handleExtract(req, env, devOrigins) {
 }
 
 async function handleMintToken(req, env, devOrigins) {
-  const method = req.method.toUpperCase();
-  if (method !== 'POST' && method !== 'OPTIONS') {
-    return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' });
+  const cors = corsFor(req, devOrigins);
+  // OPTIONS is already handled by the top-level fetch() router before it
+  // ever reaches here, so only POST is a valid method at this point.
+  if (req.method.toUpperCase() !== 'POST') {
+    return jsonResponse(405, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' }, cors);
   }
   if (!env.API_KEY) {
-    return jsonResponse(500, { error: 'Worker misconfigured', code: 'MISCONFIGURED' });
+    return jsonResponse(500, { error: 'Worker misconfigured', code: 'MISCONFIGURED' }, cors);
   }
-  const cors = corsFor(req, devOrigins);
   const origin = req.headers.get('Origin');
   if (!origin || !isTrustedOrigin(origin, devOrigins)) {
     return jsonResponse(403, { error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' }, cors);
@@ -276,6 +299,11 @@ async function handleMintToken(req, env, devOrigins) {
   const { token, exp } = await mintToken(env.API_KEY, TOKEN_TTL_SECONDS, 'mcp');
   return jsonResponse(200, { token, expiresAt: exp, scope: 'mcp' }, cors);
 }
+
+// Exposed for tests only — lets test suites assert the rate-limit Map
+// stays bounded without needing to issue 10,000+ real requests through
+// the full Worker fetch() handler.
+export const __testing = { tokenRequestLog, MAX_TRACKED_IPS, isTokenRateLimited };
 
 export default {
   async fetch(req, env) {
