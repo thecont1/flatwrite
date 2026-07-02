@@ -1,5 +1,5 @@
 {
-  
+  "$schema": "https://webmcp.org/schemas/model-context-v1.json",
   "name": "FlatWrite Render — Docs",
   "version": "1.0.0",
   "surfaceMode": "doc",

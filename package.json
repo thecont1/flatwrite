@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "bunx serve .",
     "start": "node public/server.js",
-    "test": "bun test",
+    "test": "bun test ./test/*.test.js",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev"
   },

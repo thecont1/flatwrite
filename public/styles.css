@@ -21,11 +21,11 @@
 
   /* Shell layout tokens */
   --shell-max: 1600px;
-  --shell-pad-x: clamp(12px, 1.8vw, 24px);
-  --shell-gap: clamp(12px, 1.4vw, 24px);
+  --shell-pad-x: 12px;
+  --shell-gap: 12px;
 
   /* Zone widths */
-  --rail-w: clamp(232px, 18vw, 272px);
+  --rail-w: 264px;
   --canvas-max: 1100px;
   --canvas-min: 680px;
   --reserve-min: 56px;
@@ -115,9 +115,14 @@ body {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  overflow: hidden;
+  /* Horizontal scroll when canvas + sidebar exceed viewport.
+     Vertical remains hidden — fixed-position shell fills viewport height. */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--shell-pad-x);
   gap: var(--shell-gap);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 160, 200, 0.35) transparent;
 }
 
 /* ==========================================================================
@@ -129,13 +134,24 @@ body {
 .sidebar {
   flex-shrink: 0;
   width: var(--rail-w);
+  min-width: var(--rail-w);
   z-index: 10;
+  /* Stick to the left edge of the shell so the sidebar stays visible
+     when the user scrolls horizontally to reveal the wider canvas. */
   position: sticky;
   top: 0;
+  left: 0;
   align-self: flex-start;
   max-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Cover the body gradient behind the sidebar-inner's rounded corners.
+     Without this, the fixed body gradient bleeds past the 24px radius
+     and creates an "excess background" fringe at the corners. */
+  background: var(--surface-rail);
+  border-radius: var(--radius-outer);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: var(--glass-shadow);
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.4s ease;
   scrollbar-width: thin;
@@ -176,7 +192,10 @@ body {
 
 .main-panel {
   flex: 1 1 0;
-  min-width: 0;
+  /* Canvas never compresses below this — below that, the shell scrolls
+     horizontally (see .app-shell overflow-x: auto) so the document
+     remains usable while the sidebar stays at full width. */
+  min-width: var(--canvas-min);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -191,18 +210,37 @@ body {
 }
 
 .main-inner {
+  position: relative;
+  isolation: isolate;
   background: var(--surface-canvas);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-outer);
   box-shadow: 0 4px 16px oklch(0.2 0.01 80 / 0.08);
-  padding: var(--space-5) var(--space-6) var(--space-6);
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex: 1;
   min-height: 0;
+  /* Clip child backgrounds (notably the .preview-wrap diagonal-stripe
+     placeholder) to the rounded shape so they don't bleed past the
+     pane's corners. */
+  overflow: hidden;
+}
+
+/* Glass background layer behind the main-inner content — semi-transparent
+   so the body gradient shows through the parent's backdrop-filter blur,
+   matching the .sidebar crystal-glass effect. The 1px inset and the
+   matching border-radius keep the rounded corners clean. */
+.main-inner::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: var(--surface-canvas);
+  border-radius: calc(var(--radius-outer) - 1px);
+  z-index: -1;
 }
 
 /* ==========================================================================
@@ -773,8 +811,10 @@ body {
 }
 
 .typo-btn {
-  width: 32px;
-  height: 32px;
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  min-height: 50px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -783,7 +823,7 @@ body {
   background: var(--btn-bg);
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 1rem;
+  font-size: 1.25rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -838,18 +878,28 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 0 10px;
+  height: 50px;
+  min-height: 50px;
   border: 1px solid var(--btn-border);
   border-radius: 8px;
   background: var(--btn-bg);
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
   transition: border-color 0.2s;
   min-width: 140px;
   white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.font-dropdown-label {
+  /* The selected font renders in its own typeface — set via JS
+     style.fontFamily on the label element. */
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .font-dropdown-btn:hover {
@@ -873,6 +923,16 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 1000;
   padding: 4px 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.font-dropdown-list:not(.hidden) {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .font-dropdown-item {
@@ -895,6 +955,17 @@ body {
   background: rgba(176, 106, 179, 0.18);
   color: var(--accent);
   font-weight: 600;
+  position: relative;
+}
+
+.font-dropdown-item.selected::after {
+  content: "✓";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: var(--accent);
 }
 
 /* ---------- UI Components Panel (Sidebar) ---------- */
@@ -990,7 +1061,7 @@ body {
 .export-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: clamp(8px, 1.2vw, 20px);
   position: absolute;
   /* top: set dynamically by JS to align with textarea */
   left: 100%;
@@ -1003,12 +1074,17 @@ body {
   background: var(--surface-canvas);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  /* Solid, visible border — the default glass-border is white-on-white
+     and disappears against the textarea. Use the button-border tone
+     so the tab reads as a defined element on any surface. */
+  border: 1px solid var(--btn-border);
   border-left: none;
   border-radius: 0 var(--radius-outer) var(--radius-outer) 0;
   /* No separate shadow — the tab should read as part of the center pane. */
   box-shadow: none;
-  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
+  /* Responsive padding — shrinks with viewport so the tab stays tucked
+     inside the canvas glass edge instead of spilling off-screen. */
+  padding: clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(6px, 0.75vw, 12px);
 }
 
 .export-icon {
@@ -1017,7 +1093,7 @@ body {
   color: #1a1a1a;
   opacity: 1;
   cursor: pointer;
-  padding: 6px;
+  padding: clamp(2px, 0.4vw, 6px);
   transition: opacity 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
@@ -1025,8 +1101,10 @@ body {
 }
 
 .export-icon svg {
-  width: 33px;
-  height: 33px;
+  /* Icons scale down at narrower viewports so the tab bubble fits within the
+     available canvas-edge space. Floor at 16px so glyphs stay legible. */
+  width: clamp(16px, 2.3vw, 33px);
+  height: clamp(16px, 2.3vw, 33px);
 }
 
 .export-icon:hover {
@@ -1161,16 +1239,21 @@ body {
   align-items: center;
   position: relative;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toolbar-center {
   display: flex;
   align-items: center;
-  overflow: visible;
-  flex: 1;
+  /* Horizontally scrollable so the H1/H2/... buttons never get crushed
+     when the canvas shrinks below the toolbar's natural width. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1 1 0;
   min-width: 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 160, 200, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .toolbar-center::-webkit-scrollbar {
@@ -1277,6 +1360,11 @@ body {
   border-radius: 10px;
   padding: 3px;
   flex-shrink: 0;
+  /* When the shell scrolls horizontally to reveal a wider canvas,
+     keep the Edit/View/Read switch visible at the right edge. */
+  position: sticky;
+  right: var(--space-4);
+  z-index: 5;
 }
 
 .mode-switch-label {
@@ -1390,8 +1478,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
-  width: 44px;
+  height: 50px;
+  width: 50px;
+  min-height: 50px;
+  min-width: 50px;
   position: relative;
   overflow: visible;
 }
@@ -1616,13 +1706,9 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: repeating-linear-gradient(
-    45deg,
-    #f0f0f0 0px,
-    #f0f0f0 16px,
-    #ffffff 16px,
-    #ffffff 32px
-  );
+  /* Glass surface — lets the body's rainbow gradient show through
+     .main-inner's backdrop-filter blur, matching the sidebar. */
+  background: var(--surface-canvas);
 }
 
 /* Fade-in from top when entering Read/View mode */
@@ -1800,28 +1886,41 @@ body {
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              color 0.25s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
+.mobile-hamburger svg {
+  transition: stroke 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center;
+}
+
 .mobile-hamburger:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: transparent;
+  transform: scale(1.08);
+}
+
+.mobile-hamburger:hover svg {
+  stroke: var(--accent);
+  transform: rotate(90deg);
 }
 
 .mobile-hamburger:active {
-  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0.92);
 }
 
 .mobile-logo {
   display: none;
   position: fixed;
   top: 20px;
-  left: 66px;
+  left: 74px;
   z-index: 102;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.35rem;
+  font-size: 1.65rem;
   letter-spacing: -0.02em;
+  line-height: 48px;
   background: linear-gradient(135deg, #b06ab3, #4568dc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1859,13 +1958,37 @@ body {
 
 /* Stage B: Standard desktop, 1180px – 1439px */
 @media (max-width: 1439px) {
+  /* The share tab still hangs outside the canvas here (the flip to
+     inside is deferred to the Stage C breakpoint), so the reserve
+     column must stay active to make room for the tab. */
   :root {
-    --reserve-min: 40px;
+    --reserve-min: 56px;
+  }
+
+  /* Tab still hangs OUTSIDE the canvas here — the reserve column is
+     active (--reserve-min restored below) so the tab has room.
+     The flip to inside is deferred to a narrower viewport (Stage C
+     at max-width: 1100px) so the tab stays visible while the icons
+     are still wide enough to be comfortably tappable. */
+
+  /* Let the canvas scale linearly with the viewport while keeping a
+     constant right margin (the shell's 16px padding). Now that the
+     tab hangs inside the pane (right: 0), it doesn't consume external
+     space, so the main-panel can shrink in lockstep with the viewport
+     instead of pinning to canvas-max. The shell scrolls only when
+     the pane hits the 3×-sidebar floor. */
+  .main-panel {
+    min-width: 528px;             /* 2 × sidebar (264px) */
+    max-width: var(--canvas-max);
   }
 }
 
-/* Stage C: Tight desktop, 980px – 1179px */
-@media (max-width: 1179px) {
+/* Stage C: Tab flips inside the canvas. At this breakpoint the
+   share tab is too wide to hang outside the main-panel without
+   forcing excessive shell scrolling, so it anchors to the canvas's
+   right edge (right: 0) instead. The reserve column is removed
+   because the tab no longer consumes external space. */
+@media (max-width: 1100px) {
   :root {
     --reserve-min: 0px;
   }
@@ -1876,8 +1999,14 @@ body {
     overflow: hidden;
   }
 
-  :root {
-    --rail-w: clamp(210px, 18vw, 252px);
+  .export-actions {
+    left: auto;
+    right: 0;
+    margin-left: 0;
+    margin-right: 0;
+    border-left: 1px solid var(--btn-border);
+    border-right: none;
+    border-radius: var(--radius-outer) 0 0 var(--radius-outer);
   }
 }
 
@@ -1885,10 +2014,6 @@ body {
 @media (max-width: 979px) {
   .reserve-zone {
     display: none;
-  }
-
-  :root {
-    --rail-w: clamp(196px, 20vw, 240px);
   }
 
   .sidebar-inner {
@@ -1918,8 +2043,10 @@ body {
   }
 }
 
-/* Stage E: Mobile / narrow tablet, below 760px */
-@media (max-width: 759px) {
+/* Stage D: Mobile kicks in when the main-panel reaches its
+   2×-sidebar floor (528px). At this width the desktop layout has
+   no more room to give the canvas, so the mobile drawer takes over. */
+@media (max-width: 845px) {
   html, body {
     overflow: hidden;
   }
@@ -1970,10 +2097,51 @@ body {
     transform: translateX(0);
   }
 
-  /* Hide sidebar title + tagline — logo is now the fixed header */
-  .sidebar .app-title,
-  .sidebar .tagline {
+  /* Drawer header — tagline only. The logo is the fixed mobile-logo
+     at the top of the viewport, so we hide the sidebar's own title
+     to avoid the logo appearing twice. */
+  .sidebar .app-title {
     display: none;
+  }
+
+  .sidebar .tagline {
+    display: block;
+    font-size: 1rem;
+    font-style: italic;
+    color: var(--text-muted);
+    margin-top: 0;
+    margin-bottom: var(--space-6);
+    opacity: 0.9;
+  }
+
+  .sidebar-divider {
+    margin: var(--space-5) 0;
+  }
+
+  .sidebar-section-label {
+    font-size: 0.95rem;
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-3);
+    letter-spacing: 0.04em;
+  }
+
+  .components-grid {
+    gap: var(--space-3);
+  }
+
+  .component-btn {
+    min-height: 56px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .load-buttons {
+    gap: var(--space-3);
+  }
+
+  .load-btn {
+    min-height: 52px;
+    padding: var(--space-3) var(--space-4);
+    font-size: 0.95rem;
   }
 
   .sidebar-inner {
@@ -2016,27 +2184,41 @@ body {
     pointer-events: none;
   }
 
-  /* Main panel fills remaining height */
+  /* Main panel fills remaining height. The 60px top padding reserves
+     space for the fixed hamburger + logo + mode-switch row at the
+     top of the viewport — previously this lived on .main-inner and
+     broke the "equal margin all around the textarea pane" rule.
+     min-width: 0 overrides the Stage B 792px floor so the pane fits
+     within narrow viewports instead of extending past the right edge. */
   .main-panel {
     flex: 1 1 0;
     min-height: 0;
+    min-width: 0;
     max-width: 100%;
+    padding-top: 60px;
   }
 
   .main-inner {
-    padding: 60px var(--space-3) var(--space-4);
+    /* Equal padding on all four sides — halved from desktop for a
+       tighter textarea pane in mobile. */
+    padding: 6px;
     border-radius: var(--radius-inner);
     /* Remove backdrop-filter so toolbar z-index is not trapped in a stacking context */
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(255, 255, 255, 0.92);
     gap: 4px;
+    z-index: 0;
     scrollbar-width: none;
     -ms-overflow-style: none;
     transition: padding 0.45s cubic-bezier(0.16, 1, 0.3, 1),
                 border-radius 0.45s cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 0.45s ease,
                 box-shadow 0.45s ease;
+  }
+
+  .main-inner::before {
+    border-radius: calc(var(--radius-inner) - 1px);
   }
 
   .main-inner::-webkit-scrollbar {
@@ -2127,18 +2309,21 @@ body {
     width: 44px;
   }
 
-  /* Typography +/- buttons */
+  /* Typography +/- buttons — 50px WCAG, larger +/- labels */
   .typo-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 1.1rem;
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    min-height: 50px;
+    font-size: 1.3rem;
   }
 
   /* Font dropdown */
   .font-dropdown-btn {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 0.82rem;
+    min-height: 50px;
+    height: 50px;
+    padding: 0 12px;
+    font-size: 0.85rem;
   }
 
   /* Sidebar section labels — standardized spacing */
@@ -2366,7 +2551,7 @@ body {
 }
 
 /* Mobile Read mode: everything vanishes except logo + close button */
-@media (max-width: 759px) {
+@media (max-width: 845px) {
   .app-shell.focus-mode .mobile-hamburger {
     opacity: 1;
     pointer-events: auto;
