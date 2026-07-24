@@ -1,0 +1,40 @@
+name = "flatwrite-extract"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+route = { pattern = "extract.flatwrite.md/*", zone_name = "flatwrite.md" }
+
+# IMPORTANT: The repo-root `wrangler.jsonc` declares
+# `assets.directory = "public"`. When wrangler walks up to find a
+# config, it merges that block in. This Worker is script-only and
+# doesn't want to upload `public/` as static assets. The deploy.sh
+# script handles this by passing `--assets ./src` on the wrangler
+# CLI, which overrides the merged config. The empty `assets` block
+# below is documentation — wrangler.toml cannot override the parent
+# config's assets via TOML alone, so the script is required.
+
+# Secrets (set via `wrangler secret put`):
+#   API_KEY              — public-facing key clients send in X-Api-Key.
+#                          Separate from the render worker's API_KEY so a
+#                          leak in either surface doesn't grant access to
+#                          the other. NEVER commit the actual value here.
+#   INTERNAL_EXTRACT_KEY — HMAC secret used to sign upstream requests to
+#                          the Fly.io extract service. NEVER commit.
+#
+#   UPSTREAM_URL         — base URL of the Fly.io service. Defaults to
+#                          https://flatwrite-extract.fly.dev at deploy time.
+#                          Set via `wrangler secret put UPSTREAM_URL` if you
+#                          need to point at staging.
+
+[vars]
+# Default upstream — overridable via secret for staging. The Worker never
+# serves /extract directly; it only forwards here.
+UPSTREAM_URL = "https://flatwrite-extract.fly.dev"
+
+# Comma-separated list of extra CORS origins to trust. Production leaves
+# this empty; the strict allowlist (https://flatwrite.md and
+# https://*.flatwrite.md) is the only thing that matters. Local dev and
+# CI can opt in to e.g. "http://127.0.0.1:8080,http://localhost:3000" so
+# the worker accepts requests from a local editor without a real DNS
+# hostname. Treat this like a secret — anyone in the list can call
+# /mcp-token and /extract.
+ALLOWED_DEV_ORIGINS = ""

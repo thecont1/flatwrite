@@ -1,0 +1,32 @@
+app = "flatwrite-extract"
+primary_region = "bom"
+
+[build]
+
+[env]
+  EXTRACT_HMAC_REQUIRED = "true"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  # Fly removed the 256 MB shared-cpu-1x SKU in 2024. The platform floor
+  # is now 512 MB. With auto_stop_machines=true and min_machines_running=0
+  # the machine is dormant when idle, so the cost on the free Hobby tier
+  # is negligible for low-traffic workloads.
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

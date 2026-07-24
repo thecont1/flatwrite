@@ -1,0 +1,43 @@
+[project]
+name = "flatwrite-extract"
+version = "0.1.0"
+description = "MarkItDown-backed file extraction service for FlatWrite"
+requires-python = ">=3.12"
+dependencies = [
+    # Note: markitdown's `[epub]` extra doesn't exist in 0.1.6 — epub support
+    # ships in the default install via EbookLib. Only the format-specific
+    # converters that have a separate extra are listed here.
+    "markitdown[pptx,docx,pdf,xlsx,xls]>=0.1.6",
+    "EbookLib>=0.18",  # required for epub parsing at runtime
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "pillow>=10.0.0",   # for image EXIF in dev tests
+]
+
+[build-system]
+requires = ["uv_build>=0.5.0", "hatchling"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "flatwrite_extract"
+module-root = "src"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flatwrite_extract"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "pillow>=10.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["../../test/extract"]

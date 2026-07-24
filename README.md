@@ -8,7 +8,7 @@ Markdown is one of the greatest cross-platform information formats ever invented
 
 ## What it does
 
-- **Load** markdown from a URL or straight from your disk.
+- **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, PPTX, DOCX, XLSX, CSV, JSON, images, audio) — non-text files are converted to Markdown by the MarkItDown extract service.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a clean, document-first preview.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
@@ -50,13 +50,14 @@ Make any edits to the raw markdown in **Edit** mode, then switch to **View** mod
 ## For developers
 
 FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
-
 ```bash
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: application/json' \
-  -H 'X-Api-Key: YOUR_API_KEY' \
+  -H 'X-Api-Key: ***' \
   -d '{"markdown":"# Hello, FlatWrite"}'
 ```
+
+A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/form-data` uploads and converts non-text files to Markdown via the MarkItDown service under [`services/extract/`](./services/extract/). The proxy Worker under [`workers/flatwrite-extract/`](./workers/flatwrite-extract/) mirrors the auth model of the render Worker.
 
 The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 

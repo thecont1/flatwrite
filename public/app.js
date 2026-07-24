@@ -688,6 +688,30 @@
     return currentMarkdownUrl || url;
   }
 
+  /**
+   * Extract a sensible filename from a URL for routing purposes.
+   * The router uses the extension to decide whether to send a file
+   * to the extract endpoint (.pdf, .pptx, etc.) or read it as
+   * plain text (.md, .markdown, .txt). If the URL has no
+   * recognizable filename (e.g. an API endpoint or a bare host),
+   * we return a generic name — the dispatcher will then route to
+   * extract, which is the right default for unknown formats.
+   */
+  function deriveFilenameFromUrl(url) {
+    try {
+      var u = new URL(url);
+      var path = u.pathname || "";
+      var base = path.split("/").filter(Boolean).pop() || "";
+      if (base && base.indexOf(".") >= 0) {
+        // Strip query string / fragment if they slipped into the base.
+        return base.split("?")[0].split("#")[0] || "remote";
+      }
+    } catch (_) {
+      // URL parsing failed — fall through to the default.
+    }
+    return "remote";
+  }
+
   function resolveRelativeUrls(html) {
     if (!githubBaseUrl) return html;
 
@@ -767,8 +791,276 @@
       setEditorContent(reader.result);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
+      // Re-render the preview if we're not in Edit mode — without
+      // this, dropping a .md in View or Read mode leaves a blank
+      // preview pane (the textarea is hidden, so the new content
+      // isn't visible until something else triggers a render).
+      if (mode !== "edit") renderPreview();
     };
     reader.readAsText(file);
+  }
+
+  /* ==========================================================================
+     Inline drop-routing helper.
+
+     Mirrors the public/extract-drop.js helper but is bundled directly
+     into app.js so the routing decision is always available — even if
+     extract-drop.js failed to load (script tag typo, cache miss,
+     deploy lag). Without this fallback, .md/.markdown/.txt drops
+     would be misrouted to the extract endpoint on production and
+     415-rejected by the Fly service (markdown isn't in the Fly
+     extension allowlist — see services/extract/validators.py).
+
+     The standalone public/extract-drop.js is kept for bun-test
+     coverage of the routing logic and as a small public API for
+     future integrations.
+     ========================================================================== */
+  var PLAIN_TEXT_EXTS_INLINE = { ".md": 1, ".markdown": 1, ".txt": 1 };
+  function routeDroppedFileInline(filename) {
+    if (!filename || typeof filename !== "string") return "extract";
+    var base = filename.split(/[\\/]/).pop();
+    var dot = base.lastIndexOf(".");
+    if (dot < 0) return "extract";
+    var ext = base.slice(dot).toLowerCase();
+    if (PLAIN_TEXT_EXTS_INLINE[ext]) return "plain";
+    return "extract";
+  }
+
+  /* ==========================================================================
+     File import — drag-and-drop extract flow
+     ==========================================================================
+     Routes any dropped file that isn't a plain-text file (`.md`, `.txt`,
+     `.markdown`) through the new /extract endpoint, which converts it to
+     Markdown via the MarkItDown service behind extract.flatwrite.md.
+
+     Plain-text files still go through handleFileUpload() — no need to
+     round-trip to the server for a raw text read.
+     ========================================================================== */
+
+  // Local dev override: when the editor itself is served from localhost,
+  // point at a locally-running `wrangler dev` instance of the extract
+  // Worker (see workers/flatwrite-extract/README.md § Local dev) instead
+  // of the production endpoint. Production hosts are unaffected.
+  var IS_LOCAL_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  var EXTRACT_BASE = IS_LOCAL_DEV ? "http://127.0.0.1:8787" : "https://extract.flatwrite.md";
+  var EXTRACT_URL = EXTRACT_BASE + "/extract";
+  var EXTRACT_TOKEN_URL = EXTRACT_BASE + "/mcp-token";
+  var EXTRACT_MAX_BYTES = 25 * 1024 * 1024;
+  var _extractCachedToken = null;
+  var _extractInflightToken = null;
+
+  async function getExtractToken() {
+    if (_extractCachedToken && _extractCachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
+      return _extractCachedToken;
+    }
+    if (_extractInflightToken) return _extractInflightToken;
+    _extractInflightToken = (async () => {
+      try {
+        var r = await fetch(EXTRACT_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!r.ok) {
+          throw new Error("token mint failed: HTTP " + r.status);
+        }
+        var body = await r.json();
+        if (!body || !body.token || !body.expiresAt) {
+          throw new Error("token mint returned malformed body");
+        }
+        _extractCachedToken = body;
+        return body;
+      } finally {
+        _extractInflightToken = null;
+      }
+    })();
+    return _extractInflightToken;
+  }
+
+  /**
+   * POST a dropped file to /extract and load the returned markdown into
+   * the editor. Re-uses the Worker's mcp-token flow for browser-safe auth,
+   * mirroring webmcp.js's render-worker call site.
+   */
+  async function handleExtractDrop(file) {
+    if (!file) return;
+    if (file.size > EXTRACT_MAX_BYTES) {
+      showToast("File too large (25 MB max)");
+      return;
+    }
+    if (isEditorDirty()) {
+      var ok = confirm("Replace current content with extracted file?");
+      if (!ok) return;
+    }
+    var routing = window.FlatwriteExtractDrop
+      ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+      : routeDroppedFileInline(file.name);
+    if (routing === "plain") {
+      // Defensive: this should already have been routed to handleFileUpload
+      // by the drop listener, but if handleExtractDrop is called directly
+      // we honor the same path.
+      handleFileUpload(file);
+      return;
+    }
+    showToast("Extracting " + file.name + "…");
+    try {
+      var token = await getExtractToken();
+      var fd = new FormData();
+      fd.append("file", file, file.name);
+      var resp = await fetch(EXTRACT_URL, {
+        method: "POST",
+        headers: { "X-Mcp-Token": token.token },
+        body: fd,
+      });
+      var text = await resp.text();
+      var data;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      if (!resp.ok) {
+        if (resp.status === 401) _extractCachedToken = null;
+        var errCode = (data && data.detail && data.detail.code) || (data && data.code) || "EXTRACT_FAILED";
+        var errMsg = (data && data.detail && data.detail.error) || (data && data.error) || ("HTTP " + resp.status);
+        showToast("Extract failed: " + errMsg);
+        console.error("[extract]", errCode, errMsg);
+        return;
+      }
+      if (!data || typeof data.markdown !== "string") {
+        showToast("Extract failed: malformed response");
+        return;
+      }
+      if (data.markdown.length === 0) {
+        showToast("No text could be extracted from " + file.name);
+        return;
+      }
+      setEditorContent(data.markdown);
+      currentMarkdownUrl = "";
+      githubBaseUrl = "";
+      if (mode !== "edit") renderPreview();
+      var meta = data.metadata || {};
+      showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
+    } catch (e) {
+      // Translate the opaque "Failed to fetch" message (thrown by the
+      // browser when the network request was blocked — usually CORS,
+      // offline, or DNS) into an actionable hint. Without this, the
+      // user sees "Failed to fetch" with no way to debug.
+      var rawMsg = (e && e.message) ? e.message : String(e);
+      var friendly;
+      if (/Failed to fetch|NetworkError|Load failed/i.test(rawMsg)) {
+        friendly = "network error (check your connection or the file size)";
+      } else if (/timeout|aborted/i.test(rawMsg)) {
+        friendly = "request timed out";
+      } else if (/413/i.test(rawMsg)) {
+        friendly = "file is too large (25 MB max)";
+      } else if (/415/i.test(rawMsg)) {
+        friendly = "this file type isn't supported";
+      } else if (/401/i.test(rawMsg)) {
+        friendly = "authentication failed — refresh the page";
+      } else {
+        friendly = rawMsg;
+      }
+      showToast("Extract failed: " + friendly);
+      console.error("[extract]", e);
+    }
+  }
+
+  /**
+   * Shared routing decision for any dropped/picked file, regardless of
+   * where the drop landed (the outer document in Edit mode, or a
+   * sandboxed preview iframe in View/Read mode — see
+   * `iframeDropForwardScript()`). Routes .md/.txt/.markdown to
+   * handleFileUpload, everything else to handleExtractDrop.
+   */
+  function processDroppedFile(file) {
+    if (!file || !file.name) return;
+    // Use the bundled inline router by default so this works even if
+    // extract-drop.js failed to load (deploy lag, cache miss). Fall
+    // back to the helper when present so test edits there propagate.
+    var route = window.FlatwriteExtractDrop
+      ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+      : routeDroppedFileInline(file.name);
+    if (route === "plain") {
+      handleFileUpload(file);
+    } else {
+      handleExtractDrop(file);
+    }
+  }
+
+  /**
+   * Global drag/drop dispatcher. Called from the listeners attached in
+   * bindEvents(). Toggles the `drop-target` class on .app-shell so the
+   * CSS overlay appears.
+   */
+  function onDroppedFiles(e) {
+    if (!e.dataTransfer || !e.dataTransfer.files) return;
+    var files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    // v1 — single file only.
+    processDroppedFile(files[0]);
+  }
+
+  /**
+   * The preview pane is a sandboxed same-origin-opaque iframe with its own
+   * Document. Native file drag-and-drop events landing on the iframe are
+   * delivered to *that* document, not the outer one — so the top-level
+   * `document.addEventListener("drop", ...)` in bindDropZone() never fires
+   * for drops over the preview in View/Read mode, and the browser's
+   * default action (navigate the frame to the dropped file) takes over
+   * instead: .md files render as a raw-text navigation (which the
+   * `allow-popups-to-escape-sandbox` flag turns into a new tab), and
+   * binary files like .pptx just fail silently.
+   *
+   * Every generated preview document embeds this snippet so it forwards
+   * dropped File objects to the parent via postMessage instead (File is
+   * structured-cloneable, so this works regardless of the iframe's
+   * sandboxed origin). The parent's "message" listener in bindEvents()
+   * then runs the exact same processDroppedFile() routing as a native
+   * drop on the outer document.
+   */
+  function iframeDropForwardScript() {
+    return 'document.addEventListener("dragover", function(e){ e.preventDefault(); });'
+      + 'document.addEventListener("drop", function(e){'
+      + '  e.preventDefault();'
+      + '  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {'
+      + '    parent.postMessage({type:"dropped-files", files: Array.prototype.slice.call(e.dataTransfer.files)}, "*");'
+      + '  }'
+      + '});';
+  }
+
+  function bindDropZone() {
+    var appShell = document.getElementById("app-shell");
+    if (!appShell) return;
+    var dragDepth = 0;
+    // We only show the overlay for drags that actually carry files. Plain
+    // text/HTML drags are common in editors and shouldn't trigger the
+    // overlay (they'd just create dead UI flicker).
+    function hasFile(e) {
+      if (!e.dataTransfer || !e.dataTransfer.types) return false;
+      for (var i = 0; i < e.dataTransfer.types.length; i++) {
+        if (e.dataTransfer.types[i] === "Files") return true;
+      }
+      return false;
+    }
+    document.addEventListener("dragenter", function (e) {
+      if (!hasFile(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      appShell.classList.add("drop-target");
+    });
+    document.addEventListener("dragover", function (e) {
+      if (!hasFile(e)) return;
+      // Required so the `drop` event fires.
+      e.preventDefault();
+    });
+    document.addEventListener("dragleave", function (e) {
+      if (!hasFile(e)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) appShell.classList.remove("drop-target");
+    });
+    document.addEventListener("drop", function (e) {
+      if (!hasFile(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      appShell.classList.remove("drop-target");
+      onDroppedFiles(e);
+    });
   }
 
   /* ==========================================================================
@@ -1192,8 +1484,26 @@
 
     loadFileInput.addEventListener("change", function () {
       var file = loadFileInput.files && loadFileInput.files[0];
-      handleFileUpload(file);
+      if (!file) return;
+      // Route through the dispatcher: .md/.markdown/.txt go via
+      // handleFileUpload (FileReader), everything else via the
+      // /extract endpoint. Mirrors the drag-and-drop behavior.
+      var route = window.FlatwriteExtractDrop
+        ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+        : routeDroppedFileInline(file.name);
+      if (route === "plain") {
+        handleFileUpload(file);
+      } else {
+        handleExtractDrop(file);
+      }
+      // Reset the input so picking the same file again still fires
+      // a change event (otherwise the second pick is silently dropped).
+      loadFileInput.value = "";
     });
+
+    /* Drag-and-drop import — routes .md/.txt to handleFileUpload, everything
+       else to handleExtractDrop. See bindDropZone() and handleExtractDrop(). */
+    bindDropZone();
 
     /* Width handle drag */
     function initWidthHandle(handle, side) {
@@ -1538,6 +1848,9 @@
       if (e.data && e.data.type === "zoomChanged") {
         positionWidthHandles();
       }
+      if (e.data && e.data.type === "dropped-files" && e.data.files && e.data.files.length) {
+        processDroppedFile(e.data.files[0]);
+      }
       if (e.data && e.data.type === "dblclick" && mode === "preview") {
         setMode("edit");
         editor.focus();
@@ -1744,6 +2057,48 @@
     return css;
   }
 
+  /**
+   * Build the diagonal-stripe background CSS used in View/Preview mode
+   * (the "draft paper" effect behind page content). The previous
+   * implementation used `repeating-linear-gradient` with hard 16px
+   * grey/white stops, which produced visible horizontal seams at
+   * each tile boundary (browser sub-pixel rounding at the gradient
+   * wrap — visible as faint horizontal lines every ~32px on tall
+   * documents).
+   *
+   * This version uses a single non-repeating `linear-gradient` with
+   * explicit stop pairs that draw the stripes as ONE continuous
+   * gradient. No tile boundary, no seams, stripes continue "until
+   * infinity" within the iframe. Stripe thickness scales with
+   * iframe height (the gradient stretches to fill 100% of the
+   * element in both axes), giving ~30-40 stripes per typical 1280px
+   * viewport — close to the old 16px stripe density.
+   *
+   * Colors match the original `#f0f0f0` / `#ffffff` palette.
+   */
+  function stripePlaceholderCss() {
+    var n = 40; // total stripes (must be even: half grey, half white)
+    var step = 100 / n; // percentage width of one stripe
+    var stops = '';
+    for (var i = 0; i < n; i++) {
+      var color = (i % 2 === 0) ? '#f0f0f0' : '#ffffff';
+      var start = (i * step).toFixed(4);
+      var end = ((i + 1) * step).toFixed(4);
+      stops += ', ' + color + ' ' + start + '%' + ', ' + color + ' ' + end + '%';
+    }
+    return 'html { background: linear-gradient(45deg' + stops + ') fixed !important; background-size: 100% 100%; }';
+  }
+
+  /**
+   * CSS reset + transparent body used by the Vivliostyle iframe
+   * sandbox so the stripe placeholder background shows through to
+   * the page area.
+   */
+  function htmlResetCss() {
+    return 'html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; } '
+      + 'body, #vivl-viewport { background: transparent !important; } ';
+  }
+
   function syncDocControlsUI() {
     if (pageSizeSel)     pageSizeSel.value = pageSize;
     var orientBtn = document.getElementById("toggle-orient");
@@ -1946,6 +2301,7 @@
         + '  if (!word) return;'
         + '  parent.postMessage({type:"dblclick", word:word, ctx:""}, "*");'
         + '});'
+        + iframeDropForwardScript()
         + '<' + '/script>'
         + '</body></html>';
 
@@ -2029,7 +2385,16 @@
         + '</head><body><main>' + renderedHTML + '</main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-        + '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}html{background:repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px)!important;}body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        // Stripe placeholder background for View/Preview mode. The old
+        // implementation used `repeating-linear-gradient` with hard 16px
+        // grey/white stops, which produced visible horizontal seams at
+        // each tile boundary (browser sub-pixel rounding at the gradient
+        // wrap). This version uses a single non-repeating `linear-gradient`
+        // with many explicit stops so the stripes are drawn as one
+        // continuous gradient — no tile boundary, no seams. The stripe
+        // thickness scales with the iframe height (~40 stripes per 1280px).
+        + '<style>' + stripePlaceholderCss()
+        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
         + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
@@ -2062,7 +2427,9 @@
         + '  if (!style) {'
         + '    style = document.createElement("style");'
         + '    style.id = "vivl-scroll-style";'
-        + '    style.textContent = "html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; } body, #vivl-viewport { background: transparent !important; } [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
+        + '    style.textContent = "'
+        + htmlResetCss()
+        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
         + '    document.head.appendChild(style);'
         + '  }'
         + '  /* Smooth zoom: apply CSS transform: scale() to the spread container'
@@ -2171,6 +2538,7 @@
         + '  viewport.style.userSelect = "";'
         + '  _updateVivlPanCursor();'
         + '});'
+        + iframeDropForwardScript()
         + '</script>'
         + '</body></html>';
     } else {
@@ -2197,9 +2565,7 @@
         /* Paged modes: body fills the iframe viewport */
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
         + '</style>'
-        + (mode !== "read" ? '<style id="_fw_stripe">html { background: repeating-linear-gradient(45deg,#f0f0f0 0px,#f0f0f0 16px,#ffffff 16px,#ffffff 32px) !important; }'
-          + '.pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }'
-          + '</style>' : '')
+        + (mode !== "read" ? '<style id="_fw_stripe">' + stripePlaceholderCss() + ' .pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }</style>' : '')
         + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
@@ -2388,6 +2754,7 @@
       + '  }'
       + '  parent.postMessage({type:"dblclick", word:word, ctx:textBefore}, "*");'
       + '});'
+      + iframeDropForwardScript()
       + '<' + '/script>'
       + '</body></html>';
     }
@@ -3074,26 +3441,45 @@
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
 
+      // Derive a filename from the URL so we can route through the
+      // same dispatcher as drops / disk picks. Falls back to "remote"
+      // if the URL has no recognizable basename.
+      var filename = deriveFilenameFromUrl(url);
+
+      // Always fetch as a Blob so binary files (PDF, PPTX, etc.) are
+      // preserved through the network hop. Routing is decided after
+      // we know the byte length and filename.
       fetch(rewriteGitHubUrl(url))
         .then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.text();
+          return res.blob();
         })
-        .then(function (text) {
+        .then(function (blob) {
           btnFetch.disabled = false;
           close();
-          if (isEditorDirty()) {
-            var ok = confirm("Replace current content with loaded markdown?");
-            if (!ok) return;
+          // Wrap the Blob in a File so the dispatcher's filename
+          // logic works as if the user had picked it from disk.
+          var file = new File([blob], filename, { type: blob.type || "" });
+          var route = window.FlatwriteExtractDrop
+            ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
+            : routeDroppedFileInline(file.name);
+          if (route === "plain") {
+            // .md/.markdown/.txt — read as text directly. handleFileUpload
+            // also handles the dirty-check + renderPreview() in non-edit
+            // modes.
+            handleFileUpload(file);
+            showToast("Loaded markdown from URL");
+          } else {
+            handleExtractDrop(file);
           }
-          setEditorContent(text);
-          setMode("preview");
-          showToast("Loaded markdown from URL");
         })
-        .catch(function () {
+        .catch(function (err) {
           btnFetch.disabled = false;
-          status.textContent = "Could not load. Check the URL and try again.";
+          var detail = err && err.message ? err.message : "";
+          status.textContent = "Could not load. Check the URL and try again."
+            + (detail ? " (" + detail + ")" : "");
           status.className = "load-url-status error";
+          console.error("[load-url]", err);
         });
     }
 
@@ -3121,11 +3507,22 @@
      Toast feedback
      ========================================================================== */
 
+  function getToastStack() {
+    var stack = document.querySelector(".fw-toast-stack");
+    if (stack) return stack;
+    stack = document.createElement("div");
+    stack.className = "fw-toast-stack";
+    // Anchored to the editor/preview surface (bottom-center) rather than
+    // the viewport — falls back to <body> if that wrapper is missing.
+    (mainPanelWrapper || document.body).appendChild(stack);
+    return stack;
+  }
+
   function showToast(message) {
     var toast = document.createElement("div");
     toast.className = "fw-toast";
-    toast.innerHTML = message;
-    document.body.appendChild(toast);
+    toast.textContent = message;
+    getToastStack().appendChild(toast);
     toast.offsetHeight;
     toast.classList.add("fw-toast-visible");
     setTimeout(function () {

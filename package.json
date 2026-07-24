@@ -8,6 +8,8 @@
     "dev": "bunx serve .",
     "start": "node public/server.js",
     "test": "bun test ./test/*.test.js",
+    "test:py": "cd services/extract && uv run --project . pytest ../../test/extract",
+    "test:all": "bun test ./test/*.test.js && cd services/extract && uv run --project . pytest ../../test/extract",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev"
   },
