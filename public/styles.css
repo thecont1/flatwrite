@@ -59,7 +59,9 @@
   /* Colours */
   --text-primary: #2d2a3e;
   --text-secondary: #5d5878;
-  --text-muted: #8a849e;
+  /* WCAG AA: darkened from #8a849e (~3.1:1) to clear 4.5:1 for normal text
+     even over the translucent panels composited on the gradient. */
+  --text-muted: #67627e;
   --accent: #b06ab3;
   --accent-hover: #9b4d9e;
   --btn-bg: rgba(255, 255, 255, 0.55);
@@ -1839,6 +1841,24 @@ body {
 }
 
 /* ==========================================================================
+   Reduced motion — respect prefers-reduced-motion: reduce.
+   Collapse transitions/animations so vestibular-sensitive users don't get
+   sliding segmented controls, drawer sweeps, toast slides, or the read-mode
+   logo flight. Near-zero (not 0) keeps transitionend/animationend handlers
+   firing so JS that awaits them still resolves.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
    DRAG-AND-DROP OVERLAY
    Toggled on .app-shell by bindDropZone() in app.js when a file is being
    dragged over the window. The overlay covers the canvas with a soft
@@ -2321,8 +2341,12 @@ body {
     padding: 2px;
     position: fixed;
     top: 12px;
-    right: 20px;
+    right: 12px;
     z-index: 105;
+  }
+
+  .mobile-logo {
+    display: none;
   }
 
   /* Toolbar-center (formatting buttons) takes full width on its own line */
@@ -2434,7 +2458,13 @@ body {
   }
 
   .toolbar-slide {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+  }
+
+  .toolbar-slides,
+  .md-toolbar {
+    width: max-content;
+    min-width: max-content;
   }
 
   .md-toolbar {

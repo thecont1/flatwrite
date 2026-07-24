@@ -130,6 +130,7 @@
       "orientation: " + orientation,
       "marginsLR: " + pageMarginsLR,
       "marginsTB: " + pageMarginsTB,
+      "columns: " + pageColumns,
       "footer: " + showFooter,
       "font: " + comfortFont,
       "size: " + sizeStep,
@@ -491,6 +492,10 @@
     + "&family=JetBrains+Mono:wght@300;400;600;700"
     + "&family=Comfortaa:wght@300;400;500;600;700"
     + "&display=swap";
+  /* Generated previews and exports use the same vendored font inventory as
+     the editor shell. Keeping this URL absolute also makes it resolve from
+     blob: export documents. */
+  var FONT_STYLESHEET_URL = new URL("fonts.css?v=2", window.location.href).href;
 
   /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
   function loadComfortFonts() {
@@ -561,6 +566,15 @@
     if (e.source !== previewFrameNext.contentWindow) return;
     if (e.data && e.data.renderId !== currentRenderId) return;
     swapPreviewFrames();
+  }
+
+  function isCurrentPreviewCommitted() {
+    if (!previewFrame || !previewFrame.contentWindow) return false;
+    try {
+      return previewFrame.contentWindow.__flatwriteRenderId === currentRenderId;
+    } catch (e) {
+      return false;
+    }
   }
 
   /* Document layout state */
@@ -783,7 +797,14 @@
   function handleFileUpload(file) {
     if (!file) return;
     var reader = new FileReader();
+    reader.onerror = function () {
+      showToast("Could not read " + (file.name || "the selected file"));
+    };
     reader.onload = function () {
+      if (typeof reader.result !== "string" || reader.result.length === 0) {
+        showToast("The selected file is empty");
+        return;
+      }
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded file?");
         if (!ok) return;
@@ -1133,7 +1154,8 @@
           return;
         }
         var parsed = parseShareYaml(data.content);
-        editor.value = data.content; /* keep full source including YAML for IDB + .md export */
+        /* Metadata belongs to the share envelope, not the user's Markdown. */
+        editor.value = parsed.body;
 
         /* Apply preferences from YAML front-matter if present */
         if (parsed.frontmatter) {
@@ -1152,6 +1174,7 @@
           if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
           if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
           if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
+          if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
           if (fm.footer === "true" || fm.footer === "on") showFooter = true;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -1171,7 +1194,7 @@
         }
 
         editor.setSelectionRange(0, 0);
-        initialEditorContent = data.content;
+        initialEditorContent = parsed.body;
         lastScrollRatio = 0;
         setMode("read");
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
@@ -1391,9 +1414,14 @@
 
     function openDrawer() {
       appShell.classList.add("drawer-open");
+      if (drawerToggle) drawerToggle.setAttribute("aria-expanded", "true");
     }
     function closeDrawer() {
       appShell.classList.remove("drawer-open");
+      if (drawerToggle) {
+        drawerToggle.setAttribute("aria-expanded", "false");
+        drawerToggle.focus();
+      }
     }
 
     if (drawerToggle) {
@@ -1680,6 +1708,7 @@
         showFooter = !showFooter;
         this.dataset.state = showFooter ? "on" : "off";
         this.textContent = showFooter ? "On" : "Off";
+        this.setAttribute("aria-pressed", String(showFooter));
         scheduleAutosave();
         if (mode === "preview" || mode === "read") renderPreview();
       });
@@ -1804,6 +1833,13 @@
       scheduleAutosave();
       applyZoom();
     });
+    zoomSlider.addEventListener("dblclick", function () {
+      zoomStep = 100;
+      this.value = 100;
+      zoomValue.textContent = "100%";
+      scheduleAutosave();
+      applyZoom();
+    });
 
     mdToolbar.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-md]");
@@ -1812,14 +1848,26 @@
 
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
-        e.preventDefault();
+        /* A modal's own handler owns Escape while it is open — the load
+           modal stops propagation, but guard here too so we never both
+           close a dialog AND change editor mode on one keypress. */
+        var loadOverlay = document.getElementById("load-modal-overlay");
+        var compOverlay = document.getElementById("comp-modal-overlay");
+        if ((loadOverlay && !loadOverlay.classList.contains("hidden"))
+            || (compOverlay && !compOverlay.classList.contains("hidden"))
+            || appShell.classList.contains("drawer-open")) {
+          return;
+        }
         if (mode === "read") {
           /* Read → View > Plain */
+          e.preventDefault();
           setMode("preview");
           setDocEngine("none");
         } else if (mode === "preview") {
+          e.preventDefault();
           setMode("edit");
         }
+        /* In edit mode with no dialog open, let Escape do its default. */
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
@@ -1937,7 +1985,9 @@
       toggle.className = "surface-toggle " + sm;
       var btns = toggle.querySelectorAll(".surface-btn");
       for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.toggle("active", btns[i].dataset.surface === sm);
+        var active = btns[i].dataset.surface === sm;
+        btns[i].classList.toggle("active", active);
+        btns[i].setAttribute("aria-pressed", String(active));
       }
     }
     scheduleAutosave();
@@ -1956,7 +2006,9 @@
       engineToggle.className = "engine-toggle " + engineKey;
       var btns = engineToggle.querySelectorAll(".engine-btn");
       btns.forEach(function (btn) {
-        btn.classList.toggle("active", btn.dataset.engine === engineKey);
+        var active = btn.dataset.engine === engineKey;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", String(active));
       });
     }
     /* Update app-shell engine class */
@@ -2048,15 +2100,83 @@
     if (pageColumns > 1) {
       var marginMm = parseFloat(lrMm);
       var gap = (marginMm / 2) + 'mm';
-      css += ' main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; }';
+      /* Default to one column when a renderer does not implement CSS
+         Multi-column Layout. Paged.js and Vivliostyle opt into the requested
+         layout only when they advertise support. */
+      css += ' main { column-count: 1; }';
+      css += ' @supports (column-count: 2) { main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: auto; }';
+      css += ' main > h1, main > h2, main > h3, main > h4, main > pre, main > table, main > blockquote, main > figure { break-inside: avoid; } }';
     }
     /* Always capture the L1 heading so it can be used by the footer */
     css += 'h1 { string-set: chapter content(); }';
     if (showFooter) {
       css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; }';
       css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; } }';
+    } else {
+      /* Explicitly clear margin boxes. This prevents a renderer from keeping
+         stale generated content when the footer toggle is switched off. */
+      css += '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
     }
     return css;
+  }
+
+  function syncDocumentSettingsFromControls() {
+    var nextPageSize = pageSizeSel ? pageSizeSel.value : pageSize;
+    var orientBtn = document.getElementById("toggle-orient");
+    var nextOrientation = orientBtn ? orientBtn.dataset.state : orientation;
+    var nextMarginsLR = pageMarginsLRSel ? pageMarginsLRSel.value : pageMarginsLR;
+    var nextMarginsTB = pageMarginsTBSel ? pageMarginsTBSel.value : pageMarginsTB;
+    var nextColumns = pageColumnsSel ? parseInt(pageColumnsSel.value, 10) : pageColumns;
+    var nextFooter = toggleFooterBtn ? toggleFooterBtn.dataset.state === "on" : showFooter;
+
+    if (!PAGE_SIZES[nextPageSize]
+        || (nextOrientation !== "portrait" && nextOrientation !== "landscape")
+        || !MARGIN_MAP[nextMarginsLR]
+        || !MARGIN_MAP[nextMarginsTB]
+        || nextColumns < 1 || nextColumns > 3) {
+      showToast("Check the document setup before exporting");
+      return false;
+    }
+
+    pageSize = nextPageSize;
+    orientation = nextOrientation;
+    pageMarginsLR = nextMarginsLR;
+    pageMarginsTB = nextMarginsTB;
+    pageColumns = nextColumns;
+    showFooter = nextFooter;
+    return true;
+  }
+
+  function buildDocumentCSS(renderEngineKey) {
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
+    return (renderEngineKey === "none" ? "" : buildPageCSS())
+      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
+      + 'body { font-size: ' + (15 * scale) + 'px !important; font-weight: ' + weight + ' !important; line-height: ' + lineHeight + ' !important; color: #2d2a3e; margin: 0; overflow-x: hidden; }'
+      + 'html { height: 100%; }'
+      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
+      + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
+      + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
+      + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
+      + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
+      + 'img { max-width: 100%; height: auto; display: block; }'
+      + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
+      + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
+      + 'table { border-collapse: collapse; table-layout: fixed; width: 100%; }'
+      + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+      + 'thead th { background: #333333; color: #fff; }'
+      + 'tbody tr:nth-child(even) { background: #f2f2f2; } tbody tr:nth-child(odd) { background: #ffffff; }'
+      + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
+      + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
+      + 'li { margin: 0.15em 0; display: list-item; } li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }'
+      + 'li:has(> input[type="checkbox"]), .task-list-item { list-style: none; }'
+      + 'li:has(> input[type="checkbox"])::marker, .task-list-item::marker { display: none; }'
+      + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
+      + 'ul { list-style-type: disc; } ul ul { list-style-type: circle; } ul ul ul { list-style-type: disc; } ul ul ul ul { list-style-type: circle; }'
+      + 'p { margin: 0.4em 0; } br { margin: 0.3em 0; }';
   }
 
   /**
@@ -2114,6 +2234,7 @@
     if (toggleFooterBtn) {
       toggleFooterBtn.dataset.state = showFooter ? "on" : "off";
       toggleFooterBtn.textContent = showFooter ? "On" : "Off";
+      toggleFooterBtn.setAttribute("aria-pressed", String(showFooter));
     }
   }
 
@@ -2320,11 +2441,6 @@
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
     var renderId = ++currentRenderId;
@@ -2334,44 +2450,8 @@
       ? '<script src="' + engine.script + '" defer><' + '/script>'
       : '';
 
-    /* Shared document CSS (without engine-specific page-boundary rules) */
-    /* Plain/Read: skip @page, columns and footer — none apply in a WYSIWYG flow */
-    var docCss = (renderEngineKey === "none" ? "" : buildPageCSS())
-      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
-      + 'body { font-size: ' + (15 * scale) + 'px !important;'
-      + ' font-weight: ' + weight + ' !important;'
-      + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' margin: 0; overflow-x: hidden; }'
-      + 'html { height: 100%; }'
-      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
-      + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
-      + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
-      + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
-      + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
-      + 'img { max-width: 100%; height: auto; display: block; }'
-      + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
-      + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
-      + 'table { border-collapse: collapse; width: 100%; }'
-      + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
-      + 'thead th { background: #333333; color: #fff; }'
-      + 'tbody tr:nth-child(even) { background: #f2f2f2; }'
-      + 'tbody tr:nth-child(odd) { background: #ffffff; }'
-      + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
-      + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
-      + 'li { margin: 0.15em 0; display: list-item; }'
-      + 'li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }'
-      + 'li::marker { display: inline; }'
-      + 'li:has(> input[type="checkbox"]) { list-style: none; }'
-      + 'li:has(> input[type="checkbox"])::marker { display: none; }'
-      + '.task-list-item { list-style: none; }'
-      + '.task-list-item::marker { display: none; }'
-      + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
-      + 'ul { list-style-type: disc; }'
-      + 'ul ul { list-style-type: circle; }'
-      + 'ul ul ul { list-style-type: disc; }'
-      + 'ul ul ul ul { list-style-type: circle; }'
-      + 'p { margin: 0.4em 0; }'
-      + 'br { margin: 0.3em 0; }'
+    /* One canonical stylesheet feeds preview, HTML export, and PDF export. */
+    var docCss = buildDocumentCSS(renderEngineKey)
       + ' .pagedjs_page { margin: 8px 0; }'
 
     var html;
@@ -2380,9 +2460,7 @@
       var vivlDocHTML = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
-        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + '<style>' + docCss + '</style>'
         + '</head><body><main>' + renderedHTML + '</main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
@@ -2409,6 +2487,7 @@
         + 'const _orientation = "' + orientation + '";'
         + 'const _scrollRatio = ' + scrollRatio + ';'
         + 'const _renderId = ' + renderId + ';'
+        + 'window.__flatwriteRenderId = _renderId;'
         + 'var _zoomFactor = 1;'
         + 'function _computeZoom() {'
         + '  var w = window.innerWidth;'
@@ -2493,7 +2572,7 @@
         + '  parent.postMessage({type:"vivl-ready", renderId: _renderId}, "*");'
         + '}'
         + 'viewer.addListener("loaded", _vivlNotify);'
-        + 'viewer.loadDocument(docUrl);'
+        + '(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function(){ viewer.loadDocument(docUrl); });'
         + 'setTimeout(_vivlNotify, 3000);'
         + 'window.addEventListener("resize", function() { viewer.setOptions({ zoom: 1 }); _vivlEnableScroll(); });'
         + 'viewport.addEventListener("scroll", function() {'
@@ -2547,9 +2626,7 @@
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
-        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + engineScript
         + '<style>'
         + docCss
@@ -2578,6 +2655,7 @@
       + 'var _pageH = ' + getPageHeightPx() + ';'
       + 'var _orientation = "' + orientation + '";'
       + 'var _renderId = ' + renderId + ';'
+      + 'window.__flatwriteRenderId = _renderId;'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'function _fitPage() {'
       + '  if (!_isPaged) return;'
@@ -2651,7 +2729,10 @@
       + '    document.head.appendChild(s);'
       + '  }'
       + '}'
-      + 'document.addEventListener("DOMContentLoaded", _initFit);'
+      + 'document.addEventListener("DOMContentLoaded", function(){'
+      + '  var ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();'
+      + '  ready.then(_initFit);'
+      + '});'
       + 'var _scrollTimer;'
       + 'window.addEventListener("scroll", function(){'
       + '  clearTimeout(_scrollTimer);'
@@ -2803,6 +2884,9 @@
     btnEdit.classList.remove("active");
     btnPreview.classList.remove("active");
     btnRead.classList.remove("active");
+    btnEdit.setAttribute("aria-pressed", "false");
+    btnPreview.setAttribute("aria-pressed", "false");
+    btnRead.setAttribute("aria-pressed", "false");
     modeSwitch.classList.remove("preview", "read");
 
 
@@ -2810,6 +2894,7 @@
       if (prevMode !== "edit") savePreviewScroll();
       editorWrap.classList.remove("hidden");
       btnEdit.classList.add("active");
+      btnEdit.setAttribute("aria-pressed", "true");
 
       /* Restore editor scroll position */
       requestAnimationFrame(function () {
@@ -2867,6 +2952,7 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
+        btnRead.setAttribute("aria-pressed", "true");
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
@@ -2875,6 +2961,7 @@
         }
       } else {
         btnPreview.classList.add("active");
+        btnPreview.setAttribute("aria-pressed", "true");
         modeSwitch.classList.add("preview");
         if (prevMode === "read") {
           if (window.innerWidth < 760) {
@@ -3041,6 +3128,7 @@
   }
 
   function exportHTML() {
+    if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
     /* === App Surface: Framework CSS export === */
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
@@ -3099,23 +3187,19 @@
       return;
     }
 
-    /* === Doc Surface: reuse the rendered preview for an exact Read-mode match === */
+    /* Reuse only a preview proven to match the latest render id. Otherwise
+       build synchronously below from current controls. */
     var srcdoc = previewFrame.getAttribute("srcdoc");
-    if (srcdoc && (mode === "preview" || mode === "read")) {
+    if (srcdoc && (mode === "preview" || mode === "read") && isCurrentPreviewCommitted()) {
       openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
       return;
     }
 
-    /* === Doc Surface fallback: build a self-paginating HTML from scratch === */
+    /* === Doc Surface: build from the current committed controls === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
 
     /* Engine script tag — self-paginating HTML export (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
@@ -3127,55 +3211,10 @@
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
       + '  <title>FlatWrite Export</title>\n'
       + '  <base target="_blank" rel="noopener noreferrer">\n'
-      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
-      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      /* --- @page rules from document controls --- */
-      + '    ' + buildPageCSS() + '\n'
-      /* --- Typography --- */
-      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
-      + '    body {\n'
-      + '      font-size: ' + (15 * scale) + 'px !important;\n'
-      + '      font-weight: ' + weight + ' !important;\n'
-      + '      line-height: ' + lineHeight + ' !important;\n'
-      + '      color: #2d2a3e;\n'
-      + '      margin: 0;\n'
-      + '      overflow-x: hidden;\n'
-      + '    }\n'
-      /* Fallback layout when no paged-media engine is active */
-      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
-      + '    h1, h2, h3, h4, h5, h6 {\n'
-      + '      font-weight: ' + headWeight + ' !important;\n'
-      + '      overflow-wrap: break-word;\n'
-      + '      word-break: break-word;\n'
-      + '    }\n'
-      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
-      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
-      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
-      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
-      + '    img { max-width: 100%; height: auto; display: block; }\n'
-      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
-      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
-      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
-      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
-      + '    li { margin: 0.15em 0; display: list-item; }\n'
-      + '    li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }\n'
-      + '    li::marker { display: inline; }\n'
-      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
-      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
-      + '    .task-list-item { list-style: none; }\n'
-      + '    .task-list-item::marker { display: none; }\n'
-      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
-      + '    ul { list-style-type: disc; }\n'
-      + '    ul ul { list-style-type: circle; }\n'
-      + '    ul ul ul { list-style-type: disc; }\n'
-      + '    ul ul ul ul { list-style-type: circle; }\n'
-      + '    p { margin: 0.4em 0; }\n'
-      + '    br { margin: 0.3em 0; }\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
       + '  </style>\n'
       + '</head>\n<body>\n  <main>\n'
       + renderedHTML
@@ -3186,6 +3225,7 @@
   }
 
   function exportPDF() {
+    if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
     /* === App Surface: Simple print === */
     if (surfaceMode === "app") {
       /* In App mode, just trigger the browser print dialog */
@@ -3200,7 +3240,9 @@
     /* === Doc Surface: print the exact rendered preview ===
        When the preview has been rendered, reuse its srcdoc so the PDF engine,
        pagination, scaling, and layout match what the user sees in view mode. */
-    var srcdoc = previewFrame.getAttribute("srcdoc");
+    /* Reuse a rendered preview only when its render id proves it was produced
+       from the latest state. Otherwise the fallback is rebuilt synchronously. */
+    var srcdoc = isCurrentPreviewCommitted() ? previewFrame.getAttribute("srcdoc") : "";
     if (srcdoc) srcdoc = srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, "");
     if (srcdoc && (mode === "preview" || mode === "read")) {
       var printScript = '<script>'
@@ -3254,11 +3296,6 @@
     var contentForRender = stripYamlFrontMatter(editor.value || "");
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
 
     /* Engine script — Paged.js for proper @page pagination (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
@@ -3269,52 +3306,10 @@
       + '  <meta charset="UTF-8">\n'
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
       + '  <title>FlatWrite PDF</title>\n'
-      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
-      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      + '    ' + buildPageCSS() + '\n'
-      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
-      + '    body {\n'
-      + '      font-size: ' + (15 * scale) + 'px !important;\n'
-      + '      font-weight: ' + weight + ' !important;\n'
-      + '      line-height: ' + lineHeight + ' !important;\n'
-      + '      color: #2d2a3e;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 0 auto;\n'
-      + '      overflow-x: hidden;\n'
-      + '    }\n'
-      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
-      + '    h1, h2, h3, h4, h5, h6 {\n'
-      + '      font-weight: ' + headWeight + ' !important;\n'
-      + '      overflow-wrap: break-word; word-break: break-word;\n'
-      + '    }\n'
-      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
-      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
-      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
-      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
-      + '    img { max-width: 100%; height: auto; display: block; }\n'
-      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
-      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
-      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
-      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
-      + '    li { margin: 0.15em 0; display: list-item; }\n'
-      + '    li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }\n'
-      + '    li::marker { display: inline; }\n'
-      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
-      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
-      + '    .task-list-item { list-style: none; }\n'
-      + '    .task-list-item::marker { display: none; }\n'
-      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
-      + '    ul { list-style-type: disc; }\n'
-      + '    ul ul { list-style-type: circle; }\n'
-      + '    ul ul ul { list-style-type: disc; }\n'
-      + '    ul ul ul ul { list-style-type: circle; }\n'
-      + '    p { margin: 0.4em 0; }\n'
-      + '    br { margin: 0.3em 0; }\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
       + '  </style>\n'
       + '</head>\n<body>\n  <main>\n'
       + renderedHTML
@@ -3322,13 +3317,14 @@
       /* Auto-print after Paged.js renders */
       + '  <script>\n'
       + '    document.addEventListener("DOMContentLoaded", function() {\n'
-      + '      if (typeof window.PagedPolyfill !== "undefined") {\n'
+      + '      var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();\n'
+      + '      fontsReady.then(function() { if (typeof window.PagedPolyfill !== "undefined") {\n'
       + '        window.PagedPolyfill.on("afterRenderation", function() {\n'
       + '          setTimeout(function() { window.print(); }, 200);\n'
       + '        });\n'
       + '      } else {\n'
       + '        setTimeout(function() { window.print(); }, 500);\n'
-      + '      }\n'
+      + '      } });\n'
       + '    });\n'
       + '  <' + '/script>\n'
       + '</body>\n</html>';
@@ -3427,13 +3423,19 @@
     var btnClose  = document.getElementById("load-modal-close");
     if (!overlay || !urlInput) return;
 
+    var returnFocusTo = document.activeElement;
     urlInput.value = "";
     status.textContent = "";
     status.className = "load-url-status";
     overlay.classList.remove("hidden");
     urlInput.focus();
 
-    function close() { overlay.classList.add("hidden"); }
+    function close() {
+      overlay.classList.add("hidden");
+      if (returnFocusTo && typeof returnFocusTo.focus === "function") {
+        returnFocusTo.focus();
+      }
+    }
 
     function doFetch() {
       var url = urlInput.value.trim();
@@ -3485,25 +3487,69 @@
         });
     }
 
-    /* Remove any previous listeners by replacing elements */
+    /* Remove any previous listeners by replacing the buttons, then
+       re-point our references at the live clones. Without the reassignment
+       doFetch()/close() would capture the DETACHED originals, so
+       btnFetch.disabled would toggle a node that is no longer in the DOM
+       and the visible Fetch button would stay enabled (duplicate submits). */
     var newFetch = btnFetch.cloneNode(true);
     var newCancel = btnCancel.cloneNode(true);
     var newClose = btnClose.cloneNode(true);
     btnFetch.parentNode.replaceChild(newFetch, btnFetch);
     btnCancel.parentNode.replaceChild(newCancel, btnCancel);
     btnClose.parentNode.replaceChild(newClose, btnClose);
+    btnFetch = newFetch;
+    btnCancel = newCancel;
+    btnClose = newClose;
 
     newFetch.addEventListener("click", doFetch);
     newCancel.addEventListener("click", close);
     newClose.addEventListener("click", close);
-    urlInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); doFetch(); }
-      if (e.key === "Escape") close();
-    });
-    overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) close();
-    });
+    doFetchLatest = doFetch;
+    closeLatest = close;
+
+    /* urlInput and overlay are not cloned, so their listeners would
+       accumulate on every open. Bind them exactly once. */
+    if (!overlay.dataset.fwBound) {
+      overlay.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && e.target === urlInput) {
+          e.preventDefault();
+          doFetchLatest();
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closeLatest();
+          return;
+        }
+        if (e.key !== "Tab") return;
+        var focusable = overlay.querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) closeLatest();
+      });
+      overlay.dataset.fwBound = "1";
+    }
   }
+
+  /* The keydown/overlay listeners are bound once but must always call the
+     CURRENT modal invocation's handlers. loadFromUrlModal reassigns these
+     on each open. */
+  var doFetchLatest = function () {};
+  var closeLatest = function () {};
 
   /* ==========================================================================
      Toast feedback
@@ -3514,6 +3560,12 @@
     if (stack) return stack;
     stack = document.createElement("div");
     stack.className = "fw-toast-stack";
+    /* Live region so screen readers announce transient outcomes
+       (share failure, load/export errors, validation) that are
+       otherwise visual-only. */
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    stack.setAttribute("aria-atomic", "true");
     // Anchored to the editor/preview surface (bottom-center) rather than
     // the viewport — falls back to <body> if that wrapper is missing.
     (mainPanelWrapper || document.body).appendChild(stack);
@@ -3579,25 +3631,34 @@
 
   function fwApplyContent(content, sourceUrl, opts) {
     opts = opts || {};
+    var documentContent = content;
     if (opts.isShare) {
       var parsed = parseShareYaml(content);
+      documentContent = parsed.body;
       if (parsed.frontmatter) {
         var fm = parsed.frontmatter;
         if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
         if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
         if (fm.font) comfortFont = fm.font;
+        if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
+        if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
+        if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
+        if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
+        if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
+        showFooter = fm.footer === "true" || fm.footer === "on";
         setDocEngine(currentDocEngine);
+        syncDocControlsUI();
       }
       setMarkdownUrl("");
     } else {
       setMarkdownUrl(sourceUrl);
     }
-    setEditorContent(content);
+    setEditorContent(documentContent);
     fwDocumentId = "";
     fwEnsureDocumentId();
     return {
       documentId: fwDocumentId,
-      title: fwExtractTitle(content),
+      title: fwExtractTitle(documentContent),
       url: sourceUrl,
     };
   }

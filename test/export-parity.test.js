@@ -34,6 +34,14 @@ const SRC = readFileSync(
   resolve(import.meta.dir, "..", "public", "app.js"),
   "utf-8"
 );
+const INDEX = readFileSync(
+  resolve(import.meta.dir, "..", "public", "index.html"),
+  "utf-8"
+);
+const STYLES = readFileSync(
+  resolve(import.meta.dir, "..", "public", "styles.css"),
+  "utf-8"
+);
 
 function fnBody(name) {
   const re = new RegExp(
@@ -86,14 +94,22 @@ describe("buildPageCSS page layout", () => {
       '"Page " counter(page) " of " counter(pages)'
     );
   });
+
+  test("guards columns and clears disabled footers", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("@supports (column-count: 2)");
+    expect(body).toContain("column-count: 1");
+    expect(body).toContain("break-inside: avoid");
+    expect(body).toContain("@bottom-left { content: none; }");
+    expect(body).toContain("@bottom-right { content: none; }");
+  });
 });
 
 describe("exportHTML", () => {
-  test("delegates page CSS and includes typography", () => {
+  test("uses canonical CSS after validating live settings", () => {
     const body = fnBody("exportHTML");
-    expect(body).toContain("buildPageCSS()");
-    expect(body).toContain("font-size");
-    expect(body).toContain("headWeight");
+    expect(body).toContain("buildDocumentCSS(currentDocEngine)");
+    expect(body).toContain("syncDocumentSettingsFromControls()");
   });
 });
 
@@ -103,13 +119,75 @@ describe("exportPDF", () => {
     const body = fnBody("exportPDF");
     expect(body).toContain("surfaceMode");
   });
+
+  test("validates settings, shares CSS, and waits for fonts", () => {
+    const body = fnBody("exportPDF");
+    expect(body).toContain("syncDocumentSettingsFromControls()");
+    expect(body).toContain("buildDocumentCSS(currentDocEngine)");
+    expect(body).toContain("document.fonts.ready");
+  });
+});
+
+describe("preview/export fidelity", () => {
+  test("both preview engines wait for fonts and share document CSS", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain("buildDocumentCSS(renderEngineKey)");
+    expect(body).toContain("document.fonts.ready");
+    expect(body).toContain("viewer.loadDocument(docUrl)");
+    expect(body).toContain("ready.then(_initFit)");
+  });
 });
 
 describe("share pipeline", () => {
-  test("buildShareYaml persists docEngine, pageSize, and orientation", () => {
+  test("buildShareYaml persists document layout and restores only body", () => {
     const body = fnBody("buildShareYaml");
     expect(body).toContain("docEngine");
     expect(body).toContain("pageSize");
     expect(body).toContain("orientation");
+    expect(body).toContain("columns");
+    expect(fnBody("loadSharedDocument")).toContain("editor.value = parsed.body");
+    expect(fnBody("fwApplyContent")).toContain("documentContent = parsed.body");
+  });
+});
+
+describe("functional controls", () => {
+  test("disk loading handles read errors and empty files", () => {
+    const body = fnBody("handleFileUpload");
+    expect(body).toContain("reader.onerror");
+    expect(body).toContain("The selected file is empty");
+  });
+
+  test("zoom supports an explicit 100 percent reset", () => {
+    expect(SRC).toContain('zoomSlider.addEventListener("dblclick"');
+    expect(SRC).toContain("zoomStep = 100");
+  });
+
+  test("URL loading disables the live cloned button and binds modal keys once", () => {
+    const body = fnBody("loadFromUrlModal");
+    expect(body).toContain("btnFetch = newFetch");
+    expect(body).toContain("overlay.dataset.fwBound");
+    expect(body).toContain("doFetchLatest = doFetch");
+    expect(body).toContain("closeLatest = close");
+  });
+
+  test("transient toast feedback is exposed as a polite live region", () => {
+    const body = fnBody("getToastStack");
+    expect(body).toContain('stack.setAttribute("role", "status")');
+    expect(body).toContain('stack.setAttribute("aria-live", "polite")');
+  });
+});
+
+describe("accessibility contracts", () => {
+  test("both modal surfaces expose dialog semantics", () => {
+    expect(INDEX).toMatch(/id="load-modal"[^>]+role="dialog"[^>]+aria-modal="true"/);
+    expect(INDEX).toMatch(/id="comp-modal"[^>]+role="dialog"[^>]+aria-modal="true"/);
+  });
+
+  test("the shell provides a reduced-motion mode", () => {
+    expect(STYLES).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  test("muted normal text uses the AA-safe token", () => {
+    expect(STYLES).toContain("--text-muted: #67627e");
   });
 });
