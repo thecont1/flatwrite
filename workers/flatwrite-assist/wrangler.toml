@@ -1,0 +1,12 @@
+name = "flatwrite-assist"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+route = { pattern = "assist.flatwrite.md/*", zone_name = "flatwrite.md" }
+
+# Secrets (set via `wrangler secret put`):
+#   API_KEY         — public-facing FlatWrite key (X-Api-Key / token mint)
+#   MORPH_API_KEY   — Morph API key (never exposed to browsers)
+#
+# Optional vars (wrangler.toml [vars] or dashboard):
+#   MORPH_MODEL_EASY / MORPH_MODEL_MEDIUM / MORPH_MODEL_HARD
+#   MORPH_BASE_URL (default https://api.morphllm.com/v1)
