@@ -1055,6 +1055,7 @@ body {
   gap: 6px;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 /* ---------- Export actions (tab bubble) ---------- */
@@ -2696,6 +2697,191 @@ body {
 .char-count.warning {
   color: #b5452a;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   AI Assist panel (Morph)
+   ========================================================================== */
+
+.assist-panel {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 40;
+  width: min(420px, calc(100% - 24px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  padding: 12px 14px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+  color: var(--text, #1a1a1a);
+  font-family: var(--font-body, system-ui, sans-serif);
+}
+
+.assist-panel.hidden {
+  display: none;
+}
+
+.assist-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.assist-panel-header strong {
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+}
+
+.assist-panel-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted, #777);
+  flex: 1;
+}
+
+.assist-close {
+  border: 0;
+  background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted, #777);
+  padding: 0 4px;
+}
+
+.assist-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.assist-mode {
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  background: transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.assist-mode.active {
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+  color: #fff;
+}
+
+.assist-instruction {
+  width: 100%;
+  resize: vertical;
+  min-height: 52px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--bg, #fafafa);
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.assist-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.assist-run,
+.assist-accept,
+.assist-discard {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assist-run,
+.assist-accept {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.assist-run:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.assist-discard {
+  background: transparent;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.15));
+  color: inherit;
+}
+
+.assist-status {
+  font-size: 0.75rem;
+  color: var(--text-muted, #777);
+}
+
+.assist-status.error {
+  color: #b5452a;
+}
+
+.assist-result-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted, #777);
+  margin-bottom: 6px;
+}
+
+.assist-result-preview {
+  margin: 0 0 10px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg, #f4f4f4);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assist-result-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.assist-result.hidden {
+  display: none;
+}
+
+.md-btn-assist svg {
+  display: block;
+}
+
+[data-theme="dark"] .assist-panel,
+body.dark .assist-panel {
+  background: #1c1c1e;
+  color: #f2f2f2;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] .assist-mode.active,
+body.dark .assist-mode.active,
+[data-theme="dark"] .assist-run,
+body.dark .assist-run,
+[data-theme="dark"] .assist-accept,
+body.dark .assist-accept {
+  background: #f2f2f2;
+  color: #111;
+  border-color: #f2f2f2;
 }
 
 /* ==========================================================================

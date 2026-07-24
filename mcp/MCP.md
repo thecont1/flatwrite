@@ -11,7 +11,7 @@ This document explains how FlatWrite's Model Context Protocol (MCP) integration 
 3. [How FlatWrite uses both](#3-how-flatwrite-uses-both)
 4. [The four surfaces](#4-the-four-surfaces)
 5. [Authentication model](#5-authentication-model)
-6. [Tool reference (11 tools)](#6-tool-reference-11-tools)
+6. [Tool reference (12 tools)](#6-tool-reference-12-tools)
 7. [Output schemas — what every tool returns](#7-output-schemas--what-every-tool-returns)
 8. [Error handling](#8-error-handling)
 9. [Using the MCP server (stdio)](#9-using-the-mcp-server-stdio)
@@ -81,7 +81,7 @@ FlatWrite exposes its rendering and document-management capabilities through **f
 ```
 
 - **Manifests** (`public/.well-known/model-context.*.json`): Static JSON files that declare what tools exist. Generated at build time from `mcpShared.ts`. Scanners and agents read these to discover capabilities without running code.
-- **WebMCP** (`public/webmcp.js`): Runs in the browser tab when someone visits flatwrite.md. Registers 11 tools via `document.modelContext.registerTool()`. An agent driving Chrome can call these directly — they interact with the live editor.
+- **WebMCP** (`public/webmcp.js`): Runs in the browser tab when someone visits flatwrite.md. Registers 12 tools via `document.modelContext.registerTool()`. An agent driving Chrome can call these directly — they interact with the live editor.
 - **MCP server** (`mcp/flatwrite-render-server/`): A standalone process that speaks the MCP protocol over stdio or Streamable HTTP. Exposes `render_markdown` and `render_markdown_from_url` for server-to-server clients like Claude Desktop or Cursor.
 - **HTTP API** (`https://render.flatwrite.md/render`): A plain JSON POST endpoint. Not MCP-formatted, but produces byte-identical output. Useful for curl, scripts, and integrations that don't speak MCP.
 
@@ -182,9 +182,9 @@ The flow:
 
 ---
 
-## 6. Tool reference (11 tools)
+## 6. Tool reference (12 tools)
 
-All 11 tools are defined in `mcpShared.ts` as `RENDER_TOOLS_DOCS` and exposed via the Docs manifest and the browser-side WebMCP script. Each tool belongs to a **category** that groups related functionality:
+All 12 tools are defined in `mcpShared.ts` as `RENDER_TOOLS_DOCS` and exposed via the Docs manifest and the browser-side WebMCP script. Each tool belongs to a **category** that groups related functionality:
 
 ### Render tools (2)
 
@@ -305,6 +305,22 @@ Create a shareable URL for the active document and copy it to the clipboard.
 - **Inputs**: none
 - **Output**: `{ ok: true, documentId, shareUrl, expiresAt }`
 - **When to use**: To share the document. The link expires after 30 days. Use `get_document_state` to check `canShare` before calling.
+
+### Assist tools (1)
+
+#### `assist_document`
+
+Rewrite, shorten, fix grammar, or apply a custom instruction via Morph (Reflex → Router → Compact → Fast Models). Returns edited markdown without modifying the editor.
+
+- **Category**: `assist`
+- **Read-only**: yes (side-effect free; caller applies with `update_document_content`)
+- **Inputs**:
+  - `markdown` (string, optional in browser — defaults to editor; required for server MCP)
+  - `mode`: `rewrite` | `shorten` | `fix_grammar` | `custom`
+  - `instruction` (required when mode is `custom`)
+  - `selectionStart` / `selectionEnd` / `selectionText` (optional span)
+- **Output**: `{ ok: true, markdown, piece, scope, explanation?, model?, routing?, compacted?, usage?, reflex?, nextSuggestedTool: "update_document_content" }`
+- **When to use**: AI-assisted editing. Apply the returned `markdown` with `update_document_content` if you want it in the editor. HTTP equivalent: `POST https://assist.flatwrite.md/assist` (see `docs/MORPH-ASSIST.md`).
 
 ---
 
@@ -516,7 +532,7 @@ The `webmcp.js` script handles this automatically — you don't need to mint tok
 
 ## 11. Using WebMCP in the browser
 
-When you visit flatwrite.md in Chrome 146+ (with the WebMCP flag enabled), `webmcp.js` automatically registers 11 tools. An AI agent driving the browser can discover and call them.
+When you visit flatwrite.md in Chrome 146+ (with the WebMCP flag enabled), `webmcp.js` automatically registers 12 tools. An AI agent driving the browser can discover and call them.
 
 ### What happens under the hood
 
@@ -614,7 +630,7 @@ flatwrite/
 │   ├── app.js                       ← Editor logic + window.__flatwrite bridge
 │   ├── index.html                   ← Page with <link rel="model-context"> manifest pointers
 │   └── .well-known/
-│       ├── model-context.docs.json  ← GENERATED Docs manifest (11 tools)
+│       ├── model-context.docs.json  ← GENERATED Docs manifest (12 tools)
 │       └── model-context.apps.json  ← GENERATED Apps manifest (2 tools)
 │
 ├── workers/
@@ -695,7 +711,7 @@ This runs:
 
 Output:
 ```
-wrote public/.well-known/model-context.docs.json (11 tools, status=ready)
+wrote public/.well-known/model-context.docs.json (12 tools, status=ready)
 wrote public/.well-known/model-context.apps.json (2 tools, status=ready)
 wrote public/webmcp-tools.js (runtime tool definitions)
 ✓ All tools have outputSchema (docs + apps)
@@ -765,7 +781,7 @@ The `renderOutputSchema.test.ts` suite covers the envelope-construction helpers 
 - One `describe` block per Zod schema (`RenderOptionsOutputSchema`, `RenderPreviewOutputSchema`, `ExportHtmlOutputSchema`, `ExportPdfOutputSchema`, `ShareLinkOutputSchema`): canonical envelope parses, omitted optional fields still parse, wrong literals are rejected.
 
 ### Tool registration tests
-- All 11 tools are registered from the generated `DOC_TOOLS` array
+- All 12 tools are registered from the generated `DOC_TOOLS` array
 - Input schemas have correct types, enums, and ranges
 - Output schemas use the discriminated `{ ok, kind, ... }` pattern
 - Both Chrome 149 (`navigator.modelContext`) and Chrome 150+ (`document.modelContext`) probes work
@@ -808,7 +824,7 @@ The `manifest snapshot baseline` block in `test/webmcp.test.js` is a regression 
 | **WebMCP** | Browser-based variant where web pages register tools via `document.modelContext` |
 | **Tool** | A named capability with an input schema, output schema, and execute handler |
 | **Manifest** | A static JSON file at `.well-known/model-context.*.json` declaring a site's tools |
-| **Surface** | A grouping of tools by context — FlatWrite has "doc" (11 tools) and "app" (2 tools) |
+| **Surface** | A grouping of tools by context — FlatWrite has "doc" (12 tools) and "app" (2 tools) |
 | **Discriminated envelope** | A response shape where `ok: true/false` tells you which fields to read |
 | **X-Api-Key** | Long-lived server-to-server API key (never in browser JS) |
 | **X-Mcp-Token** | Short-lived (60s) HMAC-signed browser-safe token |

@@ -192,14 +192,18 @@ describe("streamableHttpServer — basic transport", () => {
     expect(sid.length).toBeGreaterThan(20);
   });
 
-  test("tools/list returns both render tools", async () => {
+  test("tools/list returns render + assist tools", async () => {
     const sid = await initialize();
     const r = await callRpc(sid, 2, "tools/list");
     expect(r.status).toBe(200);
     const tools = ((r.body as any).result.tools as Array<{ name: string }>).map(
       (t) => t.name
     );
-    expect(tools.sort()).toEqual(["render_markdown", "render_markdown_from_url"]);
+    expect(tools.sort()).toEqual([
+      "assist_document",
+      "render_markdown",
+      "render_markdown_from_url",
+    ]);
   });
 
   test("non-initialize request without session ID returns NO_SESSION", async () => {

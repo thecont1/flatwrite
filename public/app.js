@@ -1897,6 +1897,8 @@
         }
       }
     });
+
+    bindAssistUi();
   }
 
   /* ==========================================================================
@@ -3724,7 +3726,217 @@
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       };
     },
+
+    /**
+     * Morph AI assist — returns { markdown, piece, scope, ... } without applying.
+     * Callers (UI / WebMCP) should confirm before writing via updateDocumentContent.
+     */
+    assistDocument: async function (opts) {
+      return runAssistRequest(opts || {});
+    },
   };
+
+  /* ==========================================================================
+     Morph AI Assist
+     ========================================================================== */
+
+  var ASSIST_URL = "https://assist.flatwrite.md/assist";
+  var ASSIST_TOKEN_URL = "https://assist.flatwrite.md/mcp-token";
+  var assistCachedToken = null;
+  var assistInflightToken = null;
+  var assistPending = null; // last successful result awaiting Accept
+  var assistMode = "rewrite";
+
+  async function getAssistToken() {
+    if (assistCachedToken && assistCachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
+      return assistCachedToken;
+    }
+    if (assistInflightToken) return assistInflightToken;
+    assistInflightToken = (async function () {
+      var res = await fetch(ASSIST_TOKEN_URL, { method: "POST" });
+      if (!res.ok) {
+        var errText = await res.text().catch(function () { return ""; });
+        throw new Error("Token mint failed (" + res.status + ")" + (errText ? ": " + errText.slice(0, 120) : ""));
+      }
+      var data = await res.json();
+      assistCachedToken = { token: data.token, expiresAt: data.expiresAt };
+      return assistCachedToken;
+    })();
+    try {
+      return await assistInflightToken;
+    } finally {
+      assistInflightToken = null;
+    }
+  }
+
+  function getAssistSelection() {
+    var start = editor.selectionStart;
+    var end = editor.selectionEnd;
+    if (typeof start !== "number" || typeof end !== "number" || end <= start) return null;
+    return { start: start, end: end, text: editor.value.slice(start, end) };
+  }
+
+  function updateAssistScopeHint() {
+    var el = document.getElementById("assist-scope-hint");
+    if (!el) return;
+    var sel = getAssistSelection();
+    if (sel) {
+      el.textContent = "Selection (" + sel.text.length + " chars)";
+    } else {
+      el.textContent = "Whole document";
+    }
+  }
+
+  function setAssistOpen(open) {
+    var panel = document.getElementById("assist-panel");
+    var btn = document.getElementById("btn-assist");
+    if (!panel || !btn) return;
+    if (open) {
+      panel.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      updateAssistScopeHint();
+    } else {
+      panel.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function setAssistStatus(msg, isError) {
+    var el = document.getElementById("assist-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    if (isError) el.classList.add("error");
+    else el.classList.remove("error");
+  }
+
+  function showAssistResult(result) {
+    var box = document.getElementById("assist-result");
+    var meta = document.getElementById("assist-result-meta");
+    var pre = document.getElementById("assist-result-preview");
+    if (!box || !meta || !pre) return;
+    assistPending = result;
+    var bits = [];
+    if (result.model) bits.push(result.model);
+    if (result.routing && result.routing.tier) bits.push("tier:" + result.routing.tier);
+    if (result.explanation) bits.push(result.explanation);
+    meta.textContent = bits.join(" · ");
+    pre.textContent = result.piece || result.markdown || "";
+    box.classList.remove("hidden");
+  }
+
+  function clearAssistResult() {
+    assistPending = null;
+    var box = document.getElementById("assist-result");
+    if (box) box.classList.add("hidden");
+  }
+
+  async function runAssistRequest(opts) {
+    var mode = (opts && opts.mode) || assistMode || "rewrite";
+    var instruction = (opts && typeof opts.instruction === "string")
+      ? opts.instruction
+      : ((document.getElementById("assist-instruction") || {}).value || "");
+    var markdown = (opts && typeof opts.markdown === "string") ? opts.markdown : (editor.value || "");
+    var selection = opts && opts.selection !== undefined ? opts.selection : getAssistSelection();
+
+    if (!markdown.trim()) {
+      throw { code: "EMPTY_DOCUMENT", message: "Document is empty" };
+    }
+    if (mode === "custom" && !String(instruction).trim()) {
+      throw { code: "MISSING_INSTRUCTION", message: "Custom mode needs an instruction" };
+    }
+
+    var tok = await getAssistToken();
+    var res = await fetch(ASSIST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Mcp-Token": tok.token,
+      },
+      body: JSON.stringify({
+        mode: mode,
+        instruction: instruction,
+        markdown: markdown,
+        selection: selection || undefined,
+      }),
+    });
+    var data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      throw { code: "BAD_RESPONSE", message: "Assist returned non-JSON (" + res.status + ")" };
+    }
+    if (!res.ok || !data.ok) {
+      var err = (data && data.error) || {};
+      throw {
+        code: err.code || "ASSIST_FAILED",
+        message: err.message || ("Assist failed (" + res.status + ")"),
+        retryable: Boolean(err.retryable),
+      };
+    }
+    return data;
+  }
+
+  async function onAssistRun() {
+    var runBtn = document.getElementById("assist-run");
+    clearAssistResult();
+    setAssistStatus("Running…");
+    if (runBtn) runBtn.disabled = true;
+    try {
+      var result = await runAssistRequest({ mode: assistMode });
+      showAssistResult(result);
+      setAssistStatus("Ready — Accept to apply");
+    } catch (e) {
+      setAssistStatus((e && e.message) || String(e), true);
+    } finally {
+      if (runBtn) runBtn.disabled = false;
+    }
+  }
+
+  function onAssistAccept() {
+    if (!assistPending || !assistPending.markdown) return;
+    setEditorContent(assistPending.markdown);
+    clearAssistResult();
+    setAssistStatus("Applied");
+    setAssistOpen(false);
+  }
+
+  function bindAssistUi() {
+    var btn = document.getElementById("btn-assist");
+    var close = document.getElementById("assist-close");
+    var run = document.getElementById("assist-run");
+    var accept = document.getElementById("assist-accept");
+    var discard = document.getElementById("assist-discard");
+    var modes = document.getElementById("assist-modes");
+    if (!btn) return;
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var panel = document.getElementById("assist-panel");
+      var open = panel && panel.classList.contains("hidden");
+      setAssistOpen(open);
+    });
+    if (close) close.addEventListener("click", function () { setAssistOpen(false); });
+    if (run) run.addEventListener("click", function () { onAssistRun(); });
+    if (accept) accept.addEventListener("click", function () { onAssistAccept(); });
+    if (discard) discard.addEventListener("click", function () {
+      clearAssistResult();
+      setAssistStatus("");
+    });
+    if (modes) {
+      modes.addEventListener("click", function (e) {
+        var m = e.target.closest("[data-mode]");
+        if (!m) return;
+        assistMode = m.getAttribute("data-mode") || "rewrite";
+        modes.querySelectorAll(".assist-mode").forEach(function (el) {
+          el.classList.toggle("active", el === m);
+        });
+      });
+    }
+    editor.addEventListener("select", updateAssistScopeHint);
+    editor.addEventListener("keyup", updateAssistScopeHint);
+    editor.addEventListener("mouseup", updateAssistScopeHint);
+  }
 
   /* ==========================================================================
      Boot

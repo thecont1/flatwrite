@@ -1,22 +1,31 @@
 openapi: 3.0.3
 info:
-  title: FlatWrite Render API
-  version: 0.1.0
+  title: FlatWrite API
+  version: 0.2.0
   description: |
-    Public JSON façade for the FlatWrite renderer. Runs on a Cloudflare Worker
-    at `https://render.flatwrite.md` and forwards requests to the canonical
-    `/api/render` handler on `flatwrite.md`.
+    FlatWrite public APIs:
+
+    - **Render** at `https://render.flatwrite.md` — markdown → HTML fragments
+    - **Assist** at `https://assist.flatwrite.md` — Morph-powered document AI
+      (Reflex → Router → Compact → Fast Models)
+    - **Extract** at `https://extract.flatwrite.md` — file ingest → Markdown
+
+    See also `docs/MORPH-ASSIST.md` and `services/extract/README.md`.
   contact:
     name: Mahesh Shantaram
     url: https://thecontrarian.in
 servers:
   - url: https://render.flatwrite.md
-    description: Production
+    description: Render production
+  - url: https://assist.flatwrite.md
+    description: Assist production (Morph)
   - url: https://extract.flatwrite.md
     description: Production (file-extract proxy)
 tags:
   - name: render
     description: Render markdown into HTML head/body fragments
+  - name: assist
+    description: AI document assist via Morph
   - name: extract
     description: Convert dropped files (PDF, DOCX, PPTX, XLSX, etc.) to Markdown
 security:
@@ -223,6 +232,116 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /assist:
+    post:
+      tags: [assist]
+      summary: AI-assist a markdown document (Morph pipeline)
+      description: |
+        Runs Reflex → Model Router → Compact (optional) → Fast Models and
+        returns edited markdown. Selection-aware. Does not persist state.
+        Browser clients must use `X-Mcp-Token` from `POST /mcp-token` on
+        the assist host; long-lived `X-Api-Key` is server-to-server only.
+      servers:
+        - url: https://assist.flatwrite.md
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [markdown]
+              properties:
+                markdown:
+                  type: string
+                  description: Full document markdown
+                mode:
+                  type: string
+                  enum: [custom, rewrite, shorten, fix_grammar]
+                  default: rewrite
+                instruction:
+                  type: string
+                  description: Required when mode is custom
+                selection:
+                  type: object
+                  properties:
+                    start: { type: integer, minimum: 0 }
+                    end: { type: integer, minimum: 0 }
+                    text: { type: string }
+                options:
+                  type: object
+                  properties:
+                    tone: { type: string }
+                    preserveFrontmatter: { type: boolean, default: true }
+                    maxOutputTokens: { type: integer }
+            example:
+              mode: rewrite
+              markdown: "# Draft\n\nTeh quick brown fox."
+      responses:
+        '200':
+          description: Assist result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, markdown, piece, scope]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  markdown: { type: string }
+                  piece: { type: string }
+                  scope: { type: string, enum: [selection, document] }
+                  explanation: { type: string }
+                  model: { type: string }
+                  routing:
+                    type: object
+                    properties:
+                      tier: { type: string }
+                      difficulty: { type: string }
+                      confidence: { type: number, nullable: true }
+                      domain: { type: string, nullable: true }
+                  compacted: { type: boolean }
+                  usage:
+                    type: object
+                    nullable: true
+                  reflex:
+                    type: object
+        '400':
+          description: Validation or reflex block
+        '401':
+          description: Unauthorized
+        '429':
+          description: Rate limited
+        '502':
+          description: Upstream Morph failure
+  /mcp-token:
+    post:
+      tags: [assist]
+      summary: Mint short-lived browser token for Assist
+      security: []
+      servers:
+        - url: https://assist.flatwrite.md
+      responses:
+        '200':
+          description: Token minted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: integer }
+                  scope: { type: string, enum: [assist] }
+        '403':
+          description: Origin not allowed
+  /health:
+    get:
+      tags: [assist]
+      summary: Assist service health
+      security: []
+      servers:
+        - url: https://assist.flatwrite.md
+      responses:
+        '200':
+          description: OK
 components:
   securitySchemes:
     ApiKeyAuth:

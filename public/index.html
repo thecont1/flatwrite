@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <!-- Base app styles -->
-  <link rel="stylesheet" href="styles.css?v=119" />
+  <link rel="stylesheet" href="styles.css?v=120" />
 
   <!-- WebMCP tool discovery — declarative manifest pointers so agents
        can enumerate this site's tools without executing webmcp.js. -->
@@ -56,7 +56,7 @@
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
-  <script type="module" src="webmcp.js?v=8"></script>
+  <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
   <script src="app.js?v=109" defer></script>
 
@@ -252,6 +252,10 @@
                   <button class="md-btn" data-md="link" type="button" data-tip="Link">🔗</button>
                   <button class="md-btn" data-md="image" type="button" data-tip="Image">🖼️</button>
                   <button class="md-btn" data-md="hr" type="button" data-tip="Rule">—</button>
+                  <span class="md-toolbar-sep"></span>
+                  <button class="md-btn md-btn-assist" id="btn-assist" type="button" data-tip="AI Assist" aria-label="AI Assist" aria-expanded="false" aria-controls="assist-panel">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 12l-6.1 3.2L12 21l-1.9-5.8L4 12l6.1-3.2L12 3z"/></svg>
+                  </button>
                 </div>
                 <!-- Typography controls (View mode) -->
                 <div class="toolbar-slide typo-controls">
@@ -296,6 +300,34 @@
               spellcheck="true"
               placeholder="Start writing your markdown here…"
             ></textarea>
+            <!-- Morph AI Assist panel (Edit mode) -->
+            <div class="assist-panel hidden" id="assist-panel" role="dialog" aria-label="AI Assist">
+              <div class="assist-panel-header">
+                <strong>AI Assist</strong>
+                <span class="assist-panel-hint" id="assist-scope-hint">Whole document</span>
+                <button type="button" class="assist-close" id="assist-close" aria-label="Close assist">×</button>
+              </div>
+              <div class="assist-modes" id="assist-modes" role="group" aria-label="Assist mode">
+                <button type="button" class="assist-mode active" data-mode="rewrite">Rewrite</button>
+                <button type="button" class="assist-mode" data-mode="shorten">Shorten</button>
+                <button type="button" class="assist-mode" data-mode="fix_grammar">Fix grammar</button>
+                <button type="button" class="assist-mode" data-mode="custom">Custom</button>
+              </div>
+              <label class="sr-only" for="assist-instruction">Instruction</label>
+              <textarea id="assist-instruction" class="assist-instruction" rows="2" placeholder="Optional instruction (required for Custom)…"></textarea>
+              <div class="assist-actions">
+                <button type="button" class="assist-run" id="assist-run">Run</button>
+                <span class="assist-status" id="assist-status" aria-live="polite"></span>
+              </div>
+              <div class="assist-result hidden" id="assist-result">
+                <div class="assist-result-meta" id="assist-result-meta"></div>
+                <pre class="assist-result-preview" id="assist-result-preview"></pre>
+                <div class="assist-result-actions">
+                  <button type="button" class="assist-accept" id="assist-accept">Accept</button>
+                  <button type="button" class="assist-discard" id="assist-discard">Discard</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Preview pane (hidden by default) — uses iframe for sandboxed rendering -->

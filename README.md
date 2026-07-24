@@ -50,6 +50,10 @@ Make any edits to the raw markdown in **Edit** mode, then switch to **View** mod
 ## For developers
 
 FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+
+**AI Assist (Morph):** rewrite / shorten / fix grammar / custom instructions via Reflex → Router → Compact → Fast Models. See [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md). Endpoint: `https://assist.flatwrite.md/assist`.
+
 ```bash
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: application/json' \

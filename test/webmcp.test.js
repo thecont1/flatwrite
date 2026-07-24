@@ -20,7 +20,7 @@
  * captures registered tools and replays execute calls. The webmcp.js
  * script must:
  *
- *   1. Register all 11 WebMCP tools from the generated DOC_TOOLS array
+ *   1. Register all 12 WebMCP tools from the generated DOC_TOOLS array
  *   2. Have a JSON Schema that requires markdown or markdownUrl for render_markdown
  *   3. Translate friendly aliases to canonical frontmatter
  *   4. Pre-flight validate fontFamily against the bundled inventory
@@ -242,13 +242,14 @@ function fakeFetchWithTokenMint() {
 
 describe("webmcp.js — tool registration", () => {
   const EXPECTED_TOOLS = [
+    "assist_document",
     "create_document", "create_share_link", "export_document_html",
     "export_document_pdf", "get_document_state",
     "list_recent_documents", "list_render_options", "open_document",
     "render_markdown", "render_markdown_preview", "update_document_content",
   ];
 
-  test("registers all 11 WebMCP tools from the generated DOC_TOOLS array", () => {
+  test("registers all 12 WebMCP tools from the generated DOC_TOOLS array", () => {
     const tools = loadWebmcp();
     expect(tools.map((t) => t.name).sort()).toEqual(EXPECTED_TOOLS);
   });
@@ -692,14 +693,15 @@ describe("manifest parity — public/.well-known/model-context.docs.json vs webm
     return JSON.parse(readFileSync(p, "utf-8"));
   }
 
-  test("docs manifest exists and is well-formed with 11 tools", () => {
+  test("docs manifest exists and is well-formed with 12 tools", () => {
     const m = loadManifest(MANIFEST_PATH);
     expect(m.$schema).toBeTruthy();
     expect(m.name).toBe("FlatWrite Render — Docs");
     expect(m.surfaceMode).toBe("doc");
     expect(m.status).toBe("ready");
     expect(Array.isArray(m.tools)).toBe(true);
-    expect(m.tools.length).toBe(11);
+    expect(m.tools.length).toBe(12);
+    expect(m.tools.map((t) => t.name)).toContain("assist_document");
   });
 
   test("apps manifest exists with ready status and two tools", () => {
@@ -824,7 +826,7 @@ describe("scan-oriented — grader-facing schema assertions", () => {
 
   test("every tool has a category field", () => {
     const m = loadManifest();
-    const validCategories = new Set(["render", "discovery", "lifecycle", "export", "share"]);
+    const validCategories = new Set(["render", "discovery", "lifecycle", "export", "share", "assist"]);
     for (const tool of m.tools) {
       expect(tool.category).toBeDefined();
       expect(validCategories.has(tool.category)).toBe(true);
@@ -845,9 +847,9 @@ describe("scan-oriented — grader-facing schema assertions", () => {
     expect(prefixes.length).toBe(unique.size);
   });
 
-  test("every tool name starts with a verb (create_, open_, get_, list_, render_, export_, update_)", () => {
+  test("every tool name starts with a verb (create_, open_, get_, list_, render_, export_, update_, assist_)", () => {
     const m = loadManifest();
-    const verbPattern = /^(create_|open_|get_|list_|render_|export_|update_)/;
+    const verbPattern = /^(create_|open_|get_|list_|render_|export_|update_|assist_)/;
     for (const tool of m.tools) {
       expect(tool.name).toMatch(verbPattern);
     }
