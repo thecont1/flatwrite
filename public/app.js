@@ -3531,8 +3531,29 @@
     if (outerZoom) outerZoom.removeAttribute("style");
     var viewport = clone.querySelector("#vivl-viewport");
     if (viewport) viewport.removeAttribute("style");
+    /* Remove Vivliostyle's dynamically injected scroll/zoom style element.
+       This <style id="vivl-scroll-style"> contains transform: scale() and
+       other overrides that would distort the print snapshot. The print
+       snapshot CSS (appended below) provides its own clean page geometry. */
+    var vivlScrollStyle = clone.querySelector("#vivl-scroll-style");
+    if (vivlScrollStyle) vivlScrollStyle.remove();
+    /* Also remove any other dynamically injected Vivliostyle <style> elements
+       that may contain transform/scale/zoom overrides. We preserve the
+       original document CSS (which has the @page rules and typography) and
+       the _fw_print_snapshot style (appended below). */
+    clone.querySelectorAll("style").forEach(function(style) {
+      if (style.id === "_fw_print_snapshot" || style.id === "_fw_stripe") return;
+      var text = style.textContent || "";
+      if (text.indexOf("transform: scale") !== -1 || text.indexOf("data-vivliostyle") !== -1) {
+        style.remove();
+      }
+    });
     clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
       page.removeAttribute("style");
+      /* Clear inline styles on child elements that Vivliostyle may have set */
+      page.querySelectorAll("*").forEach(function (child) {
+        child.removeAttribute("style");
+      });
     });
     var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
@@ -3557,7 +3578,22 @@
       ".pagedjs_page, [data-vivliostyle-page-container] { " + pageGeometry + " display: block !important; position: relative !important; margin: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; overflow: hidden !important; transform: none !important; break-after: page !important; page-break-after: always !important; }" +
       ".pagedjs_page:last-child, [data-vivliostyle-page-container]:last-child { break-after: auto !important; page-break-after: auto !important; }" +
       "#vivl-viewport { width: auto !important; height: auto !important; overflow: visible !important; }" +
-      "@media screen { .pagedjs_page, [data-vivliostyle-page-container] { margin: 10px auto !important; } }";
+      "@media screen { .pagedjs_page, [data-vivliostyle-page-container] { margin: 10px auto !important; } }" + "@media print { .pagedjs_page, [data-vivliostyle-page-container] { margin: 0 !important; } }";
+    /* When footer is on, add CSS to position the margin-box elements that
+       Paged.js/Vivliostyle already rendered into the page DOM. The
+       @bottom-* at-rules were stripped (browser native print does not
+       support them), so we need explicit positioning for the rendered
+       footer elements (.pagedjs_bottom-left, .pagedjs_bottom-right).
+       These elements exist in the cloned DOM as children of each page
+       box, but without the @page margin-box rules they lose their
+       positioning. We pin them to the bottom margin area. */
+    if (showFooter) {
+      printCss.textContent +=
+        ".pagedjs_page .pagedjs_bottom-left, .pagedjs_page .pagedjs_bottom-right {" +
+        "position: absolute !important; bottom: 0 !important; font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important; }" +
+        ".pagedjs_page .pagedjs_bottom-left { left: 0 !important; text-align: left !important; }" +
+        ".pagedjs_page .pagedjs_bottom-right { right: 0 !important; text-align: right !important; }";
+    }
     clone.querySelector("head").appendChild(printCss);
 
     /* Replace counter(pages) in all cloned styles with the static page count.
@@ -3571,15 +3607,13 @@
         if (text.indexOf("counter(pages)") !== -1) {
           style.textContent = text.split("counter(pages)").join(String(pageCount));
         }
-        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,
-           etc.) from the cloned styles. The browser's native print (which
-           window.print() uses) does not support these at-rules. When present,
-           some browsers discard the entire @page block — including size and
-           margin — which breaks page sizing for every page. The print snapshot
-           CSS (appended separately) already provides the correct @page size
-           and margin. */
+        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,\n           etc.) from the cloned styles. The browser's native print (which\n           window.print() uses) does not support these at-rules. When present,\n           some browsers discard the entire @page block — including size and\n           margin — which breaks page sizing for every page. The print snapshot\n           CSS (appended separately) already provides the correct @page size\n           and margin.\n\n           The old regex was greedy across the entire @page block: it matched\n           from `@page {` through the last `}`, which could swallow the `size`\n           and `margin` declarations when footer was ON, or fail to match at\n           all when nested braces (from string-set) altered the block structure.\n           This version surgically removes only the @bottom-* at-rules while\n           preserving everything else in the @page block. */
         if (text.indexOf("@bottom-") !== -1) {
-          style.textContent = text.replace(/@page\s*\{[^}]*@bottom-[^}]*\}[^}]*\}/g, "");
+          style.textContent = text.replace(/@page\s*\{([^}]*)\}/g, function(_m, inner) {
+            /* Remove only @bottom-* rules from inside the @page block */
+            var cleaned = inner.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[^}]*\}/g, "");
+            return "@page {" + cleaned + "}";
+          });
         }
       });
     }

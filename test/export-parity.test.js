@@ -200,6 +200,13 @@ describe("exportPDF", () => {
     expect(body).toContain('clone.querySelector("#vivl-viewport")');
   });
 
+  test("strips Vivliostyle dynamically injected zoom/scale styles", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain('clone.querySelector("#vivl-scroll-style")');
+    expect(body).toContain('text.indexOf("transform: scale")');
+    expect(body).toContain('page.querySelectorAll("*")');
+  });
+
   test("prints the committed pagination once instead of re-running the engine", () => {
     const body = fnBody("exportPDF");
     const snapshot = fnBody("buildPrintSnapshot");
@@ -349,7 +356,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=127');
+    expect(INDEX).toContain('app.js?v=128');
   });
 
   test("loads the stylesheet revision", () => {
@@ -372,6 +379,14 @@ describe("print snapshot footer", () => {
     expect(body).toContain("showFooter");
   });
 
+  test("adds explicit footer positioning CSS when footer is on", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("pagedjs_bottom-left");
+    expect(body).toContain("pagedjs_bottom-right");
+    expect(body).toContain("position: absolute");
+    expect(body).toContain("bottom: 0");
+  });
+
   test("PDF popup is sized to the page, not the preview iframe", () => {
     const body = fnBody("exportPDF");
     expect(body).not.toContain("iframeRect");
@@ -384,7 +399,7 @@ describe("print snapshot footer", () => {
   test("print snapshot strips @bottom- margin-box rules for native print", () => {
     const body = fnBody("buildPrintSnapshot");
     expect(body).toContain("@bottom-");
-    expect(body).toContain("replace(/@page\\s*\\{[^}]*@bottom-[^}]*\\}[^}]*\\}/g");
+    expect(body).toContain("replace(/@page\\s*\\{([^}]*)\\}/g");
   });
 });
 
