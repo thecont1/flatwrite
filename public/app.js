@@ -2785,8 +2785,12 @@
         + '    /* Keep pages at their natural page size — the parent transform'
         + '       handles visual scaling. This avoids content reflow when the'
         + '       user changes zoom. */'
-        + '    pages[i].style.width = _pageW + "px";'
-        + '    pages[i].style.height = _pageH + "px";'
+        + '    /* Do NOT force pixel width/height on the page container — that'
+        + '       overrides Vivliostyle\'s @page sizing and breaks font scaling,'
+        + '       line height, and page-break fidelity. Let the @page rule size'
+        + '       the page box; only clear conflicting inline styles. */'
+        + '    pages[i].style.width = "";'
+        + '    pages[i].style.height = "";'
         + '    pages[i].style.maxWidth = "";'
         + '    pages[i].style.maxHeight = "";'
         + '    pages[i].style.transform = "none";'
@@ -3531,10 +3535,18 @@
     var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
     var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
     var pageGeometry = "width: " + printPageW + "mm !important; height: " + printPageH + "mm !important;";
+
+    /* Count committed page boxes so the footer's "Page N of M" can use a
+       static total. counter(pages) only resolves when a CSS pagination
+       engine runs, but the print snapshot is emitted as static HTML for
+       window.print() — so replace it with the actual count. */
+    var pageBoxes = clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]");
+    var pageCount = pageBoxes.length;
+    var footerMargin = showFooter ? (tbMm + " " + lrMm) : "0";
     var printCss = document.createElement("style");
     printCss.id = "_fw_print_snapshot";
     printCss.textContent =
-      "@page { size: " + printPageW + "mm " + printPageH + "mm; margin: 0; }" +
+      "@page { size: " + printPageW + "mm " + printPageH + "mm; margin: " + footerMargin + "; }" +
       "html, body { margin: 0 !important; padding: 0 !important; width: auto !important; height: auto !important; overflow: visible !important; background: #fff !important; }" +
       ".pagedjs_pages, [data-vivliostyle-spread-container], [data-vivliostyle-outer-zoom-box] { display: block !important; width: auto !important; height: auto !important; min-width: 0 !important; transform: none !important; zoom: 1 !important; }" +
       ".pagedjs_page, [data-vivliostyle-page-container] { " + pageGeometry + " display: block !important; position: relative !important; margin: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; overflow: hidden !important; transform: none !important; break-after: page !important; page-break-after: always !important; }" +
@@ -3542,6 +3554,20 @@
       "#vivl-viewport { width: auto !important; height: auto !important; overflow: visible !important; }" +
       "@media screen { .pagedjs_page, [data-vivliostyle-page-container] { margin: 10px auto !important; } }";
     clone.querySelector("head").appendChild(printCss);
+
+    /* Replace counter(pages) in all cloned styles with the static page count.
+       The snapshot is printed via window.print() (browser native), which does
+       not run Paged.js/Vivliostyle pagination — so counter(pages) stays 0
+       and footers read "Page N of 0". */
+    if (pageCount > 0) {
+      clone.querySelectorAll("style").forEach(function (style) {
+        if (style.id === "_fw_print_snapshot") return;
+        var text = style.textContent;
+        if (text.indexOf("counter(pages)") !== -1) {
+          style.textContent = text.split("counter(pages)").join(String(pageCount));
+        }
+      });
+    }
 
     var printScript = sourceDocument.createElement("script");
     printScript.textContent = "window.addEventListener('load',function(){var f=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();f.then(function(){setTimeout(function(){window.print();},100);});});";

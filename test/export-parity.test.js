@@ -294,6 +294,12 @@ describe("paged canvas extent", () => {
     expect(SRC).toContain("document.body.style.height = Math.ceil(flowH * s) + \"px\"");
     expect(body).toContain('outerZoom.style.setProperty("height", scaledH + "px", "important")');
   });
+
+  test("Vivliostyle page containers are not forced to pixel dimensions", () => {
+    const body = fnBody("renderPreview");
+    expect(body).not.toContain('pages[i].style.width = _pageW + "px"');
+    expect(body).not.toContain('pages[i].style.height = _pageH + "px"');
+  });
 });
 
 describe("button tooltips", () => {
@@ -323,7 +329,23 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=120');
+    expect(INDEX).toContain('app.js?v=121');
+  });
+});
+
+describe("print snapshot footer", () => {
+  test("replaces counter(pages) with the static page count", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("pageCount");
+    expect(body).toContain("counter(pages)");
+    expect(body).toContain("String(pageCount)");
+    expect(body).toContain("style.id === \"_fw_print_snapshot\"");
+  });
+
+  test("preserves margin box space when footer is on", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("footerMargin");
+    expect(body).toContain("showFooter");
   });
 });
 
