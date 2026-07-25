@@ -330,6 +330,15 @@ describe("button tooltips", () => {
     expect(ariaIdx).toBeGreaterThan(-1);
     expect(titleIdx).toBeLessThan(ariaIdx);
   });
+
+  test("tooltip is a fixed-width popup box with drop shadow", () => {
+    expect(STYLES).toContain(".fw-tooltip");
+    expect(STYLES).toContain("width: 220px");
+    expect(STYLES).toContain("white-space: normal");
+    expect(STYLES).toContain("box-shadow: 0 8px 24px");
+    expect(STYLES).not.toContain(".fw-tooltip {\n  white-space: nowrap");
+    expect(STYLES).not.toContain(".fw-tooltip {\n  overflow: hidden");
+  });
 });
 
 describe("Read mode logo position", () => {
@@ -341,6 +350,10 @@ describe("Read mode logo position", () => {
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
     expect(INDEX).toContain('app.js?v=125');
+  });
+
+  test("loads the stylesheet revision", () => {
+    expect(INDEX).toContain('styles.css?v=124');
   });
 });
 
