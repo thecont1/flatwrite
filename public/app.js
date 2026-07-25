@@ -2782,15 +2782,18 @@
         + '  }'
         + '  for (var i = 0; i < pages.length; i++) {'
         + '    pages[i].style.zoom = 1;'
-        + '    /* Keep pages at their natural page size — the parent transform'
-        + '       handles visual scaling. This avoids content reflow when the'
-        + '       user changes zoom. */'
         + '    /* Do NOT force pixel width/height on the page container — that'
         + '       overrides Vivliostyle\'s @page sizing and breaks font scaling,'
         + '       line height, and page-break fidelity. Let the @page rule size'
-        + '       the page box; only clear conflicting inline styles. */'
-        + '    pages[i].style.width = "";'
-        + '    pages[i].style.height = "";'
+        + '       the page box; only clear conflicting inline styles. As a fallback'
+        + '       for when Vivliostyle has not yet applied its CSS, set dimensions'
+        + '       only if the page box is currently empty. */'
+        + '    if (pages[i].style.width === "" && pages[i].offsetWidth === 0) {'
+        + '      pages[i].style.width = _pageW + "px";'
+        + '    }'
+        + '    if (pages[i].style.height === "" && pages[i].offsetHeight === 0) {'
+        + '      pages[i].style.height = _pageH + "px";'
+        + '    }'
         + '    pages[i].style.maxWidth = "";'
         + '    pages[i].style.maxHeight = "";'
         + '    pages[i].style.transform = "none";'
@@ -3535,6 +3538,8 @@
     var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
     var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
     var pageGeometry = "width: " + printPageW + "mm !important; height: " + printPageH + "mm !important;";
+    var lrMm = MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal;
+    var tbMm = MARGIN_MAP[pageMarginsTB] || MARGIN_MAP.normal;
 
     /* Count committed page boxes so the footer's "Page N of M" can use a
        static total. counter(pages) only resolves when a CSS pagination

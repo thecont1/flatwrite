@@ -297,8 +297,10 @@ describe("paged canvas extent", () => {
 
   test("Vivliostyle page containers are not forced to pixel dimensions", () => {
     const body = fnBody("renderPreview");
-    expect(body).not.toContain('pages[i].style.width = _pageW + "px"');
-    expect(body).not.toContain('pages[i].style.height = _pageH + "px"');
+    expect(body).not.toContain('pages[i].style.width = _pageW + "px";\n');
+    expect(body).not.toContain('pages[i].style.height = _pageH + "px";\n');
+    expect(body).toContain('if (pages[i].style.width === "" && pages[i].offsetWidth === 0)');
+    expect(body).toContain('if (pages[i].style.height === "" && pages[i].offsetHeight === 0)');
   });
 });
 
@@ -329,7 +331,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=123');
+    expect(INDEX).toContain('app.js?v=124');
   });
 });
 
