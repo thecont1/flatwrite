@@ -568,6 +568,19 @@
     swapPreviewFrames();
   }
 
+  function onPreviewFrameError(e) {
+    /* An engine (Paged.js / Vivliostyle) failed to paginate — usually its CDN
+       script did not load. Ignore stale frames so a late failure from an
+       superseded render cannot clobber a good current preview. Keep the last
+       committed frame on screen, drop the loader, and tell the user instead
+       of leaving the spinner to time out silently. */
+    if (!e || !e.source) return;
+    if (e.source !== previewFrameNext.contentWindow) return;
+    if (e.data && e.data.renderId !== currentRenderId) return;
+    hidePreviewLoader();
+    showToast("Preview engine failed to load — check your connection and try again");
+  }
+
   function isCurrentPreviewCommitted() {
     if (!previewFrame || !previewFrame.contentWindow) return false;
     try {
@@ -1879,6 +1892,9 @@
     /* postMessage listener — receives scroll position from sandboxed iframe */
     window.addEventListener("message", function (e) {
       if (e.source !== previewFrame.contentWindow && e.source !== previewFrameNext.contentWindow) return;
+      if (e.data && (e.data.type === "paged-error" || e.data.type === "vivl-error")) {
+        onPreviewFrameError(e);
+      }
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
       }
@@ -2110,8 +2126,11 @@
     /* Always capture the L1 heading so it can be used by the footer */
     css += 'h1 { string-set: chapter content(); }';
     if (showFooter) {
-      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; }';
-      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; } }';
+      /* Margin boxes already occupy the configured @page margin. Padding the
+         boxes themselves moves generated content toward (and in some engines
+         over) the page area, making the last body lines appear clipped. */
+      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #666; vertical-align: middle; }';
+      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; } }';
     } else {
       /* Explicitly clear margin boxes. This prevents a renderer from keeping
          stale generated content when the footer toggle is switched off. */
@@ -2438,7 +2457,10 @@
     /* Read mode always renders as Plain — WYSIWYG, no pagination engine */
     var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
     var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var contentForRender = applyFlatWritePdfBreaks(
+      stripYamlFrontMatter(editor.value || ""),
+      renderEngineKey
+    );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
 
@@ -2447,7 +2469,8 @@
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
-      ? '<script src="' + engine.script + '" defer><' + '/script>'
+      ? '<script>window.PagedConfig = { auto: false };<' + '/script>'
+        + '<script src="' + engine.script + '" defer><' + '/script>'
       : '';
 
     /* One canonical stylesheet feeds preview, HTML export, and PDF export. */
@@ -2523,10 +2546,12 @@
         + '  var outerZoom = document.querySelector("[data-vivliostyle-outer-zoom-box]");'
         + '  var pages = document.querySelectorAll("[data-vivliostyle-page-container]");'
         + '  if (spread) {'
+        + '    /* Scale the complete paginated flow, but reserve its scaled visual'
+        + '       dimensions on the outer box below. This keeps every page in the'
+        + '       scrollable coordinate space instead of clipping later pages. */'
         + '    spread.style.setProperty("transform", "scale(" + s + ")", "important");'
         + '    spread.style.setProperty("transform-origin", "top left", "important");'
         + '    spread.style.setProperty("min-width", "0", "important");'
-        + '    spread.style.width = "";'
         + '  }'
         + '  /* Size the outer-zoom-box to the visual scaled size so scrollbars in'
         + '     #vivl-viewport accurately reflect the transformed content. */'
@@ -2564,8 +2589,11 @@
         + '    pages[i].style.setProperty("margin", "8px 0", "important");'
         + '  }'
         + '}'
-        + 'function _vivlNotify() {'
+        + 'function _setVivlCanvasExtent() {'
         + '  _vivlEnableScroll();'
+        + '}'
+        + 'function _vivlNotify() {'
+        + '  _setVivlCanvasExtent();'
         + '  var m = viewport.scrollHeight - viewport.clientHeight;'
         + '  if (m > 0) viewport.scrollTop = Math.round(_scrollRatio * m);'
         + '  else viewport.scrollTop = 0;'
@@ -2573,7 +2601,7 @@
         + '}'
         + 'viewer.addListener("loaded", _vivlNotify);'
         + '(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function(){ viewer.loadDocument(docUrl); });'
-        + 'setTimeout(_vivlNotify, 3000);'
+        + 'setTimeout(function(){ if (!document.querySelector("[data-vivliostyle-page-container]")) parent.postMessage({type:"vivl-error", renderId:_renderId}, "*"); }, 10000);'
         + 'window.addEventListener("resize", function() { viewer.setOptions({ zoom: 1 }); _vivlEnableScroll(); });'
         + 'viewport.addEventListener("scroll", function() {'
         + '  var m = viewport.scrollHeight - viewport.clientHeight;'
@@ -2657,9 +2685,15 @@
       + 'var _renderId = ' + renderId + ';'
       + 'window.__flatwriteRenderId = _renderId;'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
+      + 'function _setPagedCanvasExtent(flowW, flowH, s) {'
+      + '  document.body.style.width = Math.ceil(flowW * s) + "px";'
+      + '  document.body.style.height = Math.ceil(flowH * s) + "px";'
+      + '  document.documentElement.style.height = Math.ceil(flowH * s) + "px";'
+      + '}'
       + 'function _fitPage() {'
       + '  if (!_isPaged) return;'
       + '  var page = document.querySelector(".pagedjs_page");'
+      + '  var pages = document.querySelector(".pagedjs_pages");'
       + '  var pageW = page ? page.offsetWidth : _pageW;'
       + '  var pageH = page ? page.offsetHeight : _pageH;'
       + '  var iframeW = window.innerWidth;'
@@ -2667,31 +2701,39 @@
       + '  var inset = 20;'
       + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH) * _zoomFactor;'
       + '  var scaledW = pageW * s;'
+      + '  var flowW = pages ? pages.scrollWidth : pageW;'
+      + '  var flowH = pages ? pages.scrollHeight : pageH;'
       + '  var marginLeft = Math.max(inset, (iframeW - scaledW) / 2);'
       + '  document.documentElement.style.overflow = "auto";'
       + '  document.body.style.maxWidth = "none";'
-      + '  document.body.style.width = pageW + "px";'
-      + '  document.body.style.transform = "scale(" + s + ")";'
-      + '  document.body.style.transformOrigin = "top left";'
+      + '  _setPagedCanvasExtent(flowW, flowH, s);'
+      + '  document.body.style.transform = "none";'
+      + '  if (pages) {'
+      + '    pages.style.setProperty("transform", "scale(" + s + ")", "important");'
+      + '    pages.style.setProperty("transform-origin", "top left", "important");'
+      + '    pages.style.setProperty("width", flowW + "px", "important");'
+      + '  }'
       + '  document.body.style.marginLeft = marginLeft + "px";'
       + '  document.body.style.marginRight = "0";'
       + '  window.scrollTo(0, 0);'
       + '  _updatePanCursor();'
       + '}'
-      + 'function _registerPagedHook() {'
-      + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
-      + '    window.PagedPolyfill.on("afterPreview", function() {'
-      + '      _fitPage();'
-      + '      _killBorders();'
-      + '      if (!_pagedReady) { _pagedReady = true;'
-      + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
-      + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
-      + '      }'
-      + '      parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
-      + '    });'
-      + '    return true;'
-      + '  }'
-      + '  return false;'
+      + 'function _commitPagedPreview() {'
+      + '  if (_pagedReady || !document.querySelector(".pagedjs_page")) return;'
+      + '  _pagedReady = true;'
+      + '  _fitPage();'
+      + '  _killBorders();'
+      + '  var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '  if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '  parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
+      + '}'
+      + 'function _startPagedPreview() {'
+      + '  if (typeof window.PagedPolyfill === "undefined" || !window.PagedPolyfill.on || !window.PagedPolyfill.preview) return false;'
+      + '  window.PagedPolyfill.on("afterPreview", _commitPagedPreview);'
+      + '  window.PagedPolyfill.preview().then(_commitPagedPreview).catch(function(){'
+      + '    parent.postMessage({type:"paged-error", renderId:_renderId}, "*");'
+      + '  });'
+      + '  return true;'
       + '}'
       + 'function _initFit() {'
       + '  if (!_isPaged) {'
@@ -2699,26 +2741,14 @@
       + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '    return;'
       + '  }'
-      + '  if (!_registerPagedHook()) {'
+      + '  if (!_startPagedPreview()) {'
       + '    var tries = 0;'
       + '    var interval = setInterval(function() {'
       + '      tries++;'
-      + '      if (_registerPagedHook() || tries > 50) { clearInterval(interval); _fitPage(); }'
+      + '      if (_startPagedPreview()) { clearInterval(interval); }'
+      + '      else if (tries > 50) { clearInterval(interval); parent.postMessage({type:"paged-error", renderId:_renderId}, "*"); }'
       + '    }, 100);'
       + '  }'
-      + '  window.addEventListener("load", function() {'
-      + '    _fitPage();'
-      + '    if (!_pagedReady) { _pagedReady = true;'
-      + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
-      + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
-      + '    }'
-      + '    parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
-      + '  });'
-      + '  var observer = new MutationObserver(function() {'
-      + '    if (document.querySelector(".pagedjs_page")) { _fitPage(); _killBorders(); }'
-      + '  });'
-      + '  observer.observe(document.body, { childList: true, subtree: true });'
-      + '  _fitPage();'
       + '}'
       + 'function _killBorders() {'
       + '  var s = document.getElementById("_fw_kill_borders");'
@@ -2986,7 +3016,7 @@
 
     var src = sidebarLogo.getBoundingClientRect();
     var toolbarRect = toolbar.getBoundingClientRect();
-    var dstLeft = toolbarRect.left;
+    var dstLeft = toolbarRect.left + 5;
 
     var floater = document.createElement("div");
     floater.className = "read-logo";

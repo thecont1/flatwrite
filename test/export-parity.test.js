@@ -103,6 +103,83 @@ describe("buildPageCSS page layout", () => {
     expect(body).toContain("@bottom-left { content: none; }");
     expect(body).toContain("@bottom-right { content: none; }");
   });
+
+  test("reserves page margin boxes without pushing them into body content", () => {
+    const body = fnBody("buildPageCSS");
+    expect(body).toContain("@bottom-left");
+    expect(body).toContain("@bottom-right");
+    expect(body).not.toContain("padding-bottom: 3mm");
+  });
+});
+
+describe("paged preview lifecycle", () => {
+  test("starts Paged.js deterministically before committing its staging frame", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain('window.PagedConfig = { auto: false }');
+    expect(body).toContain('PagedPolyfill.on("afterPreview", _commitPagedPreview)');
+    expect(body).toContain("window.PagedPolyfill.preview().then(_commitPagedPreview)");
+    expect(body).toContain(".catch(function()");
+    expect(body).not.toContain('window.addEventListener("load", function()');
+    expect(body).not.toContain("setTimeout(_vivlNotify, 3000)");
+  });
+
+  test("only commits a Paged.js frame after real page boxes exist", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain('!document.querySelector(".pagedjs_page")');
+    expect(body).toContain('parent.postMessage({type:"paged-ready"');
+  });
+
+  test("does not mutate page geometry while Paged.js is still paginating", () => {
+    const body = fnBody("renderPreview");
+    expect(body).not.toContain("new MutationObserver");
+    expect(body).not.toContain('if (document.querySelector(".pagedjs_page")) { _fitPage();');
+  });
+
+  test("does not rely on an early animation-frame race to commit Paged.js", () => {
+    const body = fnBody("renderPreview");
+    expect(body).not.toContain("requestAnimationFrame(_commitPagedPreview)");
+  });
+
+  test("does not use blind load/timeouts as successful pagination signals", () => {
+    const body = fnBody("renderPreview");
+    expect(body).not.toContain('window.addEventListener("load", function()');
+    expect(body).not.toContain("setTimeout(_vivlNotify, 3000)");
+  });
+
+  test("preview scaling preserves page-flow geometry", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain('pages.style.setProperty("transform", "scale(" + s + ")"');
+    expect(body).not.toContain('document.body.style.transform = "scale(" + s + ")"');
+  });
+
+  test("engine pagination failures are surfaced, not swallowed", () => {
+    // The iframe posts these on failure; the parent must act on both.
+    expect(SRC).toContain('type:"paged-error"');
+    expect(SRC).toContain('type:"vivl-error"');
+    expect(SRC).toContain("function onPreviewFrameError");
+    // The parent message listener routes both error types to the handler.
+    expect(SRC).toContain('e.data.type === "paged-error" || e.data.type === "vivl-error"');
+    // Failure handling is renderId-guarded so a stale failure can't clobber a good frame.
+    const body = fnBody("onPreviewFrameError");
+    expect(body).toContain("e.data.renderId !== currentRenderId");
+    expect(body).toContain("hidePreviewLoader()");
+  });
+});
+
+describe("paged canvas extent", () => {
+  test("both engines derive the scroll height from the scaled page flow", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain("_setPagedCanvasExtent");
+    expect(body).toContain("_setVivlCanvasExtent");
+    expect(SRC).toContain("document.body.style.height = Math.ceil(flowH * s) + \"px\"");
+    expect(body).toContain('outerZoom.style.setProperty("height", scaledH + "px", "important")');
+  });
+});
+
+describe("Read mode logo position", () => {
+  test("adds five pixels to the settled toolbar destination", () => {
+    expect(fnBody("animateLogoToCenter")).toContain("toolbarRect.left + 5");
+  });
 });
 
 describe("exportHTML", () => {
