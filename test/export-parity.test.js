@@ -255,17 +255,21 @@ describe("FlatWrite PDF spacing tag", () => {
     expect(README).toContain("Read");
   });
 
-  test("exposes the page-break control as the first toolbar button", () => {
+  test("exposes AI Assist as the first toolbar button, page-break second", () => {
     const toolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
-    expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-page-break"/);
+    expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
+    expect(toolbar).toContain('id="btn-page-break"');
     expect(toolbar).toContain('data-md="pagebreak"');
     expect(toolbar).toContain('aria-label="Insert PDF page break"');
-    expect(INDEX).not.toContain('id="btn-assist"');
+    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
   });
 
-  test("describes the control's exact PDF-only behavior", () => {
+  test("documents both toolbar controls' behavior", () => {
     expect(SRC).toContain(
       '"btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)"'
+    );
+    expect(SRC).toContain(
+      '"btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)"'
     );
   });
 
@@ -319,7 +323,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=119');
+    expect(INDEX).toContain('app.js?v=120');
   });
 });
 
