@@ -60,6 +60,7 @@ import {
   validateFontFamily,
   validateMarkdownUrl,
 } from './shared/mcpShared.js';
+import { registerAssistDocumentTool } from './tools/assistDocument.js';
 
 /**
  * Default origin allowlist for browser-side callers. The long-lived
@@ -102,7 +103,7 @@ function isBrowserRequest(req: IncomingMessage): boolean {
   return Boolean(req.headers['origin']);
 }
 
-function buildMcpServer(apiKey: string, baseUrl?: string) {
+function buildMcpServer(apiKey: string, baseUrl?: string, assistUrl?: string) {
   const mcp = new McpServer({ name: 'flatwrite-render', version: '0.2.0' });
 
   const RenderStyleSchema = z
@@ -187,6 +188,12 @@ function buildMcpServer(apiKey: string, baseUrl?: string) {
         return { isError: true, content: [{ type: 'text' as const, text: sanitizeDetail(e) }] };
       }
     },
+  );
+
+  registerAssistDocumentTool(
+    mcp,
+    apiKey,
+    assistUrl || process.env.FLATWRITE_ASSIST_BASE_URL || 'https://assist.flatwrite.md/assist',
   );
 
   return mcp;

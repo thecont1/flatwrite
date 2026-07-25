@@ -1,7 +1,7 @@
 {
   "docs": {
     "$schema": "https://webmcp.org/schemas/model-context-v1.json",
-    "name": "FlatWrite Render — Docs",
+    "name": "FlatWrite Render \u2014 Docs",
     "version": "1.0.0",
     "surfaceMode": "doc",
     "status": "ready",
@@ -22,7 +22,7 @@
         "method": "POST",
         "headers": {
           "Content-Type": "application/json",
-          "X-Api-Key": "<server-to-server key — clients mint X-Mcp-Token instead>"
+          "X-Api-Key": "<server-to-server key \u2014 clients mint X-Mcp-Token instead>"
         },
         "authNote": "Browser clients mint a short-lived X-Mcp-Token from https://render.flatwrite.md/mcp-token first. Server-to-server clients may use X-Api-Key directly."
       }
@@ -45,7 +45,7 @@
             },
             "font": {
               "type": "string",
-              "description": "Font family — must be a bundled family.",
+              "description": "Font family \u2014 must be a bundled family.",
               "enum": [
                 "Inter",
                 "JetBrains Mono",
@@ -171,7 +171,7 @@
             },
             "docEngine": {
               "type": "string",
-              "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
+              "description": "Document engine \u2014 \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
               "enum": [
                 "none",
                 "pagedjs",
@@ -188,7 +188,7 @@
             },
             "theme": {
               "type": "string",
-              "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
+              "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) \u2014 common values are \"light\" and \"dark\"."
             }
           },
           "required": [],
@@ -218,7 +218,7 @@
               "enum": [
                 "html"
               ],
-              "description": "Output format — always \"html\" for render tools."
+              "description": "Output format \u2014 always \"html\" for render tools."
             },
             "document": {
               "type": "object",
@@ -749,7 +749,7 @@
       },
       {
         "name": "render_markdown_preview",
-        "description": "Triggers the editor's built-in preview pane. No HTML is returned — this tool produces a visual side-effect only. Agents that need HTML output must use render_markdown instead.",
+        "description": "Triggers the editor's built-in preview pane. No HTML is returned \u2014 this tool produces a visual side-effect only. Agents that need HTML output must use render_markdown instead.",
         "category": "render",
         "inputSchema": {
           "type": "object",
@@ -774,7 +774,7 @@
               "enum": [
                 "preview"
               ],
-              "description": "Result modality — always \"preview\"."
+              "description": "Result modality \u2014 always \"preview\"."
             },
             "documentId": {
               "description": "Stable identifier for the previewed document.",
@@ -828,7 +828,7 @@
               "enum": [
                 "html"
               ],
-              "description": "Export format — always \"html\"."
+              "description": "Export format \u2014 always \"html\"."
             },
             "downloadUrl": {
               "description": "Blob URL of the exported HTML (temporary, valid for the session).",
@@ -883,7 +883,7 @@
               "enum": [
                 "pdf"
               ],
-              "description": "Export format — always \"pdf\"."
+              "description": "Export format \u2014 always \"pdf\"."
             },
             "pageCount": {
               "description": "Number of pages in the rendered output, if known.",
@@ -956,12 +956,166 @@
         "displayHints": {
           "inputFieldAliases": {}
         }
+      },
+      {
+        "name": "assist_document",
+        "description": "Rewrite, shorten, fix grammar, or apply a custom instruction to markdown via FlatWrite Assist (Morph: Reflex + Router + Compact + Fast Models). Returns full markdown plus the edited piece. Does not modify the editor \u2014 apply with update_document_content if desired. When selectionStart and selectionEnd are provided, only that span is rewritten.",
+        "category": "assist",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": {
+              "type": "string",
+              "description": "Full markdown document. Optional in the browser WebMCP path (defaults to the active editor). Required for server MCP."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Assist mode.",
+              "enum": [
+                "custom",
+                "rewrite",
+                "shorten",
+                "fix_grammar"
+              ]
+            },
+            "instruction": {
+              "type": "string",
+              "description": "Freeform instruction. Required when mode is \"custom\"."
+            },
+            "selectionStart": {
+              "type": "number",
+              "description": "Optional selection start index (inclusive) within markdown.",
+              "minimum": 0
+            },
+            "selectionEnd": {
+              "type": "number",
+              "description": "Optional selection end index (exclusive) within markdown.",
+              "minimum": 0
+            },
+            "selectionText": {
+              "type": "string",
+              "description": "Optional selection text (defaults to markdown.slice(start, end))."
+            }
+          },
+          "required": []
+        },
+        "outputSchema": {
+          "type": "object",
+          "title": "AssistDocumentOutput",
+          "description": "Result of Morph-powered document assist. Returns full markdown with the edit applied, plus the edited piece for selection-scoped edits. Does not modify the editor automatically.",
+          "required": [
+            "ok",
+            "markdown",
+            "piece",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "description": "Always true on success."
+            },
+            "markdown": {
+              "type": "string",
+              "description": "Full document markdown after applying the edit (selection spliced or whole-doc replace)."
+            },
+            "piece": {
+              "type": "string",
+              "description": "Edited content for the target scope only (selection text or full document)."
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "selection",
+                "document"
+              ],
+              "description": "Whether the edit targeted a selection or the whole document."
+            },
+            "explanation": {
+              "type": "string",
+              "description": "Short human-readable summary of what changed."
+            },
+            "model": {
+              "type": "string",
+              "description": "Morph Fast Model id that produced the edit."
+            },
+            "routing": {
+              "type": "object",
+              "description": "Model Router outcome.",
+              "additionalProperties": false,
+              "properties": {
+                "tier": {
+                  "type": "string",
+                  "description": "easy | medium | hard"
+                },
+                "difficulty": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "domain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "compacted": {
+              "type": "boolean",
+              "description": "Whether Compact ran on the input before generation."
+            },
+            "usage": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "Token usage from the model call, when available.",
+              "additionalProperties": true
+            },
+            "reflex": {
+              "type": "object",
+              "description": "Reflex classifier labels for user and assistant turns.",
+              "additionalProperties": true
+            },
+            "selection": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "Selection range used, if any.",
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "type": "number"
+                }
+              }
+            },
+            "nextSuggestedTool": {
+              "type": "string",
+              "description": "Suggested next tool (e.g. update_document_content to apply)."
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "displayHints": {
+          "inputFieldAliases": {}
+        }
       }
     ]
   },
   "apps": {
     "$schema": "https://webmcp.org/schemas/model-context-v1.json",
-    "name": "FlatWrite Render — Apps",
+    "name": "FlatWrite Render \u2014 Apps",
     "version": "1.0.0",
     "surfaceMode": "app",
     "status": "ready",
@@ -994,7 +1148,7 @@
             },
             "font": {
               "type": "string",
-              "description": "Font family — must be a bundled family.",
+              "description": "Font family \u2014 must be a bundled family.",
               "enum": [
                 "Inter",
                 "JetBrains Mono",
@@ -1120,7 +1274,7 @@
             },
             "docEngine": {
               "type": "string",
-              "description": "Document engine — \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
+              "description": "Document engine \u2014 \"none\" emits plain CSS; \"pagedjs\"/\"vivliostyle\" wrap the output in @page rules.",
               "enum": [
                 "none",
                 "pagedjs",
@@ -1137,7 +1291,7 @@
             },
             "theme": {
               "type": "string",
-              "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) — common values are \"light\" and \"dark\"."
+              "description": "Theme identifier rendered as body[data-theme=\"...\"] so consumer CSS can theme via attribute selectors. Free-form (alphanumeric, dash, underscore) \u2014 common values are \"light\" and \"dark\"."
             }
           },
           "required": [],
@@ -1167,7 +1321,7 @@
               "enum": [
                 "html"
               ],
-              "description": "Output format — always \"html\" for render tools."
+              "description": "Output format \u2014 always \"html\" for render tools."
             },
             "document": {
               "type": "object",

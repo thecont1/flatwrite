@@ -521,7 +521,7 @@ export type SurfaceMode = 'doc' | 'app';
  * primary payload like `markdown` or `markdownUrl`). The generator
  * composes the JSON-Schema `properties` block from both kinds.
  */
-export type ToolCategory = 'render' | 'discovery' | 'lifecycle' | 'export' | 'share';
+export type ToolCategory = 'render' | 'discovery' | 'lifecycle' | 'export' | 'share' | 'assist';
 
 /**
  * Sentinel values for tools whose `outputSchema` will be injected by
@@ -727,6 +727,72 @@ export const LIST_RECENT_OUTPUT_SCHEMA = {
   },
 } as const;
 
+export const ASSIST_DOCUMENT_OUTPUT_SCHEMA = {
+  type: 'object',
+  title: 'AssistDocumentOutput',
+  description:
+    'Result of Morph-powered document assist. Returns full markdown with the edit applied, ' +
+    'plus the edited piece for selection-scoped edits. Does not modify the editor automatically.',
+  required: ['ok', 'markdown', 'piece', 'scope'],
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean', description: 'Always true on success.' },
+    markdown: {
+      type: 'string',
+      description: 'Full document markdown after applying the edit (selection spliced or whole-doc replace).',
+    },
+    piece: {
+      type: 'string',
+      description: 'Edited content for the target scope only (selection text or full document).',
+    },
+    scope: {
+      type: 'string',
+      enum: ['selection', 'document'],
+      description: 'Whether the edit targeted a selection or the whole document.',
+    },
+    explanation: { type: 'string', description: 'Short human-readable summary of what changed.' },
+    model: { type: 'string', description: 'Morph Fast Model id that produced the edit.' },
+    routing: {
+      type: 'object',
+      description: 'Model Router outcome.',
+      additionalProperties: false,
+      properties: {
+        tier: { type: 'string', description: 'easy | medium | hard' },
+        difficulty: { type: 'string' },
+        confidence: { type: ['number', 'null'] },
+        domain: { type: ['string', 'null'] },
+      },
+    },
+    compacted: {
+      type: 'boolean',
+      description: 'Whether Compact ran on the input before generation.',
+    },
+    usage: {
+      type: ['object', 'null'],
+      description: 'Token usage from the model call, when available.',
+      additionalProperties: true,
+    },
+    reflex: {
+      type: 'object',
+      description: 'Reflex classifier labels for user and assistant turns.',
+      additionalProperties: true,
+    },
+    selection: {
+      type: ['object', 'null'],
+      description: 'Selection range used, if any.',
+      additionalProperties: false,
+      properties: {
+        start: { type: 'number' },
+        end: { type: 'number' },
+      },
+    },
+    nextSuggestedTool: {
+      type: 'string',
+      description: 'Suggested next tool (e.g. update_document_content to apply).',
+    },
+  },
+} as const;
+
 export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
   {
     name: 'render_markdown',
@@ -927,6 +993,58 @@ export const RENDER_TOOLS_DOCS: readonly ToolSpec[] = [
     requiredFields: [],
     outputSchema: INJECT_SHARE_LINK_OUTPUT,
     annotations: { readOnlyHint: false },
+    displayHints: {
+      inputFieldAliases: {},
+    },
+  },
+  {
+    name: 'assist_document',
+    description:
+      'Rewrite, shorten, fix grammar, or apply a custom instruction to markdown via FlatWrite Assist ' +
+      '(Morph: Reflex + Router + Compact + Fast Models). Returns full markdown plus the edited piece. ' +
+      'Does not modify the editor — apply with update_document_content if desired. When selectionStart ' +
+      'and selectionEnd are provided, only that span is rewritten.',
+    surfaceMode: 'doc',
+    category: 'assist',
+    inputFields: [
+      {
+        name: 'markdown',
+        type: 'string',
+        description:
+          'Full markdown document. Optional in the browser WebMCP path (defaults to the active editor). Required for server MCP.',
+      },
+      {
+        name: 'mode',
+        type: 'string',
+        description: 'Assist mode.',
+        enum: ['custom', 'rewrite', 'shorten', 'fix_grammar'],
+      },
+      {
+        name: 'instruction',
+        type: 'string',
+        description: 'Freeform instruction. Required when mode is "custom".',
+      },
+      {
+        name: 'selectionStart',
+        type: 'number',
+        description: 'Optional selection start index (inclusive) within markdown.',
+        minimum: 0,
+      },
+      {
+        name: 'selectionEnd',
+        type: 'number',
+        description: 'Optional selection end index (exclusive) within markdown.',
+        minimum: 0,
+      },
+      {
+        name: 'selectionText',
+        type: 'string',
+        description: 'Optional selection text (defaults to markdown.slice(start, end)).',
+      },
+    ],
+    requiredFields: [],
+    outputSchema: ASSIST_DOCUMENT_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true },
     displayHints: {
       inputFieldAliases: {},
     },

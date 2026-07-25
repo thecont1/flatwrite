@@ -31,8 +31,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { registerRenderMarkdownTool } from './tools/renderMarkdown.js';
 import { registerRenderMarkdownFromUrlTool } from './tools/renderMarkdownFromUrl.js';
+import { registerAssistDocumentTool } from './tools/assistDocument.js';
 
 const RENDER_URL_DEFAULT = 'https://render.flatwrite.md/render';
+const ASSIST_URL_DEFAULT = 'https://assist.flatwrite.md/assist';
 
 function main(): void {
   const apiKey = process.env.FLATWRITE_RENDER_API_KEY;
@@ -44,11 +46,12 @@ function main(): void {
   }
 
   const baseUrl = process.env.FLATWRITE_RENDER_BASE_URL ?? RENDER_URL_DEFAULT;
+  const assistUrl = process.env.FLATWRITE_ASSIST_BASE_URL ?? ASSIST_URL_DEFAULT;
 
   const server = new McpServer(
     {
       name: 'flatwrite-render',
-      version: '0.1.0',
+      version: '0.2.0',
     },
     {
       capabilities: {
@@ -58,12 +61,14 @@ function main(): void {
         'Render markdown via the FlatWrite public render API. ' +
         'Use render_markdown for raw markdown and render_markdown_from_url ' +
         'when the markdown is hosted at a URL on an allowlisted host ' +
-        '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org).',
+        '(raw.githubusercontent.com, raw.gitlab.com, bitbucket.org). ' +
+        'Use assist_document to rewrite/shorten/fix markdown via Morph-powered Assist.',
     },
   );
 
   registerRenderMarkdownTool(server, apiKey, baseUrl);
   registerRenderMarkdownFromUrlTool(server, apiKey, baseUrl);
+  registerAssistDocumentTool(server, apiKey, assistUrl);
 
   const transport = new StdioServerTransport();
   server

@@ -39,6 +39,30 @@ The preview is built around a polished document experience with fine-grained con
 
 - Pick a font, then tune **size**, **weight**, and **line spacing** until the reading rhythm feels right. Adjust **UI zoom** when the chrome needs to be a little larger or smaller. All fonts are self-hosted and bundled, so the rendered output has no external font dependency.
 
+## PDF-only vertical spacing
+
+FlatWrite supports a proprietary self-closing tag for adding controlled blank space to paged output:
+
+```html
+<fw-break lines="3" />
+```
+
+`lines` inserts that many line-heights in **Paged.js** and **Vivliostyle** output. Values are truncated to integers and clamped to `0–24`; omitted `lines` defaults to `1`, while invalid values insert no space. The tag is removed entirely in **Plain** and **Read** modes, so it never appears as visible text.
+
+## Choosing a pagination engine
+
+FlatWrite offers three rendering modes, selectable from the **Engine** section of the sidebar. Hover over an engine button to see its feature summary.
+
+| Engine | Best for | Tables | Running headers | Page counters | Startup |
+|---|---|---|---|---|---|
+| **Plain CSS** | Quick edits, WYSIWYG preview | N/A (no pagination) | N/A | N/A | Instant |
+| **Paged.js** | Text-heavy documents, fast turnaround | Basic (may break mid-row) | Unreliable across page breaks | Accurate in preview | Fast (~70KB) |
+| **Vivliostyle** | Books, complex layouts, documents with tables | Full CSS Table support | Reliable via `string-set`/`string()` | Always accurate | Slower (~1.2MB) |
+
+All three engines share the same typography controls (font, size, weight, line spacing), page size/orientation settings, and `<fw-break>` support. The choice only affects how the document is paginated for View mode and PDF export.
+
+**Quick guide:** If your document has tables, chapter headings with running headers, or multi-column layouts, use **Vivliostyle**. If you just need to paginate a text-heavy document quickly, use **Paged.js**. Use **Plain CSS** for editing and quick preview — no pagination, no PDF export.
+
 ## Get started
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.
@@ -50,6 +74,10 @@ Make any edits to the raw markdown in **Edit** mode, then switch to **View** mod
 ## For developers
 
 FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+
+**AI Assist (Morph):** rewrite / shorten / fix grammar / custom instructions via Reflex → Router → Compact → Fast Models. See [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md). Endpoint: `https://assist.flatwrite.md/assist`.
+
 ```bash
 curl -X POST https://render.flatwrite.md/render \
   -H 'Content-Type: application/json' \

@@ -130,6 +130,7 @@
       "orientation: " + orientation,
       "marginsLR: " + pageMarginsLR,
       "marginsTB: " + pageMarginsTB,
+      "columns: " + pageColumns,
       "footer: " + showFooter,
       "font: " + comfortFont,
       "size: " + sizeStep,
@@ -169,9 +170,9 @@
      ========================================================================== */
 
   var DOC_ENGINES = {
-    pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media" },
-    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true },
-    none: { label: "Plain CSS", script: null, category: "unstyled" }
+    pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media", description: "Fast pagination. Best for text-heavy documents. Basic table support (may break mid-row). Running headers unreliable across page breaks. ~70KB." },
+    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true, description: "Professional publishing. Full CSS Table support, reliable running headers via string-set/string(), accurate page counters. Best for books and complex layouts. ~1.2MB." },
+    none: { label: "Plain CSS", script: null, category: "unstyled", description: "No pagination. WYSIWYG preview for quick edits. PDF export disabled." }
   };
 
   /* ==========================================================================
@@ -491,6 +492,10 @@
     + "&family=JetBrains+Mono:wght@300;400;600;700"
     + "&family=Comfortaa:wght@300;400;500;600;700"
     + "&display=swap";
+  /* Generated previews and exports use the same vendored font inventory as
+     the editor shell. Keeping this URL absolute also makes it resolve from
+     blob: export documents. */
+  var FONT_STYLESHEET_URL = new URL("fonts.css?v=2", window.location.href).href;
 
   /* Lazy-load the Comfort Font stylesheet only when the user opens the dropdown. */
   function loadComfortFonts() {
@@ -561,6 +566,28 @@
     if (e.source !== previewFrameNext.contentWindow) return;
     if (e.data && e.data.renderId !== currentRenderId) return;
     swapPreviewFrames();
+  }
+
+  function onPreviewFrameError(e) {
+    /* An engine (Paged.js / Vivliostyle) failed to paginate — usually its CDN
+       script did not load. Ignore stale frames so a late failure from an
+       superseded render cannot clobber a good current preview. Keep the last
+       committed frame on screen, drop the loader, and tell the user instead
+       of leaving the spinner to time out silently. */
+    if (!e || !e.source) return;
+    if (e.source !== previewFrameNext.contentWindow) return;
+    if (e.data && e.data.renderId !== currentRenderId) return;
+    hidePreviewLoader();
+    showToast("Preview engine failed to load — check your connection and try again");
+  }
+
+  function isCurrentPreviewCommitted() {
+    if (!previewFrame || !previewFrame.contentWindow) return false;
+    try {
+      return previewFrame.contentWindow.__flatwriteRenderId === currentRenderId;
+    } catch (e) {
+      return false;
+    }
   }
 
   /* Document layout state */
@@ -783,7 +810,14 @@
   function handleFileUpload(file) {
     if (!file) return;
     var reader = new FileReader();
+    reader.onerror = function () {
+      showToast("Could not read " + (file.name || "the selected file"));
+    };
     reader.onload = function () {
+      if (typeof reader.result !== "string" || reader.result.length === 0) {
+        showToast("The selected file is empty");
+        return;
+      }
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded file?");
         if (!ok) return;
@@ -1080,6 +1114,7 @@
       buildFontDropdown();
       buildAppFrameworkDropdown();
       renderComponentGrid();
+      initButtonTooltips();
       setDocEngine(currentDocEngine);
       setSurfaceMode(surfaceMode);
       syncDocControlsUI();
@@ -1133,7 +1168,8 @@
           return;
         }
         var parsed = parseShareYaml(data.content);
-        editor.value = data.content; /* keep full source including YAML for IDB + .md export */
+        /* Metadata belongs to the share envelope, not the user's Markdown. */
+        editor.value = parsed.body;
 
         /* Apply preferences from YAML front-matter if present */
         if (parsed.frontmatter) {
@@ -1152,6 +1188,7 @@
           if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
           if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
           if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
+          if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
           if (fm.footer === "true" || fm.footer === "on") showFooter = true;
           if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
             comfortFont = fm.font;
@@ -1171,7 +1208,7 @@
         }
 
         editor.setSelectionRange(0, 0);
-        initialEditorContent = data.content;
+        initialEditorContent = parsed.body;
         lastScrollRatio = 0;
         setMode("read");
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
@@ -1248,6 +1285,34 @@
     return classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
   }
 
+  /* FlatWrite PDF-only vertical spacing.
+     Syntax: <fw-break lines="3"> or <fw-break lines="3" />.
+     The count is an integer line multiple, clamped to keep accidental values
+     from creating unbounded blank space. Plain, Read, and App surfaces strip
+     the tag before Markdown is parsed. */
+  var FW_PDF_BREAK_MAX = 24;
+
+  function applyFlatWritePdfBreaks(markdown, renderEngineKey) {
+    var isPaged = renderEngineKey === "pagedjs" || renderEngineKey === "vivliostyle";
+    var source = String(markdown || "")
+      /* Remove malformed/unclosed FlatWrite break tags as well. They should
+         never leak into Plain/Read output or become visible prose. */
+      .replace(/<fw-break\b(?![^>]*>)[^\r\n]*/gi, "");
+    return source.replace(
+      /<fw-break\b([^>]*)\/?\s*>(?:\s*<\/fw-break\s*>)?/gi,
+      function (_match, attrs) {
+        var countMatch = String(attrs || "").match(/\blines\s*=\s*["']?([^\s"'>]+)/i);
+        var numeric = countMatch ? Number(countMatch[1]) : 1;
+        var lines = Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+        lines = Math.max(0, Math.min(FW_PDF_BREAK_MAX, lines));
+        var replacement = lines > 0
+          ? '<span class="fw-pdf-break" style="--fw-break-lines:' + lines + '" aria-hidden="true"></span>'
+          : "";
+        return isPaged ? replacement : "";
+      }
+    );
+  }
+
   /* ==========================================================================
      IDB persistence — restore from IndexedDB (Mode A default)
      ========================================================================== */
@@ -1313,6 +1378,166 @@
   }
 
   /* ==========================================================================
+     Accessible button tooltips
+     ========================================================================== */
+
+  var BUTTON_TOOLTIP_COPY = {
+    "mobile-hamburger": "Open or close the controls sidebar",
+    "btn-load-url": "Load a document from a public URL",
+    "btn-load-local": "Load a document from this device",
+    "toggle-orient": "Switch between portrait and landscape pages",
+    "toggle-footer": "Show or hide page numbers and the document title",
+    "fw-dropdown-btn": "Choose the component CSS framework",
+    "sidebar-export-md": "Open the source as Markdown",
+    "sidebar-export-html": "Open the rendered document as HTML",
+    "sidebar-export-pdf": "Open the paginated document for PDF printing",
+    "sidebar-share-url": "Create a shareable URL",
+    "font-dropdown-btn": "Choose the document typeface",
+    "size-down": "Decrease document text size",
+    "size-up": "Increase document text size",
+    "weight-down": "Use a lighter document weight",
+    "weight-up": "Use a bolder document weight",
+    "line-down": "Tighten document line spacing",
+    "line-up": "Loosen document line spacing",
+    "btn-edit": "Edit the Markdown source",
+    "btn-preview": "Preview the rendered document",
+    "btn-read": "Read without editing controls",
+    "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
+    "btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)",
+    "assist-close": "Close AI Assist",
+    "assist-run": "Run the selected AI Assist operation",
+    "assist-accept": "Apply the proposed AI edit",
+    "assist-discard": "Discard the proposed AI edit",
+    "btn-export-md": "Open the source as Markdown",
+    "btn-export-html": "Open the rendered document as HTML",
+    "btn-export-pdf": "Open the paginated document for PDF printing",
+    "btn-share": "Create a shareable URL",
+    "load-modal-close": "Close the URL loader",
+    "load-modal-cancel": "Cancel loading from a URL",
+    "load-modal-insert": "Fetch the document from this URL",
+    "comp-modal-close": "Close the component dialog",
+    "comp-modal-cancel": "Cancel inserting this component",
+    "comp-modal-insert": "Insert this component into the document"
+  };
+
+  function getButtonTooltip(button) {
+    if (!button) return "";
+    if (BUTTON_TOOLTIP_COPY[button.id]) return BUTTON_TOOLTIP_COPY[button.id];
+    if (button.dataset.tooltip) return button.dataset.tooltip;
+    var dataTip = button.getAttribute("data-tip");
+    if (dataTip) return dataTip;
+    var title = button.getAttribute("title");
+    if (title) return title;
+    var aria = button.getAttribute("aria-label");
+    if (aria) return aria;
+    var text = (button.textContent || "").replace(/\s+/g, " ").trim();
+    if (button.classList.contains("engine-btn")) return "Render with " + (text || aria || title);
+    if (button.classList.contains("surface-btn")) return "Use the " + text + " surface";
+    if (button.classList.contains("font-dropdown-item")) return "Use " + text + " as the document typeface";
+    if (button.classList.contains("fw-dropdown-item")) return "Use the " + text + " component framework";
+    if (button.classList.contains("comp-btn")) return "Insert the " + text + " component";
+    if (button.classList.contains("assist-mode")) return "Use the " + text + " assist mode";
+    return text ? "Activate " + text : "Activate this control";
+  }
+
+  function initButtonTooltips() {
+    var tooltip = document.getElementById("fw-button-tooltip");
+    if (!tooltip) {
+      tooltip = document.createElement("div");
+      tooltip.id = "fw-button-tooltip";
+      tooltip.className = "fw-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      tooltip.setAttribute("aria-hidden", "true");
+      document.body.appendChild(tooltip);
+    }
+    var activeButton = null;
+
+    function prepare(button) {
+      if (!button || button.dataset.fwTooltipReady) return;
+      var copy = getButtonTooltip(button);
+      button.dataset.fwTooltipReady = "1";
+      button.dataset.tooltip = copy;
+      button.removeAttribute("title");
+      if (!button.getAttribute("aria-label") && !(button.textContent || "").trim()) {
+        button.setAttribute("aria-label", copy);
+      }
+      var host = button.closest(".fw-tooltip-host");
+      if (host) {
+        host.tabIndex = button.disabled ? 0 : -1;
+        host.dataset.tooltip = copy;
+        host.setAttribute("aria-label", copy);
+      }
+    }
+
+    function prepareAll(root) {
+      if (root && root.matches && root.matches("button")) prepare(root);
+      if (root && root.querySelectorAll) root.querySelectorAll("button").forEach(prepare);
+    }
+
+    function show(button) {
+      if (!button) return;
+      var liveButton = button.matches && button.matches(".fw-tooltip-host")
+        ? button.querySelector("button")
+        : button;
+      var copy = (liveButton && liveButton.dataset.tooltip)
+        || button.dataset.tooltip
+        || getButtonTooltip(liveButton);
+      if (!copy) return;
+      activeButton = button;
+      tooltip.textContent = copy;
+      tooltip.classList.add("visible");
+      tooltip.setAttribute("aria-hidden", "false");
+      button.setAttribute("aria-describedby", tooltip.id);
+      var rect = button.getBoundingClientRect();
+      var gap = 9;
+      var pad = 8;
+      tooltip.style.left = "0px";
+      tooltip.style.top = "0px";
+      var tw = tooltip.offsetWidth;
+      var th = tooltip.offsetHeight;
+      var left = Math.max(pad, Math.min(window.innerWidth - tw - pad, rect.left + rect.width / 2 - tw / 2));
+      var top = rect.top - th - gap;
+      var placeBelow = top < pad;
+      if (placeBelow) top = Math.min(window.innerHeight - th - pad, rect.bottom + gap);
+      tooltip.classList.toggle("below", placeBelow);
+      tooltip.style.left = Math.round(left) + "px";
+      tooltip.style.top = Math.round(top) + "px";
+    }
+
+    function hide() {
+      if (activeButton) activeButton.removeAttribute("aria-describedby");
+      activeButton = null;
+      tooltip.classList.remove("visible", "below");
+      tooltip.setAttribute("aria-hidden", "true");
+    }
+
+    function resolveTarget(target) {
+      if (!(target instanceof Element)) return null;
+      if (target.matches("button")) return target;
+      return target.closest("button") || target.closest(".fw-tooltip-host");
+    }
+
+    prepareAll(document);
+    document.addEventListener("pointerover", function (e) { show(resolveTarget(e.target)); });
+    document.addEventListener("pointerout", function (e) {
+      var button = resolveTarget(e.target);
+      if (button && !button.contains(e.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", function (e) { show(resolveTarget(e.target)); });
+    document.addEventListener("focusout", function (e) { if (resolveTarget(e.target)) hide(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+
+    var observer = new MutationObserver(function (records) {
+      records.forEach(function (record) {
+        record.addedNodes.forEach(function (node) { prepareAll(node); });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  /* ==========================================================================
      Character count warning
      ========================================================================== */
 
@@ -1333,7 +1558,9 @@
     /* Disable share button at hard limit */
     if (btnShare) {
       btnShare.disabled = len >= SHARE_CHAR_LIMIT;
-      btnShare.title = len >= SHARE_CHAR_LIMIT ? "Document too large to share" : "Share as URL";
+      btnShare.dataset.tooltip = len >= SHARE_CHAR_LIMIT
+        ? "Document too large to share"
+        : "Create a shareable URL";
     }
     var sbUrl = document.getElementById("sidebar-share-url");
     if (sbUrl) sbUrl.disabled = len >= SHARE_CHAR_LIMIT;
@@ -1391,9 +1618,14 @@
 
     function openDrawer() {
       appShell.classList.add("drawer-open");
+      if (drawerToggle) drawerToggle.setAttribute("aria-expanded", "true");
     }
     function closeDrawer() {
       appShell.classList.remove("drawer-open");
+      if (drawerToggle) {
+        drawerToggle.setAttribute("aria-expanded", "false");
+        drawerToggle.focus();
+      }
     }
 
     if (drawerToggle) {
@@ -1680,6 +1912,7 @@
         showFooter = !showFooter;
         this.dataset.state = showFooter ? "on" : "off";
         this.textContent = showFooter ? "On" : "Off";
+        this.setAttribute("aria-pressed", String(showFooter));
         scheduleAutosave();
         if (mode === "preview" || mode === "read") renderPreview();
       });
@@ -1804,6 +2037,13 @@
       scheduleAutosave();
       applyZoom();
     });
+    zoomSlider.addEventListener("dblclick", function () {
+      zoomStep = 100;
+      this.value = 100;
+      zoomValue.textContent = "100%";
+      scheduleAutosave();
+      applyZoom();
+    });
 
     mdToolbar.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-md]");
@@ -1812,14 +2052,26 @@
 
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
-        e.preventDefault();
+        /* A modal's own handler owns Escape while it is open — the load
+           modal stops propagation, but guard here too so we never both
+           close a dialog AND change editor mode on one keypress. */
+        var loadOverlay = document.getElementById("load-modal-overlay");
+        var compOverlay = document.getElementById("comp-modal-overlay");
+        if ((loadOverlay && !loadOverlay.classList.contains("hidden"))
+            || (compOverlay && !compOverlay.classList.contains("hidden"))
+            || appShell.classList.contains("drawer-open")) {
+          return;
+        }
         if (mode === "read") {
           /* Read → View > Plain */
+          e.preventDefault();
           setMode("preview");
           setDocEngine("none");
         } else if (mode === "preview") {
+          e.preventDefault();
           setMode("edit");
         }
+        /* In edit mode with no dialog open, let Escape do its default. */
         return;
       }
       var mod = e.metaKey || e.ctrlKey;
@@ -1831,6 +2083,9 @@
     /* postMessage listener — receives scroll position from sandboxed iframe */
     window.addEventListener("message", function (e) {
       if (e.source !== previewFrame.contentWindow && e.source !== previewFrameNext.contentWindow) return;
+      if (e.data && (e.data.type === "paged-error" || e.data.type === "vivl-error")) {
+        onPreviewFrameError(e);
+      }
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
       }
@@ -1897,6 +2152,8 @@
         }
       }
     });
+
+    bindAssistUi();
   }
 
   /* ==========================================================================
@@ -1935,7 +2192,9 @@
       toggle.className = "surface-toggle " + sm;
       var btns = toggle.querySelectorAll(".surface-btn");
       for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.toggle("active", btns[i].dataset.surface === sm);
+        var active = btns[i].dataset.surface === sm;
+        btns[i].classList.toggle("active", active);
+        btns[i].setAttribute("aria-pressed", String(active));
       }
     }
     scheduleAutosave();
@@ -1954,7 +2213,9 @@
       engineToggle.className = "engine-toggle " + engineKey;
       var btns = engineToggle.querySelectorAll(".engine-btn");
       btns.forEach(function (btn) {
-        btn.classList.toggle("active", btn.dataset.engine === engineKey);
+        var active = btn.dataset.engine === engineKey;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", String(active));
       });
     }
     /* Update app-shell engine class */
@@ -1963,11 +2224,33 @@
       appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
       appShell.classList.add("engine-" + engineKey);
     }
-    /* Disable PDF export in Plain mode — use a paged engine for PDF */
+    /* Disable PDF export in Plain mode, while keeping its wrapper available
+       to surface a useful tooltip for mouse and keyboard users. */
     var btnPdf = document.getElementById("btn-export-pdf");
-    if (btnPdf) btnPdf.disabled = (engineKey === "none");
+    var pdfTooltip = engineKey === "none"
+      ? "Switch to Paged.js or Vivliostyle to enable PDF export"
+      : "Open the paginated document for PDF printing";
+    if (btnPdf) {
+      btnPdf.disabled = (engineKey === "none");
+      btnPdf.dataset.tooltip = pdfTooltip;
+      var btnPdfHost = btnPdf.closest(".fw-tooltip-host");
+      if (btnPdfHost) {
+        btnPdfHost.tabIndex = btnPdf.disabled ? 0 : -1;
+        btnPdfHost.dataset.tooltip = pdfTooltip;
+        btnPdfHost.setAttribute("aria-label", pdfTooltip);
+      }
+    }
     var sbPdf = document.getElementById("sidebar-export-pdf");
-    if (sbPdf) sbPdf.disabled = (engineKey === "none");
+    if (sbPdf) {
+      sbPdf.disabled = (engineKey === "none");
+      sbPdf.dataset.tooltip = pdfTooltip;
+      var sbPdfHost = sbPdf.closest(".fw-tooltip-host");
+      if (sbPdfHost) {
+        sbPdfHost.tabIndex = sbPdf.disabled ? 0 : -1;
+        sbPdfHost.dataset.tooltip = pdfTooltip;
+        sbPdfHost.setAttribute("aria-label", pdfTooltip);
+      }
+    }
     /* Reset zoom to 100% in Plain mode — zoom is WYSIWYG-irrelevant there */
     if (engineKey === "none" && zoomStep !== 100) {
       zoomStep = 100;
@@ -2046,15 +2329,87 @@
     if (pageColumns > 1) {
       var marginMm = parseFloat(lrMm);
       var gap = (marginMm / 2) + 'mm';
-      css += ' main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; }';
+      /* Default to one column when a renderer does not implement CSS
+         Multi-column Layout. Paged.js and Vivliostyle opt into the requested
+         layout only when they advertise support. */
+      css += ' main { column-count: 1; }';
+      css += ' @supports (column-count: 2) { main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: auto; }';
+      css += ' main > h1, main > h2, main > h3, main > h4, main > pre, main > table, main > blockquote, main > figure { break-inside: avoid; } }';
     }
     /* Always capture the L1 heading so it can be used by the footer */
     css += 'h1 { string-set: chapter content(); }';
     if (showFooter) {
-      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; }';
-      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #888; vertical-align: bottom; padding-bottom: 3mm; } }';
+      /* Margin boxes already occupy the configured @page margin. Padding the
+         boxes themselves moves generated content toward (and in some engines
+         over) the page area, making the last body lines appear clipped. */
+      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #666; vertical-align: middle; }';
+      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; } }';
+    } else {
+      /* Explicitly clear margin boxes. This prevents a renderer from keeping
+         stale generated content when the footer toggle is switched off. */
+      css += '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
     }
     return css;
+  }
+
+  function syncDocumentSettingsFromControls() {
+    var nextPageSize = pageSizeSel ? pageSizeSel.value : pageSize;
+    var orientBtn = document.getElementById("toggle-orient");
+    var nextOrientation = orientBtn ? orientBtn.dataset.state : orientation;
+    var nextMarginsLR = pageMarginsLRSel ? pageMarginsLRSel.value : pageMarginsLR;
+    var nextMarginsTB = pageMarginsTBSel ? pageMarginsTBSel.value : pageMarginsTB;
+    var nextColumns = pageColumnsSel ? parseInt(pageColumnsSel.value, 10) : pageColumns;
+    var nextFooter = toggleFooterBtn ? toggleFooterBtn.dataset.state === "on" : showFooter;
+
+    if (!PAGE_SIZES[nextPageSize]
+        || (nextOrientation !== "portrait" && nextOrientation !== "landscape")
+        || !MARGIN_MAP[nextMarginsLR]
+        || !MARGIN_MAP[nextMarginsTB]
+        || nextColumns < 1 || nextColumns > 3) {
+      showToast("Check the document setup before exporting");
+      return false;
+    }
+
+    pageSize = nextPageSize;
+    orientation = nextOrientation;
+    pageMarginsLR = nextMarginsLR;
+    pageMarginsTB = nextMarginsTB;
+    pageColumns = nextColumns;
+    showFooter = nextFooter;
+    return true;
+  }
+
+  function buildDocumentCSS(renderEngineKey) {
+    var scale = SIZE_SCALE[String(sizeStep)] || 1;
+    var weight = WEIGHT_MAP[String(weightStep)] || 400;
+    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
+    var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
+    var headWeight = Math.min(weight + 200, 900);
+    return (renderEngineKey === "none" ? "" : buildPageCSS())
+      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
+      + 'body { font-size: ' + (15 * scale) + 'px !important; font-weight: ' + weight + ' !important; line-height: ' + lineHeight + ' !important; color: #2d2a3e; margin: 0; overflow-x: hidden; }'
+      + 'html { height: 100%; }'
+      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
+      + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
+      + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
+      + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
+      + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
+      + 'img { max-width: 100%; height: auto; display: block; }'
+      + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
+      + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
+      + 'table { border-collapse: collapse; table-layout: fixed; width: 100%; }'
+      + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+      + 'thead th { background: #333333; color: #fff; }'
+      + 'tbody tr:nth-child(even) { background: #f2f2f2; } tbody tr:nth-child(odd) { background: #ffffff; }'
+      + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
+      + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
+      + 'li { margin: 0.15em 0; display: list-item; } li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }'
+      + 'li:has(> input[type="checkbox"]), .task-list-item { list-style: none; }'
+      + 'li:has(> input[type="checkbox"])::marker, .task-list-item::marker { display: none; }'
+      + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
+      + 'ul { list-style-type: disc; } ul ul { list-style-type: circle; } ul ul ul { list-style-type: disc; } ul ul ul ul { list-style-type: circle; }'
+      + 'p { margin: 0.4em 0; } br { margin: 0.3em 0; }'
+      + '.fw-pdf-break { display: block; height: calc(var(--fw-break-lines, 1) * 1lh); break-inside: avoid; }';
   }
 
   /**
@@ -2112,6 +2467,7 @@
     if (toggleFooterBtn) {
       toggleFooterBtn.dataset.state = showFooter ? "on" : "off";
       toggleFooterBtn.textContent = showFooter ? "On" : "Off";
+      toggleFooterBtn.setAttribute("aria-pressed", String(showFooter));
     }
   }
 
@@ -2315,61 +2671,24 @@
     /* Read mode always renders as Plain — WYSIWYG, no pagination engine */
     var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
     var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var contentForRender = applyFlatWritePdfBreaks(
+      stripYamlFrontMatter(editor.value || ""),
+      renderEngineKey
+    );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
 
     var scrollRatio = lastScrollRatio;
     var renderId = ++currentRenderId;
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
-      ? '<script src="' + engine.script + '" defer><' + '/script>'
+      ? '<script>window.PagedConfig = { auto: false };<' + '/script>'
+        + '<script src="' + engine.script + '" defer><' + '/script>'
       : '';
 
-    /* Shared document CSS (without engine-specific page-boundary rules) */
-    /* Plain/Read: skip @page, columns and footer — none apply in a WYSIWYG flow */
-    var docCss = (renderEngineKey === "none" ? "" : buildPageCSS())
-      + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
-      + 'body { font-size: ' + (15 * scale) + 'px !important;'
-      + ' font-weight: ' + weight + ' !important;'
-      + ' line-height: ' + lineHeight + ' !important; color: #2d2a3e;'
-      + ' margin: 0; overflow-x: hidden; }'
-      + 'html { height: 100%; }'
-      + 'h1,h2,h3,h4,h5,h6 { font-weight: ' + headWeight + ' !important; overflow-wrap: break-word; word-break: break-word; }'
-      + 'h1 { font-size: ' + (15 * scale * 2) + 'px !important; }'
-      + 'h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }'
-      + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
-      + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
-      + 'img { max-width: 100%; height: auto; display: block; }'
-      + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
-      + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
-      + 'table { border-collapse: collapse; width: 100%; }'
-      + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
-      + 'thead th { background: #333333; color: #fff; }'
-      + 'tbody tr:nth-child(even) { background: #f2f2f2; }'
-      + 'tbody tr:nth-child(odd) { background: #ffffff; }'
-      + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
-      + 'ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }'
-      + 'li { margin: 0.15em 0; display: list-item; }'
-      + 'li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }'
-      + 'li::marker { display: inline; }'
-      + 'li:has(> input[type="checkbox"]) { list-style: none; }'
-      + 'li:has(> input[type="checkbox"])::marker { display: none; }'
-      + '.task-list-item { list-style: none; }'
-      + '.task-list-item::marker { display: none; }'
-      + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
-      + 'ul { list-style-type: disc; }'
-      + 'ul ul { list-style-type: circle; }'
-      + 'ul ul ul { list-style-type: disc; }'
-      + 'ul ul ul ul { list-style-type: circle; }'
-      + 'p { margin: 0.4em 0; }'
-      + 'br { margin: 0.3em 0; }'
+    /* One canonical stylesheet feeds preview, HTML export, and PDF export. */
+    var docCss = buildDocumentCSS(renderEngineKey)
       + ' .pagedjs_page { margin: 8px 0; }'
 
     var html;
@@ -2378,9 +2697,7 @@
       var vivlDocHTML = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
-        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + '<style>' + docCss + '</style>'
         + '</head><body><main>' + renderedHTML + '</main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
@@ -2407,6 +2724,7 @@
         + 'const _orientation = "' + orientation + '";'
         + 'const _scrollRatio = ' + scrollRatio + ';'
         + 'const _renderId = ' + renderId + ';'
+        + 'window.__flatwriteRenderId = _renderId;'
         + 'var _zoomFactor = 1;'
         + 'function _computeZoom() {'
         + '  var w = window.innerWidth;'
@@ -2442,10 +2760,12 @@
         + '  var outerZoom = document.querySelector("[data-vivliostyle-outer-zoom-box]");'
         + '  var pages = document.querySelectorAll("[data-vivliostyle-page-container]");'
         + '  if (spread) {'
+        + '    /* Scale the complete paginated flow, but reserve its scaled visual'
+        + '       dimensions on the outer box below. This keeps every page in the'
+        + '       scrollable coordinate space instead of clipping later pages. */'
         + '    spread.style.setProperty("transform", "scale(" + s + ")", "important");'
         + '    spread.style.setProperty("transform-origin", "top left", "important");'
         + '    spread.style.setProperty("min-width", "0", "important");'
-        + '    spread.style.width = "";'
         + '  }'
         + '  /* Size the outer-zoom-box to the visual scaled size so scrollbars in'
         + '     #vivl-viewport accurately reflect the transformed content. */'
@@ -2462,11 +2782,18 @@
         + '  }'
         + '  for (var i = 0; i < pages.length; i++) {'
         + '    pages[i].style.zoom = 1;'
-        + '    /* Keep pages at their natural page size — the parent transform'
-        + '       handles visual scaling. This avoids content reflow when the'
-        + '       user changes zoom. */'
-        + '    pages[i].style.width = _pageW + "px";'
-        + '    pages[i].style.height = _pageH + "px";'
+        + '    /* Do NOT force pixel width/height on the page container — that'
+        + '       overrides Vivliostyle\'s @page sizing and breaks font scaling,'
+        + '       line height, and page-break fidelity. Let the @page rule size'
+        + '       the page box; only clear conflicting inline styles. As a fallback'
+        + '       for when Vivliostyle has not yet applied its CSS, set dimensions'
+        + '       only if the page box is currently empty. */'
+        + '    if (pages[i].style.width === "" && pages[i].offsetWidth === 0) {'
+        + '      pages[i].style.width = _pageW + "px";'
+        + '    }'
+        + '    if (pages[i].style.height === "" && pages[i].offsetHeight === 0) {'
+        + '      pages[i].style.height = _pageH + "px";'
+        + '    }'
         + '    pages[i].style.maxWidth = "";'
         + '    pages[i].style.maxHeight = "";'
         + '    pages[i].style.transform = "none";'
@@ -2483,16 +2810,19 @@
         + '    pages[i].style.setProperty("margin", "8px 0", "important");'
         + '  }'
         + '}'
-        + 'function _vivlNotify() {'
+        + 'function _setVivlCanvasExtent() {'
         + '  _vivlEnableScroll();'
+        + '}'
+        + 'function _vivlNotify() {'
+        + '  _setVivlCanvasExtent();'
         + '  var m = viewport.scrollHeight - viewport.clientHeight;'
         + '  if (m > 0) viewport.scrollTop = Math.round(_scrollRatio * m);'
         + '  else viewport.scrollTop = 0;'
         + '  parent.postMessage({type:"vivl-ready", renderId: _renderId}, "*");'
         + '}'
         + 'viewer.addListener("loaded", _vivlNotify);'
-        + 'viewer.loadDocument(docUrl);'
-        + 'setTimeout(_vivlNotify, 3000);'
+        + '(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function(){ viewer.loadDocument(docUrl); });'
+        + 'setTimeout(function(){ if (!document.querySelector("[data-vivliostyle-page-container]")) parent.postMessage({type:"vivl-error", renderId:_renderId}, "*"); }, 10000);'
         + 'window.addEventListener("resize", function() { viewer.setOptions({ zoom: 1 }); _vivlEnableScroll(); });'
         + 'viewport.addEventListener("scroll", function() {'
         + '  var m = viewport.scrollHeight - viewport.clientHeight;'
@@ -2545,9 +2875,7 @@
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
-        + '<link rel="preconnect" href="https://fonts.googleapis.com">'
-        + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        + '<link href="' + FONTS_URL + '" rel="stylesheet">'
+        + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + engineScript
         + '<style>'
         + docCss
@@ -2576,10 +2904,17 @@
       + 'var _pageH = ' + getPageHeightPx() + ';'
       + 'var _orientation = "' + orientation + '";'
       + 'var _renderId = ' + renderId + ';'
+      + 'window.__flatwriteRenderId = _renderId;'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
+      + 'function _setPagedCanvasExtent(flowW, flowH, s) {'
+      + '  document.body.style.width = Math.ceil(flowW * s) + "px";'
+      + '  document.body.style.height = Math.ceil(flowH * s) + "px";'
+      + '  document.documentElement.style.height = Math.ceil(flowH * s) + "px";'
+      + '}'
       + 'function _fitPage() {'
       + '  if (!_isPaged) return;'
       + '  var page = document.querySelector(".pagedjs_page");'
+      + '  var pages = document.querySelector(".pagedjs_pages");'
       + '  var pageW = page ? page.offsetWidth : _pageW;'
       + '  var pageH = page ? page.offsetHeight : _pageH;'
       + '  var iframeW = window.innerWidth;'
@@ -2587,31 +2922,39 @@
       + '  var inset = 20;'
       + '  var s = Math.min((iframeW - inset * 2) / pageW, (iframeH - inset * 2) / pageH) * _zoomFactor;'
       + '  var scaledW = pageW * s;'
+      + '  var flowW = pages ? pages.scrollWidth : pageW;'
+      + '  var flowH = pages ? pages.scrollHeight : pageH;'
       + '  var marginLeft = Math.max(inset, (iframeW - scaledW) / 2);'
       + '  document.documentElement.style.overflow = "auto";'
       + '  document.body.style.maxWidth = "none";'
-      + '  document.body.style.width = pageW + "px";'
-      + '  document.body.style.transform = "scale(" + s + ")";'
-      + '  document.body.style.transformOrigin = "top left";'
+      + '  _setPagedCanvasExtent(flowW, flowH, s);'
+      + '  document.body.style.transform = "none";'
+      + '  if (pages) {'
+      + '    pages.style.setProperty("transform", "scale(" + s + ")", "important");'
+      + '    pages.style.setProperty("transform-origin", "top left", "important");'
+      + '    pages.style.setProperty("width", flowW + "px", "important");'
+      + '  }'
       + '  document.body.style.marginLeft = marginLeft + "px";'
       + '  document.body.style.marginRight = "0";'
       + '  window.scrollTo(0, 0);'
       + '  _updatePanCursor();'
       + '}'
-      + 'function _registerPagedHook() {'
-      + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
-      + '    window.PagedPolyfill.on("afterPreview", function() {'
-      + '      _fitPage();'
-      + '      _killBorders();'
-      + '      if (!_pagedReady) { _pagedReady = true;'
-      + '        var mx = document.documentElement.scrollHeight - window.innerHeight;'
-      + '        if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
-      + '      }'
-      + '      parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
-      + '    });'
-      + '    return true;'
-      + '  }'
-      + '  return false;'
+      + 'function _commitPagedPreview() {'
+      + '  if (_pagedReady || !document.querySelector(".pagedjs_page")) return;'
+      + '  _pagedReady = true;'
+      + '  _fitPage();'
+      + '  _killBorders();'
+      + '  var mx = document.documentElement.scrollHeight - window.innerHeight;'
+      + '  if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
+      + '  parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
+      + '}'
+      + 'function _startPagedPreview() {'
+      + '  if (typeof window.PagedPolyfill === "undefined" || !window.PagedPolyfill.on || !window.PagedPolyfill.preview) return false;'
+      + '  window.PagedPolyfill.on("afterPreview", _commitPagedPreview);'
+      + '  window.PagedPolyfill.preview().then(_commitPagedPreview).catch(function(){'
+      + '    parent.postMessage({type:"paged-error", renderId:_renderId}, "*");'
+      + '  });'
+      + '  return true;'
       + '}'
       + 'function _initFit() {'
       + '  if (!_isPaged) {'
@@ -2619,26 +2962,14 @@
       + '    if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
       + '    return;'
       + '  }'
-      + '  if (!_registerPagedHook()) {'
+      + '  if (!_startPagedPreview()) {'
       + '    var tries = 0;'
       + '    var interval = setInterval(function() {'
       + '      tries++;'
-      + '      if (_registerPagedHook() || tries > 50) { clearInterval(interval); _fitPage(); }'
+      + '      if (_startPagedPreview()) { clearInterval(interval); }'
+      + '      else if (tries > 50) { clearInterval(interval); parent.postMessage({type:"paged-error", renderId:_renderId}, "*"); }'
       + '    }, 100);'
       + '  }'
-      + '  window.addEventListener("load", function() {'
-      + '    _fitPage();'
-      + '    if (!_pagedReady) { _pagedReady = true;'
-      + '      var mx = document.documentElement.scrollHeight - window.innerHeight;'
-      + '      if (mx > 0) window.scrollTo(0, Math.round(_scrollRatio * mx));'
-      + '    }'
-      + '    parent.postMessage({type:"paged-ready", renderId: _renderId}, "*");'
-      + '  });'
-      + '  var observer = new MutationObserver(function() {'
-      + '    if (document.querySelector(".pagedjs_page")) { _fitPage(); _killBorders(); }'
-      + '  });'
-      + '  observer.observe(document.body, { childList: true, subtree: true });'
-      + '  _fitPage();'
       + '}'
       + 'function _killBorders() {'
       + '  var s = document.getElementById("_fw_kill_borders");'
@@ -2649,7 +2980,10 @@
       + '    document.head.appendChild(s);'
       + '  }'
       + '}'
-      + 'document.addEventListener("DOMContentLoaded", _initFit);'
+      + 'document.addEventListener("DOMContentLoaded", function(){'
+      + '  var ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();'
+      + '  ready.then(_initFit);'
+      + '});'
       + 'var _scrollTimer;'
       + 'window.addEventListener("scroll", function(){'
       + '  clearTimeout(_scrollTimer);'
@@ -2801,6 +3135,9 @@
     btnEdit.classList.remove("active");
     btnPreview.classList.remove("active");
     btnRead.classList.remove("active");
+    btnEdit.setAttribute("aria-pressed", "false");
+    btnPreview.setAttribute("aria-pressed", "false");
+    btnRead.setAttribute("aria-pressed", "false");
     modeSwitch.classList.remove("preview", "read");
 
 
@@ -2808,6 +3145,7 @@
       if (prevMode !== "edit") savePreviewScroll();
       editorWrap.classList.remove("hidden");
       btnEdit.classList.add("active");
+      btnEdit.setAttribute("aria-pressed", "true");
 
       /* Restore editor scroll position */
       requestAnimationFrame(function () {
@@ -2865,6 +3203,7 @@
 
       if (mode === "read") {
         btnRead.classList.add("active");
+        btnRead.setAttribute("aria-pressed", "true");
         modeSwitch.classList.add("read");
         if (window.innerWidth < 760) {
           appShell.classList.add("focus-mode");
@@ -2873,6 +3212,7 @@
         }
       } else {
         btnPreview.classList.add("active");
+        btnPreview.setAttribute("aria-pressed", "true");
         modeSwitch.classList.add("preview");
         if (prevMode === "read") {
           if (window.innerWidth < 760) {
@@ -2897,7 +3237,7 @@
 
     var src = sidebarLogo.getBoundingClientRect();
     var toolbarRect = toolbar.getBoundingClientRect();
-    var dstLeft = toolbarRect.left;
+    var dstLeft = toolbarRect.left + 5;
 
     var floater = document.createElement("div");
     floater.className = "read-logo";
@@ -2990,6 +3330,26 @@
     editor.dispatchEvent(new Event("input"));
   }
 
+  function editorInsertPageBreak() {
+    var start = editor.selectionStart;
+    var val = editor.value;
+    var tag = '<fw-break lines="1" />';
+    var prefix = (start > 0 && val[start - 1] !== "\n") ? "\n" : "";
+    var suffix = (start < val.length && val[start] === "\n") ? "" : "\n";
+    var insertion = prefix + tag + suffix;
+
+    editor.focus();
+    editor.setSelectionRange(start, start);
+    if (document.queryCommandSupported && document.queryCommandSupported("insertText")) {
+      document.execCommand("insertText", false, insertion);
+    } else {
+      editor.value = val.substring(0, start) + insertion + val.substring(start);
+    }
+    var countStart = start + prefix.length + tag.indexOf("1");
+    editor.setSelectionRange(countStart, countStart + 1);
+    editor.dispatchEvent(new Event("input"));
+  }
+
   function applyMarkdownFormat(action) {
     if (mode !== "edit") setMode("edit");
     switch (action) {
@@ -3009,6 +3369,7 @@
       case "link":          editorInsert("[", "link text", "](https://example.com)"); break;
       case "image":         editorInsert("![", "alt text", "](https://example.com/image.png)"); break;
       case "hr":            editorInsertBlock("---"); break;
+      case "pagebreak":     editorInsertPageBreak(); break;
       default: break;
     }
   }
@@ -3039,6 +3400,7 @@
   }
 
   function exportHTML() {
+    if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
     /* === App Surface: Framework CSS export === */
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
@@ -3097,23 +3459,22 @@
       return;
     }
 
-    /* === Doc Surface: reuse the rendered preview for an exact Read-mode match === */
+    /* Reuse only a preview proven to match the latest render id. Otherwise
+       build synchronously below from current controls. */
     var srcdoc = previewFrame.getAttribute("srcdoc");
-    if (srcdoc && (mode === "preview" || mode === "read")) {
+    if (srcdoc && (mode === "preview" || mode === "read") && isCurrentPreviewCommitted()) {
       openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
       return;
     }
 
-    /* === Doc Surface fallback: build a self-paginating HTML from scratch === */
+    /* === Doc Surface: build from the current committed controls === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var contentForRender = applyFlatWritePdfBreaks(
+      stripYamlFrontMatter(editor.value || ""),
+      currentDocEngine
+    );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
 
     /* Engine script tag — self-paginating HTML export (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
@@ -3125,55 +3486,10 @@
       + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
       + '  <title>FlatWrite Export</title>\n'
       + '  <base target="_blank" rel="noopener noreferrer">\n'
-      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
-      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
+      + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      /* --- @page rules from document controls --- */
-      + '    ' + buildPageCSS() + '\n'
-      /* --- Typography --- */
-      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
-      + '    body {\n'
-      + '      font-size: ' + (15 * scale) + 'px !important;\n'
-      + '      font-weight: ' + weight + ' !important;\n'
-      + '      line-height: ' + lineHeight + ' !important;\n'
-      + '      color: #2d2a3e;\n'
-      + '      margin: 0;\n'
-      + '      overflow-x: hidden;\n'
-      + '    }\n'
-      /* Fallback layout when no paged-media engine is active */
-      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
-      + '    h1, h2, h3, h4, h5, h6 {\n'
-      + '      font-weight: ' + headWeight + ' !important;\n'
-      + '      overflow-wrap: break-word;\n'
-      + '      word-break: break-word;\n'
-      + '    }\n'
-      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
-      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
-      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
-      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
-      + '    img { max-width: 100%; height: auto; display: block; }\n'
-      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
-      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
-      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
-      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
-      + '    li { margin: 0.15em 0; display: list-item; }\n'
-      + '    li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }\n'
-      + '    li::marker { display: inline; }\n'
-      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
-      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
-      + '    .task-list-item { list-style: none; }\n'
-      + '    .task-list-item::marker { display: none; }\n'
-      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
-      + '    ul { list-style-type: disc; }\n'
-      + '    ul ul { list-style-type: circle; }\n'
-      + '    ul ul ul { list-style-type: disc; }\n'
-      + '    ul ul ul ul { list-style-type: circle; }\n'
-      + '    p { margin: 0.4em 0; }\n'
-      + '    br { margin: 0.3em 0; }\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
       + '  </style>\n'
       + '</head>\n<body>\n  <main>\n'
       + renderedHTML
@@ -3183,7 +3499,133 @@
     openInNewTab(html, "text/html;charset=utf-8");
   }
 
+  function buildPrintSnapshot(sourceDocument, engineKey) {
+    if (!sourceDocument) return "";
+    var clone = sourceDocument.documentElement.cloneNode(true);
+    clone.querySelectorAll("script, #_fw_stripe, #_fw_kill_borders, link[rel=\"modulepreload\"]").forEach(function (node) {
+      node.remove();
+    });
+
+    /* The preview already contains the final logical pages. Printing that
+       snapshot avoids asking either engine to paginate an already-paginated
+       document (the old n × n blank-page failure). */
+    var body = clone.querySelector("body");
+    if (body) {
+      body.removeAttribute("style");
+      body.className = "fw-print-snapshot engine-" + engineKey;
+    }
+    var html = clone;
+    html.removeAttribute("style");
+
+    var pagesFlow = clone.querySelector(".pagedjs_pages");
+    if (pagesFlow) {
+      pagesFlow.removeAttribute("style");
+      pagesFlow.querySelectorAll(".pagedjs_page").forEach(function (page) {
+        page.removeAttribute("style");
+      });
+    }
+
+    var spread = clone.querySelector("[data-vivliostyle-spread-container]");
+    if (spread) spread.removeAttribute("style");
+    var outerZoom = clone.querySelector("[data-vivliostyle-outer-zoom-box]");
+    if (outerZoom) outerZoom.removeAttribute("style");
+    var viewport = clone.querySelector("#vivl-viewport");
+    if (viewport) viewport.removeAttribute("style");
+    /* Remove Vivliostyle's dynamically injected scroll/zoom style element.
+       This <style id="vivl-scroll-style"> contains transform: scale() and
+       other overrides that would distort the print snapshot. The print
+       snapshot CSS (appended below) provides its own clean page geometry. */
+    var vivlScrollStyle = clone.querySelector("#vivl-scroll-style");
+    if (vivlScrollStyle) vivlScrollStyle.remove();
+    /* Also remove any other dynamically injected Vivliostyle <style> elements
+       that may contain transform/scale/zoom overrides. We preserve the
+       original document CSS (which has the @page rules and typography) and
+       the _fw_print_snapshot style (appended below). */
+    clone.querySelectorAll("style").forEach(function(style) {
+      if (style.id === "_fw_print_snapshot" || style.id === "_fw_stripe") return;
+      var text = style.textContent || "";
+      if (text.indexOf("transform: scale") !== -1 || text.indexOf("data-vivliostyle") !== -1) {
+        style.remove();
+      }
+    });
+    clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
+      page.removeAttribute("style");
+      /* Clear inline styles on child elements that Vivliostyle may have set */
+      page.querySelectorAll("*").forEach(function (child) {
+        child.removeAttribute("style");
+      });
+    });
+    var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
+    var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
+    var pageGeometry = "width: " + printPageW + "mm !important; height: " + printPageH + "mm !important;";
+    var lrMm = MARGIN_MAP[pageMarginsLR] || MARGIN_MAP.normal;
+    var tbMm = MARGIN_MAP[pageMarginsTB] || MARGIN_MAP.normal;
+
+    /* Count committed page boxes so the footer's "Page N of M" can use a
+       static total. counter(pages) only resolves when a CSS pagination
+       engine runs, but the print snapshot is emitted as static HTML for
+       window.print() — so replace it with the actual count. */
+    var pageBoxes = clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]");
+    var pageCount = pageBoxes.length;
+    var footerMargin = showFooter ? (tbMm + " " + lrMm) : "0";
+    var printCss = document.createElement("style");
+    printCss.id = "_fw_print_snapshot";
+    printCss.textContent =
+      "@page { size: " + printPageW + "mm " + printPageH + "mm; margin: " + footerMargin + "; }" +
+      "html, body { margin: 0 !important; padding: 0 !important; width: auto !important; height: auto !important; overflow: visible !important; background: #fff !important; }" +
+      ".pagedjs_pages, [data-vivliostyle-spread-container], [data-vivliostyle-outer-zoom-box] { display: block !important; width: auto !important; height: auto !important; min-width: 0 !important; transform: none !important; zoom: 1 !important; }" +
+      ".pagedjs_page, [data-vivliostyle-page-container] { " + pageGeometry + " display: block !important; position: relative !important; margin: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; overflow: hidden !important; transform: none !important; break-after: page !important; page-break-after: always !important; }" +
+      ".pagedjs_page:last-child, [data-vivliostyle-page-container]:last-child { break-after: auto !important; page-break-after: auto !important; }" +
+      "#vivl-viewport { width: auto !important; height: auto !important; overflow: visible !important; }" +
+      "@media screen { .pagedjs_page, [data-vivliostyle-page-container] { margin: 10px auto !important; } }" + "@media print { .pagedjs_page, [data-vivliostyle-page-container] { margin: 0 !important; } }";
+    /* When footer is on, add CSS to position the margin-box elements that
+       Paged.js/Vivliostyle already rendered into the page DOM. The
+       @bottom-* at-rules were stripped (browser native print does not
+       support them), so we need explicit positioning for the rendered
+       footer elements (.pagedjs_bottom-left, .pagedjs_bottom-right).
+       These elements exist in the cloned DOM as children of each page
+       box, but without the @page margin-box rules they lose their
+       positioning. We pin them to the bottom margin area. */
+    if (showFooter) {
+      printCss.textContent +=
+        ".pagedjs_page .pagedjs_bottom-left, .pagedjs_page .pagedjs_bottom-right {" +
+        "position: absolute !important; bottom: 0 !important; font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important; }" +
+        ".pagedjs_page .pagedjs_bottom-left { left: 0 !important; text-align: left !important; }" +
+        ".pagedjs_page .pagedjs_bottom-right { right: 0 !important; text-align: right !important; }";
+    }
+    clone.querySelector("head").appendChild(printCss);
+
+    /* Replace counter(pages) in all cloned styles with the static page count.
+       The snapshot is printed via window.print() (browser native), which does
+       not run Paged.js/Vivliostyle pagination — so counter(pages) stays 0
+       and footers read "Page N of 0". */
+    if (pageCount > 0) {
+      clone.querySelectorAll("style").forEach(function (style) {
+        if (style.id === "_fw_print_snapshot") return;
+        var text = style.textContent;
+        if (text.indexOf("counter(pages)") !== -1) {
+          style.textContent = text.split("counter(pages)").join(String(pageCount));
+        }
+        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,\n           etc.) from the cloned styles. The browser's native print (which\n           window.print() uses) does not support these at-rules. When present,\n           some browsers discard the entire @page block — including size and\n           margin — which breaks page sizing for every page. The print snapshot\n           CSS (appended separately) already provides the correct @page size\n           and margin.\n\n           The old regex was greedy across the entire @page block: it matched\n           from `@page {` through the last `}`, which could swallow the `size`\n           and `margin` declarations when footer was ON, or fail to match at\n           all when nested braces (from string-set) altered the block structure.\n           This version surgically removes only the @bottom-* at-rules while\n           preserving everything else in the @page block. */
+        if (text.indexOf("@bottom-") !== -1) {
+          style.textContent = text.replace(/@page\s*\{([^}]*)\}/g, function(_m, inner) {
+            /* Remove only @bottom-* rules from inside the @page block */
+            var cleaned = inner.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[^}]*\}/g, "");
+            return "@page {" + cleaned + "}";
+          });
+        }
+      });
+    }
+
+    var printScript = sourceDocument.createElement("script");
+    printScript.textContent = "window.addEventListener('load',function(){var f=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();f.then(function(){setTimeout(function(){window.print();},100);});});";
+    clone.querySelector("body").appendChild(printScript);
+    return "<!DOCTYPE html>\n" + clone.outerHTML;
+  }
+
   function exportPDF() {
+    if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
     /* === App Surface: Simple print === */
     if (surfaceMode === "app") {
       /* In App mode, just trigger the browser print dialog */
@@ -3195,143 +3637,27 @@
       return;
     }
 
-    /* === Doc Surface: print the exact rendered preview ===
-       When the preview has been rendered, reuse its srcdoc so the PDF engine,
-       pagination, scaling, and layout match what the user sees in view mode. */
-    var srcdoc = previewFrame.getAttribute("srcdoc");
-    if (srcdoc) srcdoc = srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, "");
-    if (srcdoc && (mode === "preview" || mode === "read")) {
-      var printScript = '<script>'
-        + '(function(){'
-        + '  function doPrint(){'
-        + '    document.body.style.transform = "";'
-        + '    document.body.style.width = "";'
-        + '    document.documentElement.style.overflow = "";'
-        + '    document.body.style.overflow = "";'
-        + '    var vp = document.getElementById("vivl-viewport");'
-        + '    if (vp) { vp.style.overflow = ""; vp.style.height = ""; vp.style.width = ""; }'
-        + '    var s = document.createElement("style");'
-        + '    s.media = "print";'
-        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { margin: 0 !important; } .pagedjs_sheet { border: none !important; } }";'
-        + '    document.head.appendChild(s);'
-        + '    window.print();'
-        + '  }'
-        + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
-        + '    var done=false; var p=function(){ if (done) return; done=true; setTimeout(doPrint, 200); };'
-        + '    window.PagedPolyfill.on("afterPreview", p);'
-        + '    window.PagedPolyfill.on("afterRenderation", p);'
-        + '    setTimeout(p, 5000);'
-        + '  } else if (document.getElementById("vivl-viewport")) {'
-        + '    var check=function(){'
-        + '      var pages=document.querySelectorAll("[data-vivliostyle-page-container]");'
-        + '      if (pages.length > 0) { doPrint(); }'
-        + '      else { setTimeout(check, 500); }'
-        + '    };'
-        + '    setTimeout(check, 1000);'
-        + '  } else {'
-        + '    window.addEventListener("load", function(){ setTimeout(doPrint, 500); });'
-        + '    if (document.readyState === "complete") { setTimeout(doPrint, 500); }'
-        + '  }'
-        + '})();'
-        + '</script>';
-      var printHtml = srcdoc.replace(/<\/body>/i, printScript + '</body>');
-      /* Add centering for paged pages in the new tab */
-      printHtml = printHtml.replace(/<\/head>/i, '<style>.pagedjs_pages { display: flex; flex-direction: column; align-items: center; } [data-vivliostyle-spread-container] { align-items: center !important; } html { display: flex; justify-content: center; } body { margin: 0 auto !important; }</style></head>');
-      var iframeRect = previewFrame.getBoundingClientRect();
-      var width = Math.round(iframeRect.width);
-      var height = Math.round(iframeRect.height);
-      var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
-      var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
-      var url = URL.createObjectURL(blob);
-      window.open(url, "_blank", features);
+    /* Print the already-committed logical pages exactly once. Never feed
+       generated `.pagedjs_page` / Vivliostyle page boxes back through the
+       pagination engine: that is what created n² print-preview pages. */
+    var sourceDocument = isCurrentPreviewCommitted() ? previewFrame.contentDocument : null;
+    var printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    if (!printHtml || (mode !== "preview" && mode !== "read")) {
+      showToast("Open View and wait for pagination before exporting PDF");
       return;
     }
-
-    /* === Doc Surface fallback: render from scratch for direct export === */
-    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-    var scale = SIZE_SCALE[String(sizeStep)] || 1;
-    var weight = WEIGHT_MAP[String(weightStep)] || 400;
-    var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
-    var fontStack  = "'" + comfortFont + "', system-ui, sans-serif";
-    var headWeight = Math.min(weight + 200, 900);
-
-    /* Engine script — Paged.js for proper @page pagination (skip ESM modules) */
-    var engineScript = (engine && engine.script && !engine.module)
-      ? '  <script src="' + engine.script + '"><' + '/script>\n'
-      : '';
-
-    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
-      + '  <meta charset="UTF-8">\n'
-      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
-      + '  <title>FlatWrite PDF</title>\n'
-      + '  <link rel="preconnect" href="https://fonts.googleapis.com">\n'
-      + '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-      + '  <link href="' + FONTS_URL + '" rel="stylesheet">\n'
-      + engineScript
-      + '  <style>\n'
-      + '    ' + buildPageCSS() + '\n'
-      + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
-      + '    body {\n'
-      + '      font-size: ' + (15 * scale) + 'px !important;\n'
-      + '      font-weight: ' + weight + ' !important;\n'
-      + '      line-height: ' + lineHeight + ' !important;\n'
-      + '      color: #2d2a3e;\n'
-      + '      max-width: ' + contentWidth + 'px;\n'
-      + '      margin: 0 auto;\n'
-      + '      overflow-x: hidden;\n'
-      + '    }\n'
-      + '    body:not(.pagedjs) main { padding: 0.5rem 1rem; }\n'
-      + '    h1, h2, h3, h4, h5, h6 {\n'
-      + '      font-weight: ' + headWeight + ' !important;\n'
-      + '      overflow-wrap: break-word; word-break: break-word;\n'
-      + '    }\n'
-      + '    h1 { font-size: ' + (15 * scale * 2) + 'px !important; }\n'
-      + '    h2 { font-size: ' + (15 * scale * 1.5) + 'px !important; margin-top: 1.8em !important; }\n'
-      + '    h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }\n'
-      + '    h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }\n'
-      + '    img { max-width: 100%; height: auto; display: block; }\n'
-      + '    pre, code { font-family: "JetBrains Mono", monospace !important; }\n'
-      + '    pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }\n'
-      + '    table { table-layout: fixed; width: 100%; overflow: hidden; }\n'
-      + '    td, th { word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }\n'
-      + '    blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }\n'
-      + '    ul, ol { padding-left: 1.8em; margin: 0.2em 0; list-style-position: outside; }\n'
-      + '    li { margin: 0.15em 0; display: list-item; }\n'
-      + '    li > ul, li > ol { margin: 0.15em 0; padding-left: 2em; }\n'
-      + '    li::marker { display: inline; }\n'
-      + '    li:has(> input[type="checkbox"]) { list-style: none; }\n'
-      + '    li:has(> input[type="checkbox"])::marker { display: none; }\n'
-      + '    .task-list-item { list-style: none; }\n'
-      + '    .task-list-item::marker { display: none; }\n'
-      + '    input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }\n'
-      + '    ul { list-style-type: disc; }\n'
-      + '    ul ul { list-style-type: circle; }\n'
-      + '    ul ul ul { list-style-type: disc; }\n'
-      + '    ul ul ul ul { list-style-type: circle; }\n'
-      + '    p { margin: 0.4em 0; }\n'
-      + '    br { margin: 0.3em 0; }\n'
-      + '  </style>\n'
-      + '</head>\n<body>\n  <main>\n'
-      + renderedHTML
-      + '\n  </main>\n'
-      /* Auto-print after Paged.js renders */
-      + '  <script>\n'
-      + '    document.addEventListener("DOMContentLoaded", function() {\n'
-      + '      if (typeof window.PagedPolyfill !== "undefined") {\n'
-      + '        window.PagedPolyfill.on("afterRenderation", function() {\n'
-      + '          setTimeout(function() { window.print(); }, 200);\n'
-      + '        });\n'
-      + '      } else {\n'
-      + '        setTimeout(function() { window.print(); }, 500);\n'
-      + '      }\n'
-      + '    });\n'
-      + '  <' + '/script>\n'
-      + '</body>\n</html>';
-
-    openInNewTab(html, "text/html;charset=utf-8");
+    /* Open the print snapshot in a popup sized to the page, not the
+       preview iframe. The previous code used the iframe's bounding rect
+       as the window dimensions, which constrained the popup to ~800x600
+       and clipped all but the first page of a multi-page document. */
+    var pageW = getPageWidthPx();
+    var pageH = getPageHeightPx();
+    var popupW = Math.round(pageW + 40);
+    var popupH = Math.min(Math.round(pageH + 80), window.innerHeight - 40);
+    var features = "width=" + popupW + ",height=" + popupH + ",resizable=yes,scrollbars=yes";
+    var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    window.open(url, "_blank", features);
   }
 
   /* ==========================================================================
@@ -3425,13 +3751,19 @@
     var btnClose  = document.getElementById("load-modal-close");
     if (!overlay || !urlInput) return;
 
+    var returnFocusTo = document.activeElement;
     urlInput.value = "";
     status.textContent = "";
     status.className = "load-url-status";
     overlay.classList.remove("hidden");
     urlInput.focus();
 
-    function close() { overlay.classList.add("hidden"); }
+    function close() {
+      overlay.classList.add("hidden");
+      if (returnFocusTo && typeof returnFocusTo.focus === "function") {
+        returnFocusTo.focus();
+      }
+    }
 
     function doFetch() {
       var url = urlInput.value.trim();
@@ -3483,25 +3815,69 @@
         });
     }
 
-    /* Remove any previous listeners by replacing elements */
+    /* Remove any previous listeners by replacing the buttons, then
+       re-point our references at the live clones. Without the reassignment
+       doFetch()/close() would capture the DETACHED originals, so
+       btnFetch.disabled would toggle a node that is no longer in the DOM
+       and the visible Fetch button would stay enabled (duplicate submits). */
     var newFetch = btnFetch.cloneNode(true);
     var newCancel = btnCancel.cloneNode(true);
     var newClose = btnClose.cloneNode(true);
     btnFetch.parentNode.replaceChild(newFetch, btnFetch);
     btnCancel.parentNode.replaceChild(newCancel, btnCancel);
     btnClose.parentNode.replaceChild(newClose, btnClose);
+    btnFetch = newFetch;
+    btnCancel = newCancel;
+    btnClose = newClose;
 
     newFetch.addEventListener("click", doFetch);
     newCancel.addEventListener("click", close);
     newClose.addEventListener("click", close);
-    urlInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); doFetch(); }
-      if (e.key === "Escape") close();
-    });
-    overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) close();
-    });
+    doFetchLatest = doFetch;
+    closeLatest = close;
+
+    /* urlInput and overlay are not cloned, so their listeners would
+       accumulate on every open. Bind them exactly once. */
+    if (!overlay.dataset.fwBound) {
+      overlay.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && e.target === urlInput) {
+          e.preventDefault();
+          doFetchLatest();
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closeLatest();
+          return;
+        }
+        if (e.key !== "Tab") return;
+        var focusable = overlay.querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) closeLatest();
+      });
+      overlay.dataset.fwBound = "1";
+    }
   }
+
+  /* The keydown/overlay listeners are bound once but must always call the
+     CURRENT modal invocation's handlers. loadFromUrlModal reassigns these
+     on each open. */
+  var doFetchLatest = function () {};
+  var closeLatest = function () {};
 
   /* ==========================================================================
      Toast feedback
@@ -3512,6 +3888,12 @@
     if (stack) return stack;
     stack = document.createElement("div");
     stack.className = "fw-toast-stack";
+    /* Live region so screen readers announce transient outcomes
+       (share failure, load/export errors, validation) that are
+       otherwise visual-only. */
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    stack.setAttribute("aria-atomic", "true");
     // Anchored to the editor/preview surface (bottom-center) rather than
     // the viewport — falls back to <body> if that wrapper is missing.
     (mainPanelWrapper || document.body).appendChild(stack);
@@ -3577,25 +3959,34 @@
 
   function fwApplyContent(content, sourceUrl, opts) {
     opts = opts || {};
+    var documentContent = content;
     if (opts.isShare) {
       var parsed = parseShareYaml(content);
+      documentContent = parsed.body;
       if (parsed.frontmatter) {
         var fm = parsed.frontmatter;
         if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
         if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
         if (fm.font) comfortFont = fm.font;
+        if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
+        if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
+        if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
+        if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
+        if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
+        showFooter = fm.footer === "true" || fm.footer === "on";
         setDocEngine(currentDocEngine);
+        syncDocControlsUI();
       }
       setMarkdownUrl("");
     } else {
       setMarkdownUrl(sourceUrl);
     }
-    setEditorContent(content);
+    setEditorContent(documentContent);
     fwDocumentId = "";
     fwEnsureDocumentId();
     return {
       documentId: fwDocumentId,
-      title: fwExtractTitle(content),
+      title: fwExtractTitle(documentContent),
       url: sourceUrl,
     };
   }
@@ -3724,7 +4115,217 @@
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       };
     },
+
+    /**
+     * Morph AI assist — returns { markdown, piece, scope, ... } without applying.
+     * Callers (UI / WebMCP) should confirm before writing via updateDocumentContent.
+     */
+    assistDocument: async function (opts) {
+      return runAssistRequest(opts || {});
+    },
   };
+
+  /* ==========================================================================
+     Morph AI Assist
+     ========================================================================== */
+
+  var ASSIST_URL = "https://assist.flatwrite.md/assist";
+  var ASSIST_TOKEN_URL = "https://assist.flatwrite.md/mcp-token";
+  var assistCachedToken = null;
+  var assistInflightToken = null;
+  var assistPending = null; // last successful result awaiting Accept
+  var assistMode = "rewrite";
+
+  async function getAssistToken() {
+    if (assistCachedToken && assistCachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
+      return assistCachedToken;
+    }
+    if (assistInflightToken) return assistInflightToken;
+    assistInflightToken = (async function () {
+      var res = await fetch(ASSIST_TOKEN_URL, { method: "POST" });
+      if (!res.ok) {
+        var errText = await res.text().catch(function () { return ""; });
+        throw new Error("Token mint failed (" + res.status + ")" + (errText ? ": " + errText.slice(0, 120) : ""));
+      }
+      var data = await res.json();
+      assistCachedToken = { token: data.token, expiresAt: data.expiresAt };
+      return assistCachedToken;
+    })();
+    try {
+      return await assistInflightToken;
+    } finally {
+      assistInflightToken = null;
+    }
+  }
+
+  function getAssistSelection() {
+    var start = editor.selectionStart;
+    var end = editor.selectionEnd;
+    if (typeof start !== "number" || typeof end !== "number" || end <= start) return null;
+    return { start: start, end: end, text: editor.value.slice(start, end) };
+  }
+
+  function updateAssistScopeHint() {
+    var el = document.getElementById("assist-scope-hint");
+    if (!el) return;
+    var sel = getAssistSelection();
+    if (sel) {
+      el.textContent = "Selection (" + sel.text.length + " chars)";
+    } else {
+      el.textContent = "Whole document";
+    }
+  }
+
+  function setAssistOpen(open) {
+    var panel = document.getElementById("assist-panel");
+    var btn = document.getElementById("btn-assist");
+    if (!panel || !btn) return;
+    if (open) {
+      panel.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      updateAssistScopeHint();
+    } else {
+      panel.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function setAssistStatus(msg, isError) {
+    var el = document.getElementById("assist-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    if (isError) el.classList.add("error");
+    else el.classList.remove("error");
+  }
+
+  function showAssistResult(result) {
+    var box = document.getElementById("assist-result");
+    var meta = document.getElementById("assist-result-meta");
+    var pre = document.getElementById("assist-result-preview");
+    if (!box || !meta || !pre) return;
+    assistPending = result;
+    var bits = [];
+    if (result.model) bits.push(result.model);
+    if (result.routing && result.routing.tier) bits.push("tier:" + result.routing.tier);
+    if (result.explanation) bits.push(result.explanation);
+    meta.textContent = bits.join(" · ");
+    pre.textContent = result.piece || result.markdown || "";
+    box.classList.remove("hidden");
+  }
+
+  function clearAssistResult() {
+    assistPending = null;
+    var box = document.getElementById("assist-result");
+    if (box) box.classList.add("hidden");
+  }
+
+  async function runAssistRequest(opts) {
+    var mode = (opts && opts.mode) || assistMode || "rewrite";
+    var instruction = (opts && typeof opts.instruction === "string")
+      ? opts.instruction
+      : ((document.getElementById("assist-instruction") || {}).value || "");
+    var markdown = (opts && typeof opts.markdown === "string") ? opts.markdown : (editor.value || "");
+    var selection = opts && opts.selection !== undefined ? opts.selection : getAssistSelection();
+
+    if (!markdown.trim()) {
+      throw { code: "EMPTY_DOCUMENT", message: "Document is empty" };
+    }
+    if (mode === "custom" && !String(instruction).trim()) {
+      throw { code: "MISSING_INSTRUCTION", message: "Custom mode needs an instruction" };
+    }
+
+    var tok = await getAssistToken();
+    var res = await fetch(ASSIST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Mcp-Token": tok.token,
+      },
+      body: JSON.stringify({
+        mode: mode,
+        instruction: instruction,
+        markdown: markdown,
+        selection: selection || undefined,
+      }),
+    });
+    var data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      throw { code: "BAD_RESPONSE", message: "Assist returned non-JSON (" + res.status + ")" };
+    }
+    if (!res.ok || !data.ok) {
+      var err = (data && data.error) || {};
+      throw {
+        code: err.code || "ASSIST_FAILED",
+        message: err.message || ("Assist failed (" + res.status + ")"),
+        retryable: Boolean(err.retryable),
+      };
+    }
+    return data;
+  }
+
+  async function onAssistRun() {
+    var runBtn = document.getElementById("assist-run");
+    clearAssistResult();
+    setAssistStatus("Running…");
+    if (runBtn) runBtn.disabled = true;
+    try {
+      var result = await runAssistRequest({ mode: assistMode });
+      showAssistResult(result);
+      setAssistStatus("Ready — Accept to apply");
+    } catch (e) {
+      setAssistStatus((e && e.message) || String(e), true);
+    } finally {
+      if (runBtn) runBtn.disabled = false;
+    }
+  }
+
+  function onAssistAccept() {
+    if (!assistPending || !assistPending.markdown) return;
+    setEditorContent(assistPending.markdown);
+    clearAssistResult();
+    setAssistStatus("Applied");
+    setAssistOpen(false);
+  }
+
+  function bindAssistUi() {
+    var btn = document.getElementById("btn-assist");
+    var close = document.getElementById("assist-close");
+    var run = document.getElementById("assist-run");
+    var accept = document.getElementById("assist-accept");
+    var discard = document.getElementById("assist-discard");
+    var modes = document.getElementById("assist-modes");
+    if (!btn) return;
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var panel = document.getElementById("assist-panel");
+      var open = panel && panel.classList.contains("hidden");
+      setAssistOpen(open);
+    });
+    if (close) close.addEventListener("click", function () { setAssistOpen(false); });
+    if (run) run.addEventListener("click", function () { onAssistRun(); });
+    if (accept) accept.addEventListener("click", function () { onAssistAccept(); });
+    if (discard) discard.addEventListener("click", function () {
+      clearAssistResult();
+      setAssistStatus("");
+    });
+    if (modes) {
+      modes.addEventListener("click", function (e) {
+        var m = e.target.closest("[data-mode]");
+        if (!m) return;
+        assistMode = m.getAttribute("data-mode") || "rewrite";
+        modes.querySelectorAll(".assist-mode").forEach(function (el) {
+          el.classList.toggle("active", el === m);
+        });
+      });
+    }
+    editor.addEventListener("select", updateAssistScopeHint);
+    editor.addEventListener("keyup", updateAssistScopeHint);
+    editor.addEventListener("mouseup", updateAssistScopeHint);
+  }
 
   /* ==========================================================================
      Boot
