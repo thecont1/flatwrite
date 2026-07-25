@@ -170,9 +170,9 @@
      ========================================================================== */
 
   var DOC_ENGINES = {
-    pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media", description: "Fast, web-friendly pagination. Best for simple documents." },
-    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true, description: "Professional publishing engine. Better tables, running headers, and CSS compliance." },
-    none: { label: "Plain CSS", script: null, category: "unstyled", description: "No pagination. WYSIWYG preview for quick edits." }
+    pagedjs: { label: "Paged.js", script: "https://unpkg.com/pagedjs/dist/paged.polyfill.js", category: "paged-media", description: "Fast pagination. Best for text-heavy documents. Basic table support (may break mid-row). Running headers unreliable across page breaks. ~70KB." },
+    vivliostyle: { label: "Vivliostyle", script: "https://esm.unpkg.com/@vivliostyle/core@2.43.3", category: "css-books", module: true, description: "Professional publishing. Full CSS Table support, reliable running headers via string-set/string(), accurate page counters. Best for books and complex layouts. ~1.2MB." },
+    none: { label: "Plain CSS", script: null, category: "unstyled", description: "No pagination. WYSIWYG preview for quick edits. PDF export disabled." }
   };
 
   /* ==========================================================================
@@ -2223,12 +2223,6 @@
     if (appShell) {
       appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
       appShell.classList.add("engine-" + engineKey);
-    }
-    /* Update engine description text */
-    var descEl = document.getElementById("engine-description");
-    if (descEl) {
-      var engineInfo = DOC_ENGINES[engineKey] || DOC_ENGINES.none;
-      descEl.textContent = engineInfo.description;
     }
     /* Disable PDF export in Plain mode, while keeping its wrapper available
        to surface a useful tooltip for mouse and keyboard users. */

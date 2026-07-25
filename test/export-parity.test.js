@@ -329,7 +329,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=122');
+    expect(INDEX).toContain('app.js?v=123');
   });
 });
 
@@ -360,28 +360,35 @@ describe("preview/export fidelity", () => {
 });
 
 describe("engine descriptions", () => {
-  test("each engine has a description in the DOC_ENGINES registry", () => {
-    expect(SRC).toContain('description: "Fast, web-friendly pagination. Best for simple documents."');
-    expect(SRC).toContain('description: "Professional publishing engine. Better tables, running headers, and CSS compliance."');
-    expect(SRC).toContain('description: "No pagination. WYSIWYG preview for quick edits."');
+  test("each engine has a detailed description in the DOC_ENGINES registry", () => {
+    expect(SRC).toContain('description: "Fast pagination. Best for text-heavy documents. Basic table support');
+    expect(SRC).toContain('description: "Professional publishing. Full CSS Table support');
+    expect(SRC).toContain('description: "No pagination. WYSIWYG preview for quick edits. PDF export disabled."');
   });
 
-  test("setDocEngine updates the engine-description element", () => {
+  test("setDocEngine does not reference a description element", () => {
     const body = fnBody("setDocEngine");
-    expect(body).toContain("engine-description");
-    expect(body).toContain("engineInfo.description");
+    expect(body).not.toContain("engine-description");
+    expect(body).not.toContain("engineInfo.description");
   });
 
-  test("engine buttons have descriptive title attributes", () => {
-    expect(INDEX).toContain('title="Fast, web-friendly pagination. Best for simple documents."');
-    expect(INDEX).toContain('title="Professional publishing engine. Better tables, running headers, and CSS compliance."');
+  test("engine buttons have detailed title attributes for tooltips", () => {
+    expect(INDEX).toContain('title="Fast pagination. Best for text-heavy documents. Basic table support');
+    expect(INDEX).toContain('title="Professional publishing. Full CSS Table support');
+    expect(INDEX).toContain('title="No pagination. WYSIWYG preview for quick edits. PDF export disabled."');
   });
 
-  test("README documents engine choice", () => {
+  test("no engine-description paragraph in the sidebar", () => {
+    expect(INDEX).not.toContain("engine-description");
+  });
+
+  test("README documents engine choice with a comparison table", () => {
     expect(README).toContain("Choosing a pagination engine");
     expect(README).toContain("Paged.js");
     expect(README).toContain("Vivliostyle");
     expect(README).toContain("Plain CSS");
+    expect(README).toContain("Running headers");
+    expect(README).toContain("string-set");
   });
 });
 

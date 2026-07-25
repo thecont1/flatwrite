@@ -51,13 +51,17 @@ FlatWrite supports a proprietary self-closing tag for adding controlled blank sp
 
 ## Choosing a pagination engine
 
-FlatWrite offers three rendering modes, selectable from the **Engine** section of the sidebar:
+FlatWrite offers three rendering modes, selectable from the **Engine** section of the sidebar. Hover over an engine button to see its feature summary.
 
-- **Plain CSS** — No pagination. Renders your document as a single scrollable page with standard CSS. Use this for quick edits and WYSIWYG preview. PDF export is disabled in this mode.
-- **Paged.js** — Fast, web-friendly pagination via the Paged.js polyfill. Best for simple documents that are mostly text with basic formatting. Starts quickly and is forgiving of imperfect CSS.
-- **Vivliostyle** — Professional publishing engine with the most complete CSS Paged Media support. Better table handling, reliable running headers via `string-set`/`string()`, and more spec-compliant page counters. Best for books, complex layouts, or documents with tables and headers. Starts slower but produces more accurate output.
+| Engine | Best for | Tables | Running headers | Page counters | Startup |
+|---|---|---|---|---|---|
+| **Plain CSS** | Quick edits, WYSIWYG preview | N/A (no pagination) | N/A | N/A | Instant |
+| **Paged.js** | Text-heavy documents, fast turnaround | Basic (may break mid-row) | Unreliable across page breaks | Accurate in preview | Fast (~70KB) |
+| **Vivliostyle** | Books, complex layouts, documents with tables | Full CSS Table support | Reliable via `string-set`/`string()` | Always accurate | Slower (~1.2MB) |
 
 All three engines share the same typography controls (font, size, weight, line spacing), page size/orientation settings, and `<fw-break>` support. The choice only affects how the document is paginated for View mode and PDF export.
+
+**Quick guide:** If your document has tables, chapter headings with running headers, or multi-column layouts, use **Vivliostyle**. If you just need to paginate a text-heavy document quickly, use **Paged.js**. Use **Plain CSS** for editing and quick preview — no pagination, no PDF export.
 
 ## Get started
 
