@@ -58,7 +58,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
-  <script src="app.js?v=121" defer></script>
+  <script src="app.js?v=122" defer></script>
 
 </head>
 <body>
@@ -118,10 +118,11 @@
           <label class="sidebar-section-label">Engine</label>
           <div class="engine-toggle" id="engine-toggle" role="group" aria-label="Document engine">
             <button class="engine-btn active" data-engine="none" type="button" aria-pressed="true">Plain</button>
-            <button class="engine-btn" data-engine="pagedjs" type="button" title="Paged.js" aria-label="Paged.js" aria-pressed="false"><img src="assets/pagedjs-logo.svg" alt="" class="engine-logo" /></button>
-            <button class="engine-btn" data-engine="vivliostyle" type="button" title="Vivliostyle" aria-label="Vivliostyle" aria-pressed="false"><img src="assets/vivliostyle-logo.svg" alt="" class="engine-logo" /></button>
+            <button class="engine-btn" data-engine="pagedjs" type="button" title="Fast, web-friendly pagination. Best for simple documents." aria-label="Paged.js" aria-pressed="false"><img src="assets/pagedjs-logo.svg" alt="" class="engine-logo" /></button>
+            <button class="engine-btn" data-engine="vivliostyle" type="button" title="Professional publishing engine. Better tables, running headers, and CSS compliance." aria-label="Vivliostyle" aria-pressed="false"><img src="assets/vivliostyle-logo.svg" alt="" class="engine-logo" /></button>
             <span class="engine-slider" id="engine-slider"></span>
           </div>
+          <p class="engine-description" id="engine-description" aria-live="polite">No pagination. WYSIWYG preview for quick edits.</p>
           <div class="doc-controls" id="doc-controls">
             <div class="doc-control-row">
               <label for="page-size" class="doc-label">Page Size</label>

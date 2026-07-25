@@ -329,7 +329,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=121');
+    expect(INDEX).toContain('app.js?v=122');
   });
 });
 
@@ -356,6 +356,32 @@ describe("preview/export fidelity", () => {
     expect(body).toContain("document.fonts.ready");
     expect(body).toContain("viewer.loadDocument(docUrl)");
     expect(body).toContain("ready.then(_initFit)");
+  });
+});
+
+describe("engine descriptions", () => {
+  test("each engine has a description in the DOC_ENGINES registry", () => {
+    expect(SRC).toContain('description: "Fast, web-friendly pagination. Best for simple documents."');
+    expect(SRC).toContain('description: "Professional publishing engine. Better tables, running headers, and CSS compliance."');
+    expect(SRC).toContain('description: "No pagination. WYSIWYG preview for quick edits."');
+  });
+
+  test("setDocEngine updates the engine-description element", () => {
+    const body = fnBody("setDocEngine");
+    expect(body).toContain("engine-description");
+    expect(body).toContain("engineInfo.description");
+  });
+
+  test("engine buttons have descriptive title attributes", () => {
+    expect(INDEX).toContain('title="Fast, web-friendly pagination. Best for simple documents."');
+    expect(INDEX).toContain('title="Professional publishing engine. Better tables, running headers, and CSS compliance."');
+  });
+
+  test("README documents engine choice", () => {
+    expect(README).toContain("Choosing a pagination engine");
+    expect(README).toContain("Paged.js");
+    expect(README).toContain("Vivliostyle");
+    expect(README).toContain("Plain CSS");
   });
 });
 

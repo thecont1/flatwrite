@@ -49,6 +49,16 @@ FlatWrite supports a proprietary self-closing tag for adding controlled blank sp
 
 `lines` inserts that many line-heights in **Paged.js** and **Vivliostyle** output. Values are truncated to integers and clamped to `0–24`; omitted `lines` defaults to `1`, while invalid values insert no space. The tag is removed entirely in **Plain** and **Read** modes, so it never appears as visible text.
 
+## Choosing a pagination engine
+
+FlatWrite offers three rendering modes, selectable from the **Engine** section of the sidebar:
+
+- **Plain CSS** — No pagination. Renders your document as a single scrollable page with standard CSS. Use this for quick edits and WYSIWYG preview. PDF export is disabled in this mode.
+- **Paged.js** — Fast, web-friendly pagination via the Paged.js polyfill. Best for simple documents that are mostly text with basic formatting. Starts quickly and is forgiving of imperfect CSS.
+- **Vivliostyle** — Professional publishing engine with the most complete CSS Paged Media support. Better table handling, reliable running headers via `string-set`/`string()`, and more spec-compliant page counters. Best for books, complex layouts, or documents with tables and headers. Starts slower but produces more accurate output.
+
+All three engines share the same typography controls (font, size, weight, line spacing), page size/orientation settings, and `<fw-break>` support. The choice only affects how the document is paginated for View mode and PDF export.
+
 ## Get started
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.
