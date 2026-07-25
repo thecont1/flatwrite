@@ -349,7 +349,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=125');
+    expect(INDEX).toContain('app.js?v=126');
   });
 
   test("loads the stylesheet revision", () => {
@@ -370,6 +370,15 @@ describe("print snapshot footer", () => {
     const body = fnBody("buildPrintSnapshot");
     expect(body).toContain("footerMargin");
     expect(body).toContain("showFooter");
+  });
+
+  test("PDF popup is sized to the page, not the preview iframe", () => {
+    const body = fnBody("exportPDF");
+    expect(body).not.toContain("iframeRect");
+    expect(body).toContain("getPageWidthPx()");
+    expect(body).toContain("getPageHeightPx()");
+    expect(body).toContain("popupW");
+    expect(body).toContain("popupH");
   });
 });
 

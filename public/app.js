@@ -3602,10 +3602,15 @@
       showToast("Open View and wait for pagination before exporting PDF");
       return;
     }
-    var iframeRect = previewFrame.getBoundingClientRect();
-    var width = Math.round(iframeRect.width);
-    var height = Math.round(iframeRect.height);
-    var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
+    /* Open the print snapshot in a popup sized to the page, not the
+       preview iframe. The previous code used the iframe's bounding rect
+       as the window dimensions, which constrained the popup to ~800x600
+       and clipped all but the first page of a multi-page document. */
+    var pageW = getPageWidthPx();
+    var pageH = getPageHeightPx();
+    var popupW = Math.round(pageW + 40);
+    var popupH = Math.min(Math.round(pageH + 80), window.innerHeight - 40);
+    var features = "width=" + popupW + ",height=" + popupH + ",resizable=yes,scrollbars=yes";
     var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
     var url = URL.createObjectURL(blob);
     window.open(url, "_blank", features);
