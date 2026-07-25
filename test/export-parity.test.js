@@ -250,6 +250,25 @@ describe("FlatWrite PDF spacing tag", () => {
   });
 });
 
+describe("button tooltips", () => {
+  test("uses one accessible viewport-aware tooltip layer for every button", () => {
+    expect(SRC).toContain("function initButtonTooltips");
+    const body = fnBody("initButtonTooltips");
+    expect(body).toContain('root.querySelectorAll("button")');
+    expect(body).toContain("MutationObserver");
+    expect(body).toContain('target.matches("button")');
+    expect(body).toContain('target.closest("button")');
+    expect(body).toContain('tooltip.setAttribute("role", "tooltip")');
+    expect(body).toContain('button.setAttribute("aria-describedby", tooltip.id)');
+    expect(STYLES).toContain(".fw-tooltip");
+    expect(STYLES).toContain("white-space: nowrap");
+  });
+
+  test("Plain PDF guidance names both engines", () => {
+    expect(SRC).toContain("Switch to Paged.js or Vivliostyle to enable PDF export");
+  });
+});
+
 describe("exportHTML", () => {
   test("uses canonical CSS after validating live settings", () => {
     const body = fnBody("exportHTML");

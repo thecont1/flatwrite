@@ -1115,12 +1115,27 @@ body {
   opacity: 1;
 }
 
-/* PDF disabled in Plain mode */
+/* PDF disabled in Plain mode. The wrapper stays interactive so its tooltip
+   can explain how to enable PDF export. */
+.fw-tooltip-host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-share-buttons .fw-tooltip-host,
+.sidebar-share-buttons .fw-tooltip-host > button {
+  width: 100%;
+}
+
 .app-shell.engine-none #btn-export-pdf,
 #btn-export-pdf:disabled {
   opacity: 0.2;
   cursor: not-allowed;
-  pointer-events: none;
+}
+
+.fw-tooltip-host:has(> #btn-export-pdf:disabled) {
+  cursor: help;
 }
 
 /* ---------- Load (sidebar) ---------- */
@@ -1608,46 +1623,62 @@ body {
 
 /* ==========================================================================
    TOOLTIPS
+   One fixed layer prevents clipping inside scrollable toolbars/sidebars and
+   lets JS keep every one-line instruction inside the viewport.
    ========================================================================== */
 
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]:hover::before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(45, 42, 62, 0.92);
+.fw-tooltip {
+  position: fixed;
+  z-index: 100000;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   color: #fff;
+  background: rgba(45, 42, 62, 0.96);
+  box-shadow: 0 5px 18px rgba(45, 42, 62, 0.18);
   font-family: var(--font-body);
   font-size: 0.72rem;
   font-weight: 500;
-  padding: 6px 10px;
-  border-radius: 6px;
+  line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
-  z-index: 1000;
-  animation: tooltipFadeIn 0.2s ease;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-[data-tooltip]:hover::after {
+.fw-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fw-tooltip::after {
   content: "";
   position: absolute;
-  bottom: calc(100% + 2px);
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   border: 4px solid transparent;
-  border-top-color: rgba(45, 42, 62, 0.92);
-  pointer-events: none;
-  z-index: 1000;
+  border-top-color: rgba(45, 42, 62, 0.96);
 }
 
-@keyframes tooltipFadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(2px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+.fw-tooltip.below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: rgba(45, 42, 62, 0.96);
+}
+
+/* Retire the old per-button pseudo-element tooltips; all buttons now use the
+   fixed layer so behaviour is consistent for hover and keyboard focus. */
+.md-btn::after,
+[data-tooltip]::before,
+[data-tooltip]::after {
+  display: none !important;
 }
 
 /* ==========================================================================
@@ -2536,9 +2567,7 @@ body {
   }
 
   /* Disable tooltips on mobile */
-  .md-btn::after,
-  [data-tooltip]:hover::before,
-  [data-tooltip]:hover::after {
+  .fw-tooltip {
     display: none !important;
   }
 

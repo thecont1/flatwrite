@@ -1114,6 +1114,7 @@
       buildFontDropdown();
       buildAppFrameworkDropdown();
       renderComponentGrid();
+      initButtonTooltips();
       setDocEngine(currentDocEngine);
       setSurfaceMode(surfaceMode);
       syncDocControlsUI();
@@ -1377,6 +1378,165 @@
   }
 
   /* ==========================================================================
+     Accessible button tooltips
+     ========================================================================== */
+
+  var BUTTON_TOOLTIP_COPY = {
+    "mobile-hamburger": "Open or close the controls sidebar",
+    "btn-load-url": "Load a document from a public URL",
+    "btn-load-local": "Load a document from this device",
+    "toggle-orient": "Switch between portrait and landscape pages",
+    "toggle-footer": "Show or hide page numbers and the document title",
+    "fw-dropdown-btn": "Choose the component CSS framework",
+    "sidebar-export-md": "Open the source as Markdown",
+    "sidebar-export-html": "Open the rendered document as HTML",
+    "sidebar-export-pdf": "Open the paginated document for PDF printing",
+    "sidebar-share-url": "Create a shareable URL",
+    "font-dropdown-btn": "Choose the document typeface",
+    "size-down": "Decrease document text size",
+    "size-up": "Increase document text size",
+    "weight-down": "Use a lighter document weight",
+    "weight-up": "Use a bolder document weight",
+    "line-down": "Tighten document line spacing",
+    "line-up": "Loosen document line spacing",
+    "btn-edit": "Edit the Markdown source",
+    "btn-preview": "Preview the rendered document",
+    "btn-read": "Read without editing controls",
+    "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
+    "assist-close": "Close AI Assist",
+    "assist-run": "Run the selected AI Assist operation",
+    "assist-accept": "Apply the proposed AI edit",
+    "assist-discard": "Discard the proposed AI edit",
+    "btn-export-md": "Open the source as Markdown",
+    "btn-export-html": "Open the rendered document as HTML",
+    "btn-export-pdf": "Open the paginated document for PDF printing",
+    "btn-share": "Create a shareable URL",
+    "load-modal-close": "Close the URL loader",
+    "load-modal-cancel": "Cancel loading from a URL",
+    "load-modal-insert": "Fetch the document from this URL",
+    "comp-modal-close": "Close the component dialog",
+    "comp-modal-cancel": "Cancel inserting this component",
+    "comp-modal-insert": "Insert this component into the document"
+  };
+
+  function getButtonTooltip(button) {
+    if (!button) return "";
+    if (BUTTON_TOOLTIP_COPY[button.id]) return BUTTON_TOOLTIP_COPY[button.id];
+    if (button.dataset.tooltip) return button.dataset.tooltip;
+    var dataTip = button.getAttribute("data-tip");
+    if (dataTip) return dataTip;
+    var aria = button.getAttribute("aria-label");
+    if (aria) return aria;
+    var title = button.getAttribute("title");
+    if (title) return title;
+    var text = (button.textContent || "").replace(/\s+/g, " ").trim();
+    if (button.classList.contains("engine-btn")) return "Render with " + (text || aria || title);
+    if (button.classList.contains("surface-btn")) return "Use the " + text + " surface";
+    if (button.classList.contains("font-dropdown-item")) return "Use " + text + " as the document typeface";
+    if (button.classList.contains("fw-dropdown-item")) return "Use the " + text + " component framework";
+    if (button.classList.contains("comp-btn")) return "Insert the " + text + " component";
+    if (button.classList.contains("assist-mode")) return "Use the " + text + " assist mode";
+    return text ? "Activate " + text : "Activate this control";
+  }
+
+  function initButtonTooltips() {
+    var tooltip = document.getElementById("fw-button-tooltip");
+    if (!tooltip) {
+      tooltip = document.createElement("div");
+      tooltip.id = "fw-button-tooltip";
+      tooltip.className = "fw-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      tooltip.setAttribute("aria-hidden", "true");
+      document.body.appendChild(tooltip);
+    }
+    var activeButton = null;
+
+    function prepare(button) {
+      if (!button || button.dataset.fwTooltipReady) return;
+      var copy = getButtonTooltip(button);
+      button.dataset.fwTooltipReady = "1";
+      button.dataset.tooltip = copy;
+      button.removeAttribute("title");
+      if (!button.getAttribute("aria-label") && !(button.textContent || "").trim()) {
+        button.setAttribute("aria-label", copy);
+      }
+      var host = button.closest(".fw-tooltip-host");
+      if (host) {
+        host.tabIndex = button.disabled ? 0 : -1;
+        host.dataset.tooltip = copy;
+        host.setAttribute("aria-label", copy);
+      }
+    }
+
+    function prepareAll(root) {
+      if (root && root.matches && root.matches("button")) prepare(root);
+      if (root && root.querySelectorAll) root.querySelectorAll("button").forEach(prepare);
+    }
+
+    function show(button) {
+      if (!button) return;
+      var liveButton = button.matches && button.matches(".fw-tooltip-host")
+        ? button.querySelector("button")
+        : button;
+      var copy = (liveButton && liveButton.dataset.tooltip)
+        || button.dataset.tooltip
+        || getButtonTooltip(liveButton);
+      if (!copy) return;
+      activeButton = button;
+      tooltip.textContent = copy;
+      tooltip.classList.add("visible");
+      tooltip.setAttribute("aria-hidden", "false");
+      button.setAttribute("aria-describedby", tooltip.id);
+      var rect = button.getBoundingClientRect();
+      var gap = 9;
+      var pad = 8;
+      tooltip.style.left = "0px";
+      tooltip.style.top = "0px";
+      var tw = tooltip.offsetWidth;
+      var th = tooltip.offsetHeight;
+      var left = Math.max(pad, Math.min(window.innerWidth - tw - pad, rect.left + rect.width / 2 - tw / 2));
+      var top = rect.top - th - gap;
+      var placeBelow = top < pad;
+      if (placeBelow) top = Math.min(window.innerHeight - th - pad, rect.bottom + gap);
+      tooltip.classList.toggle("below", placeBelow);
+      tooltip.style.left = Math.round(left) + "px";
+      tooltip.style.top = Math.round(top) + "px";
+    }
+
+    function hide() {
+      if (activeButton) activeButton.removeAttribute("aria-describedby");
+      activeButton = null;
+      tooltip.classList.remove("visible", "below");
+      tooltip.setAttribute("aria-hidden", "true");
+    }
+
+    function resolveTarget(target) {
+      if (!(target instanceof Element)) return null;
+      if (target.matches("button")) return target;
+      return target.closest("button") || target.closest(".fw-tooltip-host");
+    }
+
+    prepareAll(document);
+    document.addEventListener("pointerover", function (e) { show(resolveTarget(e.target)); });
+    document.addEventListener("pointerout", function (e) {
+      var button = resolveTarget(e.target);
+      if (button && !button.contains(e.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", function (e) { show(resolveTarget(e.target)); });
+    document.addEventListener("focusout", function (e) { if (resolveTarget(e.target)) hide(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+
+    var observer = new MutationObserver(function (records) {
+      records.forEach(function (record) {
+        record.addedNodes.forEach(function (node) { prepareAll(node); });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  /* ==========================================================================
      Character count warning
      ========================================================================== */
 
@@ -1397,7 +1557,9 @@
     /* Disable share button at hard limit */
     if (btnShare) {
       btnShare.disabled = len >= SHARE_CHAR_LIMIT;
-      btnShare.title = len >= SHARE_CHAR_LIMIT ? "Document too large to share" : "Share as URL";
+      btnShare.dataset.tooltip = len >= SHARE_CHAR_LIMIT
+        ? "Document too large to share"
+        : "Create a shareable URL";
     }
     var sbUrl = document.getElementById("sidebar-share-url");
     if (sbUrl) sbUrl.disabled = len >= SHARE_CHAR_LIMIT;
@@ -2061,11 +2223,33 @@
       appShell.classList.remove("engine-pagedjs", "engine-vivliostyle", "engine-none");
       appShell.classList.add("engine-" + engineKey);
     }
-    /* Disable PDF export in Plain mode — use a paged engine for PDF */
+    /* Disable PDF export in Plain mode, while keeping its wrapper available
+       to surface a useful tooltip for mouse and keyboard users. */
     var btnPdf = document.getElementById("btn-export-pdf");
-    if (btnPdf) btnPdf.disabled = (engineKey === "none");
+    var pdfTooltip = engineKey === "none"
+      ? "Switch to Paged.js or Vivliostyle to enable PDF export"
+      : "Open the paginated document for PDF printing";
+    if (btnPdf) {
+      btnPdf.disabled = (engineKey === "none");
+      btnPdf.dataset.tooltip = pdfTooltip;
+      var btnPdfHost = btnPdf.closest(".fw-tooltip-host");
+      if (btnPdfHost) {
+        btnPdfHost.tabIndex = btnPdf.disabled ? 0 : -1;
+        btnPdfHost.dataset.tooltip = pdfTooltip;
+        btnPdfHost.setAttribute("aria-label", pdfTooltip);
+      }
+    }
     var sbPdf = document.getElementById("sidebar-export-pdf");
-    if (sbPdf) sbPdf.disabled = (engineKey === "none");
+    if (sbPdf) {
+      sbPdf.disabled = (engineKey === "none");
+      sbPdf.dataset.tooltip = pdfTooltip;
+      var sbPdfHost = sbPdf.closest(".fw-tooltip-host");
+      if (sbPdfHost) {
+        sbPdfHost.tabIndex = sbPdf.disabled ? 0 : -1;
+        sbPdfHost.dataset.tooltip = pdfTooltip;
+        sbPdfHost.setAttribute("aria-label", pdfTooltip);
+      }
+    }
     /* Reset zoom to 100% in Plain mode — zoom is WYSIWYG-irrelevant there */
     if (engineKey === "none" && zoomStep !== 100) {
       zoomStep = 100;
