@@ -3491,6 +3491,63 @@
     openInNewTab(html, "text/html;charset=utf-8");
   }
 
+  function buildPrintSnapshot(sourceDocument, engineKey) {
+    if (!sourceDocument) return "";
+    var clone = sourceDocument.documentElement.cloneNode(true);
+    clone.querySelectorAll("script, #_fw_stripe, #_fw_kill_borders, link[rel=\"modulepreload\"]").forEach(function (node) {
+      node.remove();
+    });
+
+    /* The preview already contains the final logical pages. Printing that
+       snapshot avoids asking either engine to paginate an already-paginated
+       document (the old n × n blank-page failure). */
+    var body = clone.querySelector("body");
+    if (body) {
+      body.removeAttribute("style");
+      body.className = "fw-print-snapshot engine-" + engineKey;
+    }
+    var html = clone;
+    html.removeAttribute("style");
+
+    var pagesFlow = clone.querySelector(".pagedjs_pages");
+    if (pagesFlow) {
+      pagesFlow.removeAttribute("style");
+      pagesFlow.querySelectorAll(".pagedjs_page").forEach(function (page) {
+        page.removeAttribute("style");
+      });
+    }
+
+    var spread = clone.querySelector("[data-vivliostyle-spread-container]");
+    if (spread) spread.removeAttribute("style");
+    var outerZoom = clone.querySelector("[data-vivliostyle-outer-zoom-box]");
+    if (outerZoom) outerZoom.removeAttribute("style");
+    var viewport = clone.querySelector("#vivl-viewport");
+    if (viewport) viewport.removeAttribute("style");
+    clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
+      page.removeAttribute("style");
+    });
+    var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
+    var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
+    var pageGeometry = "width: " + printPageW + "mm !important; height: " + printPageH + "mm !important;";
+    var printCss = document.createElement("style");
+    printCss.id = "_fw_print_snapshot";
+    printCss.textContent =
+      "@page { size: " + printPageW + "mm " + printPageH + "mm; margin: 0; }" +
+      "html, body { margin: 0 !important; padding: 0 !important; width: auto !important; height: auto !important; overflow: visible !important; background: #fff !important; }" +
+      ".pagedjs_pages, [data-vivliostyle-spread-container], [data-vivliostyle-outer-zoom-box] { display: block !important; width: auto !important; height: auto !important; min-width: 0 !important; transform: none !important; zoom: 1 !important; }" +
+      ".pagedjs_page, [data-vivliostyle-page-container] { " + pageGeometry + " display: block !important; position: relative !important; margin: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; overflow: hidden !important; transform: none !important; break-after: page !important; page-break-after: always !important; }" +
+      ".pagedjs_page:last-child, [data-vivliostyle-page-container]:last-child { break-after: auto !important; page-break-after: auto !important; }" +
+      "#vivl-viewport { width: auto !important; height: auto !important; overflow: visible !important; }" +
+      "@media screen { .pagedjs_page, [data-vivliostyle-page-container] { margin: 10px auto !important; } }";
+    clone.querySelector("head").appendChild(printCss);
+
+    var printScript = sourceDocument.createElement("script");
+    printScript.textContent = "window.addEventListener('load',function(){var f=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();f.then(function(){setTimeout(function(){window.print();},100);});});";
+    clone.querySelector("body").appendChild(printScript);
+    return "<!DOCTYPE html>\n" + clone.outerHTML;
+  }
+
   function exportPDF() {
     if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
     /* === App Surface: Simple print === */
@@ -3504,99 +3561,22 @@
       return;
     }
 
-    /* === Doc Surface: print the exact rendered preview ===
-       When the preview has been rendered, reuse its srcdoc so the PDF engine,
-       pagination, scaling, and layout match what the user sees in view mode. */
-    /* Reuse a rendered preview only when its render id proves it was produced
-       from the latest state. Otherwise the fallback is rebuilt synchronously. */
-    var srcdoc = isCurrentPreviewCommitted() ? previewFrame.getAttribute("srcdoc") : "";
-    if (srcdoc) srcdoc = srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, "");
-    if (srcdoc && (mode === "preview" || mode === "read")) {
-      var printScript = '<script>'
-        + '(function(){'
-        + '  function doPrint(){'
-        + '    document.body.style.transform = "";'
-        + '    document.body.style.width = "";'
-        + '    document.documentElement.style.overflow = "";'
-        + '    document.body.style.overflow = "";'
-        + '    var vp = document.getElementById("vivl-viewport");'
-        + '    if (vp) { vp.style.overflow = ""; vp.style.height = ""; vp.style.width = ""; }'
-        + '    var s = document.createElement("style");'
-        + '    s.media = "print";'
-        + '    s.textContent = "@media print { html, body { overflow: visible !important; height: auto !important; transform: none !important; } .pagedjs_page { margin: 0 !important; } .pagedjs_sheet { border: none !important; } }";'
-        + '    document.head.appendChild(s);'
-        + '    window.print();'
-        + '  }'
-        + '  if (typeof window.PagedPolyfill !== "undefined" && window.PagedPolyfill.on) {'
-        + '    var done=false; var p=function(){ if (done) return; done=true; setTimeout(doPrint, 200); };'
-        + '    window.PagedPolyfill.on("afterPreview", p);'
-        + '    window.PagedPolyfill.on("afterRenderation", p);'
-        + '    setTimeout(p, 5000);'
-        + '  } else if (document.getElementById("vivl-viewport")) {'
-        + '    var check=function(){'
-        + '      var pages=document.querySelectorAll("[data-vivliostyle-page-container]");'
-        + '      if (pages.length > 0) { doPrint(); }'
-        + '      else { setTimeout(check, 500); }'
-        + '    };'
-        + '    setTimeout(check, 1000);'
-        + '  } else {'
-        + '    window.addEventListener("load", function(){ setTimeout(doPrint, 500); });'
-        + '    if (document.readyState === "complete") { setTimeout(doPrint, 500); }'
-        + '  }'
-        + '})();'
-        + '</script>';
-      var printHtml = srcdoc.replace(/<\/body>/i, printScript + '</body>');
-      /* Add centering for paged pages in the new tab */
-      printHtml = printHtml.replace(/<\/head>/i, '<style>.pagedjs_pages { display: flex; flex-direction: column; align-items: center; } [data-vivliostyle-spread-container] { align-items: center !important; } html { display: flex; justify-content: center; } body { margin: 0 auto !important; }</style></head>');
-      var iframeRect = previewFrame.getBoundingClientRect();
-      var width = Math.round(iframeRect.width);
-      var height = Math.round(iframeRect.height);
-      var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
-      var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
-      var url = URL.createObjectURL(blob);
-      window.open(url, "_blank", features);
+    /* Print the already-committed logical pages exactly once. Never feed
+       generated `.pagedjs_page` / Vivliostyle page boxes back through the
+       pagination engine: that is what created n² print-preview pages. */
+    var sourceDocument = isCurrentPreviewCommitted() ? previewFrame.contentDocument : null;
+    var printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    if (!printHtml || (mode !== "preview" && mode !== "read")) {
+      showToast("Open View and wait for pagination before exporting PDF");
       return;
     }
-
-    /* === Doc Surface fallback: render from scratch for direct export === */
-    var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
-    var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
-
-    /* Engine script — Paged.js for proper @page pagination (skip ESM modules) */
-    var engineScript = (engine && engine.script && !engine.module)
-      ? '  <script src="' + engine.script + '"><' + '/script>\n'
-      : '';
-
-    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
-      + '  <meta charset="UTF-8">\n'
-      + '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
-      + '  <title>FlatWrite PDF</title>\n'
-      + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
-      + engineScript
-      + '  <style>\n'
-      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
-      + '  </style>\n'
-      + '</head>\n<body>\n  <main>\n'
-      + renderedHTML
-      + '\n  </main>\n'
-      /* Auto-print after Paged.js renders */
-      + '  <script>\n'
-      + '    document.addEventListener("DOMContentLoaded", function() {\n'
-      + '      var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();\n'
-      + '      fontsReady.then(function() { if (typeof window.PagedPolyfill !== "undefined") {\n'
-      + '        window.PagedPolyfill.on("afterRenderation", function() {\n'
-      + '          setTimeout(function() { window.print(); }, 200);\n'
-      + '        });\n'
-      + '      } else {\n'
-      + '        setTimeout(function() { window.print(); }, 500);\n'
-      + '      } });\n'
-      + '    });\n'
-      + '  <' + '/script>\n'
-      + '</body>\n</html>';
-
-    openInNewTab(html, "text/html;charset=utf-8");
+    var iframeRect = previewFrame.getBoundingClientRect();
+    var width = Math.round(iframeRect.width);
+    var height = Math.round(iframeRect.height);
+    var features = "width=" + width + ",height=" + height + ",resizable=yes,scrollbars=yes";
+    var blob = new Blob([printHtml], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    window.open(url, "_blank", features);
   }
 
   /* ==========================================================================

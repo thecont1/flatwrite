@@ -170,19 +170,51 @@ describe("paged preview lifecycle", () => {
   });
 });
 
-describe("paged canvas extent", () => {
-  test("both engines derive the scroll height from the scaled page flow", () => {
-    const body = fnBody("renderPreview");
-    expect(body).toContain("_setPagedCanvasExtent");
-    expect(body).toContain("_setVivlCanvasExtent");
-    expect(SRC).toContain("document.body.style.height = Math.ceil(flowH * s) + \"px\"");
-    expect(body).toContain('outerZoom.style.setProperty("height", scaledH + "px", "important")');
+describe("exportHTML", () => {
+  test("uses canonical CSS after validating live settings", () => {
+    const body = fnBody("exportHTML");
+    expect(body).toContain("buildDocumentCSS(currentDocEngine)");
+    expect(body).toContain("syncDocumentSettingsFromControls()");
   });
 });
 
-describe("Read mode logo position", () => {
-  test("adds five pixels to the settled toolbar destination", () => {
-    expect(fnBody("animateLogoToCenter")).toContain("toolbarRect.left + 5");
+describe("exportPDF", () => {
+  test("branches on surfaceMode", () => {
+    expect(SRC).toContain("function exportPDF");
+    const body = fnBody("exportPDF");
+    expect(body).toContain("surfaceMode");
+  });
+
+  test("validates settings and waits for snapshot fonts", () => {
+    const body = fnBody("exportPDF");
+    expect(body).toContain("syncDocumentSettingsFromControls()");
+    expect(fnBody("buildPrintSnapshot")).toContain("document.fonts.ready");
+  });
+
+  test("removes preview-only page-flow scaling before printing", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain('clone.querySelector(".pagedjs_pages")');
+    expect(body).toContain('pagesFlow.removeAttribute("style")');
+    expect(body).toContain('clone.querySelector("[data-vivliostyle-spread-container]")');
+    expect(body).toContain('clone.querySelector("[data-vivliostyle-outer-zoom-box]")');
+    expect(body).toContain('clone.querySelector("#vivl-viewport")');
+  });
+
+  test("prints the committed pagination once instead of re-running the engine", () => {
+    const body = fnBody("exportPDF");
+    const snapshot = fnBody("buildPrintSnapshot");
+    expect(body).toContain("buildPrintSnapshot");
+    expect(body).not.toContain('window.PagedPolyfill.on("afterPreview"');
+    expect(body).not.toContain('window.PagedPolyfill.on("afterRenderation"');
+    expect(body).not.toContain("viewer.loadDocument");
+    expect(snapshot).toContain('clone.querySelectorAll("script, #_fw_stripe');
+    expect(snapshot).toContain("break-after: page");
+    expect(snapshot).toContain("PAGE_SIZES[pageSize]");
+    expect(snapshot).toContain("orientation");
+    expect(snapshot).not.toContain("PAGE_SIZES_MM");
+    expect(snapshot).not.toContain("docLayout.size");
+    expect(snapshot).toContain("pageGeometry");
+    expect(snapshot).toContain("overflow: hidden");
   });
 });
 
@@ -250,6 +282,16 @@ describe("FlatWrite PDF spacing tag", () => {
   });
 });
 
+describe("paged canvas extent", () => {
+  test("both engines derive the scroll height from the scaled page flow", () => {
+    const body = fnBody("renderPreview");
+    expect(body).toContain("_setPagedCanvasExtent");
+    expect(body).toContain("_setVivlCanvasExtent");
+    expect(SRC).toContain("document.body.style.height = Math.ceil(flowH * s) + \"px\"");
+    expect(body).toContain('outerZoom.style.setProperty("height", scaledH + "px", "important")');
+  });
+});
+
 describe("button tooltips", () => {
   test("uses one accessible viewport-aware tooltip layer for every button", () => {
     expect(SRC).toContain("function initButtonTooltips");
@@ -269,26 +311,15 @@ describe("button tooltips", () => {
   });
 });
 
-describe("exportHTML", () => {
-  test("uses canonical CSS after validating live settings", () => {
-    const body = fnBody("exportHTML");
-    expect(body).toContain("buildDocumentCSS(currentDocEngine)");
-    expect(body).toContain("syncDocumentSettingsFromControls()");
+describe("Read mode logo position", () => {
+  test("adds five pixels to the settled toolbar destination", () => {
+    expect(fnBody("animateLogoToCenter")).toContain("toolbarRect.left + 5");
   });
 });
 
-describe("exportPDF", () => {
-  test("branches on surfaceMode", () => {
-    expect(SRC).toContain("function exportPDF");
-    const body = fnBody("exportPDF");
-    expect(body).toContain("surfaceMode");
-  });
-
-  test("validates settings, shares CSS, and waits for fonts", () => {
-    const body = fnBody("exportPDF");
-    expect(body).toContain("syncDocumentSettingsFromControls()");
-    expect(body).toContain("buildDocumentCSS(currentDocEngine)");
-    expect(body).toContain("document.fonts.ready");
+describe("asset cache keys", () => {
+  test("loads the page-break toolbar JavaScript revision", () => {
+    expect(INDEX).toContain('app.js?v=119');
   });
 });
 
