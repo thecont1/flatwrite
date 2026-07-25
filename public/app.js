@@ -3571,6 +3571,16 @@
         if (text.indexOf("counter(pages)") !== -1) {
           style.textContent = text.split("counter(pages)").join(String(pageCount));
         }
+        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,
+           etc.) from the cloned styles. The browser's native print (which
+           window.print() uses) does not support these at-rules. When present,
+           some browsers discard the entire @page block — including size and
+           margin — which breaks page sizing for every page. The print snapshot
+           CSS (appended separately) already provides the correct @page size
+           and margin. */
+        if (text.indexOf("@bottom-") !== -1) {
+          style.textContent = text.replace(/@page\s*\{[^}]*@bottom-[^}]*\}[^}]*\}/g, "");
+        }
       });
     }
 

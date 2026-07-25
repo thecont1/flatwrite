@@ -349,7 +349,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=126');
+    expect(INDEX).toContain('app.js?v=127');
   });
 
   test("loads the stylesheet revision", () => {
@@ -379,6 +379,12 @@ describe("print snapshot footer", () => {
     expect(body).toContain("getPageHeightPx()");
     expect(body).toContain("popupW");
     expect(body).toContain("popupH");
+  });
+
+  test("print snapshot strips @bottom- margin-box rules for native print", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("@bottom-");
+    expect(body).toContain("replace(/@page\\s*\\{[^}]*@bottom-[^}]*\\}[^}]*\\}/g");
   });
 });
 
