@@ -321,6 +321,15 @@ describe("button tooltips", () => {
   test("Plain PDF guidance names both engines", () => {
     expect(SRC).toContain("Switch to Paged.js or Vivliostyle to enable PDF export");
   });
+
+  test("engine button tooltips use title before aria-label", () => {
+    const body = fnBody("getButtonTooltip");
+    const titleIdx = body.indexOf('var title = button.getAttribute("title")');
+    const ariaIdx = body.indexOf('var aria = button.getAttribute("aria-label")');
+    expect(titleIdx).toBeGreaterThan(-1);
+    expect(ariaIdx).toBeGreaterThan(-1);
+    expect(titleIdx).toBeLessThan(ariaIdx);
+  });
 });
 
 describe("Read mode logo position", () => {
@@ -331,7 +340,7 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=124');
+    expect(INDEX).toContain('app.js?v=125');
   });
 });
 

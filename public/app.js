@@ -1426,10 +1426,10 @@
     if (button.dataset.tooltip) return button.dataset.tooltip;
     var dataTip = button.getAttribute("data-tip");
     if (dataTip) return dataTip;
-    var aria = button.getAttribute("aria-label");
-    if (aria) return aria;
     var title = button.getAttribute("title");
     if (title) return title;
+    var aria = button.getAttribute("aria-label");
+    if (aria) return aria;
     var text = (button.textContent || "").replace(/\s+/g, " ").trim();
     if (button.classList.contains("engine-btn")) return "Render with " + (text || aria || title);
     if (button.classList.contains("surface-btn")) return "Use the " + text + " surface";
