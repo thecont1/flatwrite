@@ -39,6 +39,16 @@ The preview is built around a polished document experience with fine-grained con
 
 - Pick a font, then tune **size**, **weight**, and **line spacing** until the reading rhythm feels right. Adjust **UI zoom** when the chrome needs to be a little larger or smaller. All fonts are self-hosted and bundled, so the rendered output has no external font dependency.
 
+## PDF-only vertical spacing
+
+FlatWrite supports a proprietary self-closing tag for adding controlled blank space to paged output:
+
+```html
+<fw-break lines="3" />
+```
+
+`lines` inserts that many line-heights in **Paged.js** and **Vivliostyle** output. Values are truncated to integers and clamped to `0–24`; omitted `lines` defaults to `1`, while invalid values insert no space. The tag is removed entirely in **Plain** and **Read** modes, so it never appears as visible text.
+
 ## Get started
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.

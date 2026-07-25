@@ -58,7 +58,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
-  <script src="app.js?v=115" defer></script>
+  <script src="app.js?v=116" defer></script>
 
 </head>
 <body>
@@ -230,6 +230,10 @@
               <div class="toolbar-slides">
                 <!-- Markdown formatting toolbar (Edit mode) -->
                 <div class="toolbar-slide md-toolbar" id="md-toolbar" role="toolbar" aria-label="Markdown formatting">
+                  <button class="md-btn md-btn-page-break" id="btn-page-break" aria-label="Insert PDF page break" data-md="pagebreak" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h6"/><path d="M14 7h6"/><path d="M4 17h6"/><path d="M14 17h6"/><path d="M12 3v18"/><path d="m9 12 3 3 3-3"/></svg>
+                  </button>
+                  <span class="md-toolbar-sep" aria-hidden="true"></span>
                   <button class="md-btn" aria-label="Level 1 heading" data-md="h1" type="button" data-tip="Level 1 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/></svg></button>
                   <button class="md-btn" aria-label="Level 2 heading" data-md="h2" type="button" data-tip="Level 2 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg></button>
                   <button class="md-btn" aria-label="Level 3 heading" data-md="h3" type="button" data-tip="Level 3 Header"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/></svg></button>
@@ -250,10 +254,6 @@
                   <button class="md-btn" aria-label="Insert link" data-md="link" type="button" data-tip="Link">🔗</button>
                   <button class="md-btn" aria-label="Insert image" data-md="image" type="button" data-tip="Image">🖼️</button>
                   <button class="md-btn" aria-label="Horizontal rule" data-md="hr" type="button" data-tip="Rule">—</button>
-                  <span class="md-toolbar-sep"></span>
-                  <button class="md-btn md-btn-assist" id="btn-assist" type="button" data-tip="AI Assist" aria-label="AI Assist" aria-expanded="false" aria-controls="assist-panel">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 12l-6.1 3.2L12 21l-1.9-5.8L4 12l6.1-3.2L12 3z"/></svg>
-                  </button>
                 </div>
                 <!-- Typography controls (View mode) -->
                 <div class="toolbar-slide typo-controls">

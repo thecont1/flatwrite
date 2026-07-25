@@ -42,6 +42,10 @@ const STYLES = readFileSync(
   resolve(import.meta.dir, "..", "public", "styles.css"),
   "utf-8"
 );
+const README = readFileSync(
+  resolve(import.meta.dir, "..", "README.md"),
+  "utf-8"
+);
 
 function fnBody(name) {
   const re = new RegExp(
@@ -179,6 +183,70 @@ describe("paged canvas extent", () => {
 describe("Read mode logo position", () => {
   test("adds five pixels to the settled toolbar destination", () => {
     expect(fnBody("animateLogoToCenter")).toContain("toolbarRect.left + 5");
+  });
+});
+
+describe("FlatWrite PDF spacing tag", () => {
+  test("normalizes bounded integer breaks only for paged engines", () => {
+    const body = fnBody("applyFlatWritePdfBreaks");
+    expect(body).toContain("FW_PDF_BREAK_MAX");
+    expect(body).toContain('renderEngineKey === "pagedjs" || renderEngineKey === "vivliostyle"');
+    expect(body).toContain('class="fw-pdf-break"');
+    expect(body).toContain("Math.trunc");
+    expect(body).toContain("Math.max(0, Math.min(FW_PDF_BREAK_MAX, lines))");
+    expect(body).toContain("Number.isFinite(numeric) ? Math.trunc(numeric) : 0");
+  });
+
+  test("defaults missing lines to one and removes malformed tags", () => {
+    const body = fnBody("applyFlatWritePdfBreaks");
+    expect(body).toContain("countMatch ? Number(countMatch[1]) : 1");
+    expect(body).toContain("Remove malformed/unclosed FlatWrite break tags");
+  });
+
+  test("plain/read output strips the proprietary tag without leaving text", () => {
+    const body = fnBody("applyFlatWritePdfBreaks");
+    expect(body).toContain('return isPaged ? replacement : ""');
+    expect(fnBody("renderPreview")).toContain("applyFlatWritePdfBreaks(");
+    expect(fnBody("renderPreview")).toContain("renderEngineKey");
+  });
+
+  test("applies the same tag transform in fresh HTML exports", () => {
+    const body = fnBody("exportHTML");
+    expect(body).toContain("applyFlatWritePdfBreaks(");
+    expect(body).toContain("currentDocEngine");
+  });
+
+  test("documents the public syntax and its 0–24 bound", () => {
+    expect(README).toContain('<fw-break lines="3" />');
+    expect(README).toContain("0–24");
+    expect(README).toContain("Plain");
+    expect(README).toContain("Read");
+  });
+
+  test("exposes the page-break control as the first toolbar button", () => {
+    const toolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
+    expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-page-break"/);
+    expect(toolbar).toContain('data-md="pagebreak"');
+    expect(toolbar).toContain('aria-label="Insert PDF page break"');
+    expect(INDEX).not.toContain('id="btn-assist"');
+  });
+
+  test("describes the control's exact PDF-only behavior", () => {
+    expect(SRC).toContain(
+      '"btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)"'
+    );
+  });
+
+  test("inserts one standalone break tag at the caret without replacing a selection", () => {
+    const insertBody = fnBody("editorInsertPageBreak");
+    expect(insertBody).toContain('var tag = \'<fw-break lines="1" />\'');
+    expect(insertBody).toContain("val.substring(start)");
+    expect(insertBody).not.toContain("selectionEnd");
+    expect(insertBody).toContain('val[start] === "\\n"');
+    expect(insertBody).toContain('tag.indexOf("1")');
+    expect(fnBody("applyMarkdownFormat")).toContain(
+      'case "pagebreak":     editorInsertPageBreak(); break;'
+    );
   });
 });
 

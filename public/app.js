@@ -1284,6 +1284,34 @@
     return classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
   }
 
+  /* FlatWrite PDF-only vertical spacing.
+     Syntax: <fw-break lines="3"> or <fw-break lines="3" />.
+     The count is an integer line multiple, clamped to keep accidental values
+     from creating unbounded blank space. Plain, Read, and App surfaces strip
+     the tag before Markdown is parsed. */
+  var FW_PDF_BREAK_MAX = 24;
+
+  function applyFlatWritePdfBreaks(markdown, renderEngineKey) {
+    var isPaged = renderEngineKey === "pagedjs" || renderEngineKey === "vivliostyle";
+    var source = String(markdown || "")
+      /* Remove malformed/unclosed FlatWrite break tags as well. They should
+         never leak into Plain/Read output or become visible prose. */
+      .replace(/<fw-break\b(?![^>]*>)[^\r\n]*/gi, "");
+    return source.replace(
+      /<fw-break\b([^>]*)\/?\s*>(?:\s*<\/fw-break\s*>)?/gi,
+      function (_match, attrs) {
+        var countMatch = String(attrs || "").match(/\blines\s*=\s*["']?([^\s"'>]+)/i);
+        var numeric = countMatch ? Number(countMatch[1]) : 1;
+        var lines = Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+        lines = Math.max(0, Math.min(FW_PDF_BREAK_MAX, lines));
+        var replacement = lines > 0
+          ? '<span class="fw-pdf-break" style="--fw-break-lines:' + lines + '" aria-hidden="true"></span>'
+          : "";
+        return isPaged ? replacement : "";
+      }
+    );
+  }
+
   /* ==========================================================================
      IDB persistence — restore from IndexedDB (Mode A default)
      ========================================================================== */
@@ -2195,7 +2223,8 @@
       + 'li:has(> input[type="checkbox"])::marker, .task-list-item::marker { display: none; }'
       + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
       + 'ul { list-style-type: disc; } ul ul { list-style-type: circle; } ul ul ul { list-style-type: disc; } ul ul ul ul { list-style-type: circle; }'
-      + 'p { margin: 0.4em 0; } br { margin: 0.3em 0; }';
+      + 'p { margin: 0.4em 0; } br { margin: 0.3em 0; }'
+      + '.fw-pdf-break { display: block; height: calc(var(--fw-break-lines, 1) * 1lh); break-inside: avoid; }';
   }
 
   /**
@@ -3109,6 +3138,26 @@
     editor.dispatchEvent(new Event("input"));
   }
 
+  function editorInsertPageBreak() {
+    var start = editor.selectionStart;
+    var val = editor.value;
+    var tag = '<fw-break lines="1" />';
+    var prefix = (start > 0 && val[start - 1] !== "\n") ? "\n" : "";
+    var suffix = (start < val.length && val[start] === "\n") ? "" : "\n";
+    var insertion = prefix + tag + suffix;
+
+    editor.focus();
+    editor.setSelectionRange(start, start);
+    if (document.queryCommandSupported && document.queryCommandSupported("insertText")) {
+      document.execCommand("insertText", false, insertion);
+    } else {
+      editor.value = val.substring(0, start) + insertion + val.substring(start);
+    }
+    var countStart = start + prefix.length + tag.indexOf("1");
+    editor.setSelectionRange(countStart, countStart + 1);
+    editor.dispatchEvent(new Event("input"));
+  }
+
   function applyMarkdownFormat(action) {
     if (mode !== "edit") setMode("edit");
     switch (action) {
@@ -3128,6 +3177,7 @@
       case "link":          editorInsert("[", "link text", "](https://example.com)"); break;
       case "image":         editorInsert("![", "alt text", "](https://example.com/image.png)"); break;
       case "hr":            editorInsertBlock("---"); break;
+      case "pagebreak":     editorInsertPageBreak(); break;
       default: break;
     }
   }
@@ -3227,7 +3277,10 @@
 
     /* === Doc Surface: build from the current committed controls === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    var contentForRender = stripYamlFrontMatter(editor.value || "");
+    var contentForRender = applyFlatWritePdfBreaks(
+      stripYamlFrontMatter(editor.value || ""),
+      currentDocEngine
+    );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
 

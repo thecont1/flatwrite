@@ -2891,10 +2891,6 @@ body {
   display: none;
 }
 
-.md-btn-assist svg {
-  display: block;
-}
-
 [data-theme="dark"] .assist-panel,
 body.dark .assist-panel {
   background: #1c1c1e;
