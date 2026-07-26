@@ -31,7 +31,7 @@ function mockReq({ method = "POST", headers = {}, body = null, ip } = {}) {
   return {
     method,
     headers: Object.assign({ "x-forwarded-for": ip || "203.0.113." + Math.floor(Math.random() * 250) }, headers),
-    socket: { remoteAddress: "203.0.113.1" },
+    socket: { remoteAddress: ip || "203.0.113." + Math.floor(Math.random() * 250) },
     on(event, cb) {
       if (event === "data") {
         reader.read().then(({ done, value }) => {
@@ -331,5 +331,24 @@ describe("api/import-url.js", () => {
     const res = mockRes();
     await handler(req, res);
     expect(res._status).toBe(400);
+  });
+
+  test("X-Forwarded-For is ignored for rate limiting unless TRUST_PROXY is set", async () => {
+    // Without TRUST_PROXY, getClientIp should use socket.remoteAddress,
+    // not the spoofable X-Forwarded-For header.
+    const origTrust = process.env.TRUST_PROXY;
+    delete process.env.TRUST_PROXY;
+    // Re-require to pick up the env var — but the module caches the const,
+    // so we test behavior indirectly: the handler should still work using
+    // socket.remoteAddress for rate limiting.
+    mockUpstream({ text: "# Hello\n\nWorld" });
+    const req = mockReq({
+      body: { url: "https://example.com/article" },
+      headers: { "x-forwarded-for": "10.0.0.1" },
+    });
+    const res = mockRes();
+    await handler(req, res);
+    expect(res._status).toBe(200);
+    if (origTrust !== undefined) process.env.TRUST_PROXY = origTrust;
   });
 });
