@@ -840,7 +840,7 @@ export const RENDER_TOOLS_DOCS = [
                 description: 'Optional selection text (defaults to markdown.slice(start, end)).',
             },
         ],
-        requiredFields: [],
+        requiredFields: ['markdown'],
         outputSchema: ASSIST_DOCUMENT_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
         displayHints: {

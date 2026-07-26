@@ -204,7 +204,19 @@ describe("exportPDF", () => {
     const body = fnBody("buildPrintSnapshot");
     expect(body).toContain('clone.querySelector("#vivl-scroll-style")');
     expect(body).toContain('text.indexOf("transform: scale")');
-    expect(body).toContain('page.querySelectorAll("*")');
+    expect(body).toContain('page.querySelectorAll("[style]")');
+    expect(body).toContain("transform|zoom|width|height|position");
+  });
+
+  test("preserves author inline styles in Vivliostyle page containers", () => {
+    /* Regression test: the old code used page.querySelectorAll("*").forEach
+       to blanket-remove style attributes from all descendants, destroying
+       legitimate author styles (the sanitizer allows inline style). The new
+       code selectively strips only Vivliostyle layout properties. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).not.toContain('page.querySelectorAll("*")');
+    expect(body).toContain('getAttribute("style")');
+    expect(body).toContain('setAttribute("style", cleaned)');
   });
 
   test("prints the committed pagination once instead of re-running the engine", () => {
@@ -399,7 +411,16 @@ describe("print snapshot footer", () => {
   test("print snapshot strips @bottom- margin-box rules for native print", () => {
     const body = fnBody("buildPrintSnapshot");
     expect(body).toContain("@bottom-");
-    expect(body).toContain("replace(/@page\\s*\\{([^}]*)\\}/g");
+    expect(body).toContain("replace(/@(?:bottom|top)-(?:left|center|right)\\s*\\{[\\s\\S]*?\\}/g");
+  });
+
+  test("print snapshot handles nested @page blocks with margin boxes", () => {
+    /* Regression test: the old regex /@page\s*\{([^}]*)\}/g failed on nested
+       braces like @page { @bottom-left { ... } }. The new approach removes
+       margin-box at-rules directly, preserving the @page block's size/margin. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("@top-");
+    expect(body).toContain("[\\s\\S]*?");
   });
 });
 

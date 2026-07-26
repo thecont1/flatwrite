@@ -32,6 +32,12 @@ describe('parseAssistRequest', () => {
     expect(r.value.selection).toBe(null);
   });
 
+  test('defaults mode to rewrite when omitted', () => {
+    const r = parseAssistRequest({ markdown: '# Hi\n\nworld' });
+    expect(r.ok).toBe(true);
+    expect(r.value.mode).toBe('rewrite');
+  });
+
   test('requires instruction for custom', () => {
     const r = parseAssistRequest({ mode: 'custom', markdown: 'x' });
     expect(r.ok).toBe(false);

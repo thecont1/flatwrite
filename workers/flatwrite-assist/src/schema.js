@@ -29,7 +29,7 @@ export function parseAssistRequest(raw) {
   }
 
   const instruction = typeof raw.instruction === 'string' ? raw.instruction.trim() : '';
-  const mode = typeof raw.mode === 'string' && raw.mode ? raw.mode : 'custom';
+  const mode = typeof raw.mode === 'string' && raw.mode ? raw.mode : 'rewrite';
   const markdown = typeof raw.markdown === 'string' ? raw.markdown : '';
 
   if (!ASSIST_MODES.includes(mode)) {
