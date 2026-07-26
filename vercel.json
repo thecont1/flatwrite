@@ -1,6 +1,7 @@
 {
   "routes": [
-    { "src": "/api/render", "dest": "/api/render.js" }
+    { "src": "/api/render", "dest": "/api/render.js" },
+    { "src": "/api/import-url", "dest": "/api/import-url.js" }
   ],
   "headers": [
     {
