@@ -492,6 +492,25 @@ describe("footer DOM scoping", () => {
     expect(body).toMatch(/bestCount\s*=\s*h1Freq\[/);
   });
 
+  test("_applyFooterContent uses a prototype-less map for h1 frequency so user text can't shadow Object.prototype", () => {
+    /* Security/correctness guard: a chapter heading of "toString" or
+       "constructor" must not collide with Object.prototype keys. Earlier
+       versions used `pct in h1Freq` against a plain {} which would treat
+       those names as pre-existing and increment inherited methods,
+       producing NaN counts and wrong chapter selection. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain("Object.create(null)");
+    expect(body).toContain("Object.prototype.hasOwnProperty.call");
+  });
+
+  test("_applyFooterContent trims h1 text before keying the frequency map", () => {
+    /* Whitespace-only headings must not register as valid chapters; collapse
+       surrounding whitespace so visually identical headings share a bucket. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".replace(/^");
+    expect(body).toContain("|\\\\s+$/g");
+  });
+
   test("_applyFooterContent verifies margin-content targets live in the bottom margin grid", () => {
     /* Last-line defense: even if a stray author <div class="pagedjs_margin-bottom-left">
        matches the selector, only overwrite if it actually sits inside the
