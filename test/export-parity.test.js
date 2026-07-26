@@ -652,3 +652,192 @@ describe("accessibility contracts", () => {
     expect(STYLES).toContain("--text-muted: #67627e");
   });
 });
+
+describe("shared-doc YAML pipeline", () => {
+  test("loadSharedDocument parses key: value frontmatter without quotes", () => {
+    /* The fixture format is single-quote-free block scalar YAML; the parser
+       must read each `key: value` line into the frontmatter map. A widely
+       used markdown frontmatter parser (js-yaml, etc.) would interpret
+       `Unbounded` as a string and `pagedjs` as a value — but FlatWrite's
+       own parseShareYaml is intentionally minimal: split on `:`, trim,
+       stash. Parsing is delegated to a shared `parseShareYamlMap` helper
+       so applyFrontmatter can hydrate from any frontmatter-shaped map
+       without re-implementing validation. */
+    const body = fnBody("parseShareYaml");
+    expect(body).toContain("match(/^\\s*---\\n");
+    expect(body).toContain("parseShareYamlMap");
+  });
+
+  test("loadSharedDocument routes every frontmatter knob through a single validator", () => {
+    /* Today, `loadSharedDocument` (and its sibling in restoreFromIDB) each
+       copy-paste the validation ladder. A regression-prone spot: if a new
+       frontmatter key is added but one branch forgets to validate, the
+       page silently sticks at A4 portrait. Pin the symptom so the helper
+       becomes the only place validation lives. */
+    const body = fnBody("loadSharedDocument");
+    expect(body).toMatch(/applyFrontmatter\(|applyFrontmatter\s*\(/);
+  });
+
+  test("loadSharedDocument syncs form controls after applying frontmatter", () => {
+    /* Root cause of the "PDF still A4 even though YAML said A3" bug.
+       Either applyFrontmatter itself must call syncDocControlsUI, or
+       loadSharedDocument must call it explicitly after applying the
+       frontmatter map. Both forms are acceptable; the form must be
+       synced before renderPreview runs downstream. */
+    const shBody = fnBody("loadSharedDocument");
+    const afBody = fnBody("applyFrontmatter");
+    expect(shBody).toMatch(/applyFrontmatter\(fm\)/);
+    expect(shBody).toMatch(/setDocEngine\(currentDocEngine\)/);
+    /* The sync could live in applyFrontmatter itself (one source of truth)
+       or in shBody explicitly. Pin the helper to own the sync so a
+       regression elsewhere doesn't drift. */
+    expect(afBody).toMatch(/syncDocControlsUI\(\)/);
+  });
+
+  test("applyFrontmatter normalizes every key against its registry", () => {
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain("PAGE_SIZES");
+    expect(body).toContain("DOC_ENGINES");
+    expect(body).toContain("MARGIN_MAP");
+    expect(body).toContain("COMFORT_FONTS");
+    expect(body).toContain("showFooter");
+    expect(body).toContain("pageColumns");
+    expect(body).toContain("syncDocControlsUI");
+  });
+
+  test("applyFrontmatter trims string before registry lookup so typos stay invalid", () => {
+    /* `pageSize:  A3 ` (trailing whitespace) must collapse to "A3"; raw
+       spaces that aren't trimmed would fail PAGE_SIZES lookup silently
+       and fall back to A4 portrait in the print snapshot. */
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain(".trim()");
+  });
+
+  test("restoreFromIDB reapplies form controls after restoring docLayout", () => {
+    /* The IDB restore path must follow the same contract: globals from
+       record.docLayout are hydrated through applyFrontmatter (which
+       itself calls syncDocControlsUI), so a refresh never silently
+       returns the user to A4 after the IDB record said A3. */
+    const body = fnBody("restoreFromIDB");
+    expect(body).toContain("docLayout");
+    expect(body).toContain("applyFrontmatter");
+  });
+
+  test("share fixture exists for the canonical Ayodhya breakage repro", () => {
+    /* The Ayodhya essay at ?s=IUWxUVzE.md is the document the user
+       hit the breakage on. Pin the fixture so a regression test can
+       re-use it without Dustebin. */
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const fixture = fs.readFileSync(
+      resolve(
+        import.meta.dir,
+        "..",
+        "public",
+        "test",
+        "fixtures",
+        "shares",
+        "IUWxUVzE.md"
+      ),
+      "utf-8"
+    );
+    expect(fixture.startsWith("---\n")).toBe(true);
+    expect(fixture).toContain("pageSize: A3");
+    expect(fixture).toContain("orientation: landscape");
+    expect(fixture).toContain("footer: true");
+    expect(fixture).toContain("# Ayodhya: Myth Under Construction");
+  });
+});
+
+describe("print snapshot geometry", () => {
+  test("buildPrintSnapshot recomputes @page size from current globals", () => {
+    /* Even when the cached srcdoc fast-path wins (line ~3590), the
+       rebuilt snapshot must reflect today's pageSize/orientation — not
+       the iframe HTML's first @page rule (which can be stale if the
+       user changed controls after paginating but before exporting). */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("PAGE_SIZES[pageSize]");
+    expect(body).toContain('orientation === "landscape"');
+  });
+
+  test("buildPrintSnapshot uses both width AND height from the page-size registry", () => {
+    /* A regression that maps A4 to [297, 0] (transposed) would slip a
+       297mm × 0mm @page rule to the snapshot and Chromium would render
+       a one-pixel-tall page. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("printPageW");
+    expect(body).toContain("printPageH");
+    expect(body).not.toMatch(/printPageW\s*=\s*pageMm\[0\]\s*;\s*printPageH\s*=\s*pageMm\[1\]/);
+  });
+
+  test("print snapshot removes trailing empty .pagedjs_page elements", () => {
+    /* When wide content + columns spills across an offset column
+       boundary, paged.js emits a blank trailing page between content
+       runs. Strip those before passing the snapshot to the print
+       dialog so the exported PDF has every page printed. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toMatch(/emptyPage|\.pagedjs_area.*height|pagesWithContent/);
+    expect(body).toContain(":scope > .pagedjs_page");
+  });
+
+  test("print snapshot injects @page size at the TOP of the document head", () => {
+    /* Chromium's cascade gives precedence to @page rules declared LATER
+       in the cascade. Polyfill defaults @page { size: letter } emit
+       BEFORE FlatWrite's @page; both end up in the snapshot, but
+       FlatWrite's wins. To survive a cached iframe with stale
+       @page { size: letter }, the print snapshot's @page must be
+       appended at the bottom — but ALSO emit a top-of-head
+       `<meta name="print-page-size">`-equivalent that tells Chromium
+       to prefer @page over the browser default. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("@page");
+  });
+
+  test("exportPDF doesn't depend on the cached srcdoc path for shared-doc loads", () => {
+    /* The cached srcdoc fast-path (line ~3588) bypasses
+       syncDocumentSettingsFromControls. For shared docs that means a
+       stale form = stale print dimensions. exportPDF must explicitly
+       call syncDocumentSettingsFromControls before
+       buildPrintSnapshot, regardless of cache state. */
+    const body = fnBody("exportPDF");
+    expect(body).toContain("syncDocumentSettingsFromControls");
+    expect(body).not.toMatch(/syncDocumentSettingsFromControls\(\)\s*\|\|\s*syncDocumentSettingsFromControls\(\)/);
+  });
+});
+
+describe("page-number footer", () => {
+  test("_applyFooterContent writes BOTH bottom-left and bottom-right margin content", () => {
+    /* The Ayodhya PDF was missing the "Page N of M" right footer.
+       _applyFooterContent MUST populate both cells (chapter on left,
+       "Page N of M" on right) so the print dialog doesn't have to rely
+       on browser-side counter() resolution, which never runs for
+       window.print() snapshots. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toMatch(/left\.textContent\s*=\s*chapter|leftBox.*chapter/);
+    expect(body).toMatch(/right\.textContent\s*=\s*["']Page /);
+    expect(body).toMatch(/" of " \+ (total|pageCount)/);
+  });
+
+  test("print snapshot has BOTH left and right margin-box containers wired for @page", () => {
+    /* Even if _applyFooterContent runs perfectly, the snapshot HTML
+       must contain the DOM elements (left + right .pagedjs_margin-bottom-*)
+       so the JS finds them. The snapshot output's appended <style>
+       pins their positioning. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain(".pagedjs_margin-bottom-left");
+    expect(body).toContain(".pagedjs_margin-bottom-right");
+  });
+});
+
+/* (The Phase 2 empty-page filter is verified at the structural level via
+   pagesWithContent / "Page " + (i + 1) + " of " + total assertions above
+   and the .pagedjs_area filter inside buildPrintSnapshot — but pinning
+   that filter explicitly so future refactors don't trivially regress.) */
+describe("empty-page culling", () => {
+  test("buildPrintSnapshot drops phantom paged.js pages with no .pagedjs_area", () => {
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toMatch(/pagesWithContent|emptyPage|hasContentArea/);
+    expect(body).toContain(".pagedjs_area");
+    expect(body).toMatch(/pageBoxes.*forEach|\.forEach\(function \(box\)/);
+  });
+});

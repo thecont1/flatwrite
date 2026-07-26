@@ -151,17 +151,126 @@
     if (!md) return { frontmatter: null, body: md };
     var match = md.match(/^\s*---\n([\s\S]*?)\n---\n?/);
     if (!match) return { frontmatter: null, body: md };
+    return {
+      frontmatter: parseShareYamlMap(match[1]),
+      body: md.substring(match[0].length)
+    };
+  }
 
+  /* Split each `key: value` line of a frontmatter block into a flat map.
+     Strings are trimmed; whitespace-only values are kept as "" so callers
+     can distinguish "absent" from "present but empty". */
+  function parseShareYamlMap(block) {
     var fm = {};
-    match[1].split("\n").forEach(function (line) {
+    block.split("\n").forEach(function (line) {
       var idx = line.indexOf(":");
       if (idx === -1) return;
       var key = line.substring(0, idx).trim();
       var val = line.substring(idx + 1).trim();
       fm[key] = val;
     });
+    return fm;
+  }
 
-    return { frontmatter: fm, body: md.substring(match[0].length) };
+  /* ── Apply parsed frontmatter to live state ──────────────────────────────
+   *
+   * One source of truth for hydrating globals from a frontmatter map. Used
+   * by both `loadSharedDocument` (shared-doc flow, line ~1180) and the
+   * markdown-import path (line ~4226). Every registry key is validated
+   * against its own lookup map so a typo like `pageSze: A3` is rejected
+   * and silently falls back to the prior value rather than corrupting the
+   * pagination. String values are trimmed before lookup so trailing
+   * whitespace from hand-edited shares doesn't fail the registry check.
+   *
+   * After mutation, syncs the form controls via `syncDocControlsUI()` so
+   * the dropdowns always reflect the live state — this is the entire
+   * reason every YAML hydration path now routes through here. Before this
+   * helper, `loadSharedDocument` set globals but never refreshed the UI,
+   * leaving `document.getElementById("page-size").value === "A4"` while
+   * the underlying `pageSize` global was "A3"; the cached srcdoc path in
+   * `buildPrintSnapshot` then read the stale form value and exported A4
+   * portrait regardless of the YAML.
+   *
+   * The returned object is reserved for future test introspection; the
+   * current tests pin the side-effects (syncDocControlsUI ran, every key
+   * was validated) rather than the return value.
+   */
+  function applyFrontmatter(fm) {
+    if (!fm || typeof fm !== "object") return {};
+    var v;
+    /* docEngine is the engine registry, not a free text. A bad value must
+       NEVER downgrade a working engine to "none" — silently keep the
+       current engine. */
+    if (typeof (v = fm.docEngine) === "string" && DOC_ENGINES[v.trim()]) {
+      currentDocEngine = v.trim();
+    }
+    if (typeof (v = fm.surfaceMode) === "string" && (v = v.trim()) &&
+        (v === "doc" || v === "app")) {
+      surfaceMode = v;
+    }
+    if (typeof (v = fm.appFramework) === "string" && (v = v.trim()) &&
+        APP_FRAMEWORKS[v]) {
+      currentAppFramework = v;
+    }
+    if (typeof (v = fm.pageSize) === "string" && (v = v.trim()) &&
+        PAGE_SIZES[v]) {
+      pageSize = v;
+    }
+    if (typeof (v = fm.orientation) === "string" && (v = v.trim()) &&
+        (v === "portrait" || v === "landscape")) {
+      orientation = v;
+    }
+    if (typeof (v = fm.marginsLR) === "string" && (v = v.trim()) &&
+        MARGIN_MAP[v]) {
+      pageMarginsLR = v;
+    }
+    if (typeof (v = fm.marginsTB) === "string" && (v = v.trim()) &&
+        MARGIN_MAP[v]) {
+      pageMarginsTB = v;
+    }
+    if (typeof (v = fm.columns) === "string" || typeof v === "number") {
+      pageColumns = clampInt(String(v).trim(), 1, 3, pageColumns);
+    }
+    /* Footer is a boolean carried as a string ("true" / "on"). Anything
+       else (including absence) leaves the existing setting alone. */
+    if (typeof (v = fm.footer) === "string" &&
+        (v = v.trim().toLowerCase()) &&
+        (v === "true" || v === "on")) {
+      showFooter = true;
+    }
+    if (typeof (v = fm.font) === "string" && (v = v.trim()) &&
+        COMFORT_FONTS.some(function (f) { return f.value === v; })) {
+      comfortFont = v;
+      if (fontPickerLabel) {
+        fontPickerLabel.textContent = v;
+        fontPickerLabel.style.fontFamily = '"' + v + '", system-ui, sans-serif';
+      }
+    }
+    if (typeof (v = fm.size) === "string" || typeof v === "number") {
+      sizeStep = clampInt(String(v).trim(), SIZE_MIN, SIZE_MAX, sizeStep);
+    }
+    if (typeof (v = fm.weight) === "string" || typeof v === "number") {
+      weightStep = clampInt(String(v).trim(), WEIGHT_MIN, WEIGHT_MAX, weightStep);
+    }
+    if (typeof (v = fm.line) === "string" || typeof v === "number") {
+      lineStep = clampInt(String(v).trim(), LINE_MIN, LINE_MAX, lineStep);
+    }
+    if (typeof (v = fm.width) === "string" || typeof v === "number") {
+      contentWidth = clampInt(String(v).trim(), 400, 1400, contentWidth);
+    }
+    if (typeof (v = fm.zoom) === "string" || typeof v === "number") {
+      zoomStep = clampInt(String(v).trim(), 50, 150, zoomStep);
+    }
+    /* URL inside frontmatter (`url: ...`) is also a knob — mirror the
+       global setMarkdownUrl side-effect the inline branch did. */
+    if (typeof (v = fm.url) === "string" && (v = v.trim())) {
+      setMarkdownUrl(v);
+    }
+    /* Once every knob is hydrated, push the new values into the form so
+       the user immediately sees what the frontmatter asked for. Critically,
+       this must happen BEFORE renderPreview is invoked downstream so the
+       doc CSS that depends on these globals matches what the form shows. */
+    if (typeof syncDocControlsUI === "function") syncDocControlsUI();
   }
 
   /* ==========================================================================
@@ -1174,35 +1283,16 @@
         /* Metadata belongs to the share envelope, not the user's Markdown. */
         editor.value = parsed.body;
 
-        /* Apply preferences from YAML front-matter if present */
+        /* Apply preferences from YAML front-matter if present. The helper
+           validates each key against its own registry, mutates globals,
+           and pushes the new values into the form via syncDocControlsUI()
+           (called inside the helper, since every hydration path must
+           share it). Without that sync the #page-size dropdown would
+           still read "A4" while pageSize is "A3", so the cached-srcdoc
+           fast-path in buildPrintSnapshot would silently re-export A4. */
         if (parsed.frontmatter) {
           var fm = parsed.frontmatter;
-          if (fm.url) setMarkdownUrl(fm.url);
-          if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
-            currentDocEngine = fm.docEngine;
-          }
-          if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") {
-            surfaceMode = fm.surfaceMode;
-          }
-          if (fm.appFramework && APP_FRAMEWORKS[fm.appFramework]) {
-            currentAppFramework = fm.appFramework;
-          }
-          if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
-          if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
-          if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
-          if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
-          if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
-          if (fm.footer === "true" || fm.footer === "on") showFooter = true;
-          if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
-            comfortFont = fm.font;
-            fontPickerLabel.textContent = comfortFont;
-      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
-          }
-          if (fm.size !== undefined)   sizeStep   = clampInt(fm.size,   SIZE_MIN,   SIZE_MAX,   sizeStep);
-          if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
-          if (fm.line !== undefined)   lineStep   = clampInt(fm.line,   LINE_MIN,   LINE_MAX,   lineStep);
-          if (fm.width !== undefined)  contentWidth = clampInt(fm.width, 400, 1400, contentWidth);
-          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 50, 150, zoomStep);
+          applyFrontmatter(fm);
           zoomSlider.value = zoomStep;
           zoomValue.textContent = zoomStep + "%";
           applyZoom();
@@ -1217,7 +1307,8 @@
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
         history.replaceState(null, "", window.location.pathname);
       })
-      .catch(function () {
+      .catch(function (e) {
+        console.error("[loadSharedDocument] failed:", e && e.stack || e);
         showError("Could not load shared document. Please try again.");
       });
   }
@@ -1367,14 +1458,19 @@
       setDocEngine(currentDocEngine);
 
       var dl = record.docLayout || {};
-      if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
-      if (dl.orientation === "portrait" || dl.orientation === "landscape") orientation = dl.orientation;
-      if (dl.marginsLR && MARGIN_MAP[dl.marginsLR]) pageMarginsLR = dl.marginsLR;
-      if (dl.marginsTB && MARGIN_MAP[dl.marginsTB]) pageMarginsTB = dl.marginsTB;
-      if (dl.margins && MARGIN_MAP[dl.margins]) { pageMarginsLR = dl.margins; pageMarginsTB = dl.margins; }
-      if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
-      if (dl.footer)    showFooter   = true;
-      syncDocControlsUI();
+      /* Reconstruct a share-shaped frontmatter map from the IDB docLayout
+         record so the same validation pipeline that hydrates `?s=…` URLs
+         also hydrates the IDB restore. Then push the new values into the
+         form via syncDocControlsUI inside applyFrontmatter. The legacy
+         `margins` field (single string for both LR/TB) is folded into both
+         marginsLR and marginsTB so old IDB records from before the split
+         still restore. */
+      var legacy = Object.assign({}, dl);
+      if (dl.margins && MARGIN_MAP[dl.margins]) {
+        legacy.marginsLR = dl.margins;
+        legacy.marginsTB = dl.margins;
+      }
+      applyFrontmatter(legacy);
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -3712,9 +3808,44 @@
     /* Count committed page boxes so the footer's "Page N of M" can use a
        static total. counter(pages) only resolves when a CSS pagination
        engine runs, but the print snapshot is emitted as static HTML for
-       window.print() — so replace it with the actual count. */
+       window.print() — so replace it with the actual count.
+       pageBoxesWithContent is the same node list AFTER culling empty
+       pages (a paged.js artifact where wide content + column layout
+       overflows into an intermediate box with no .pagedjs_area in it).
+       Those phantom pages must NOT contribute to the public page count,
+       which the footer's "Page N of M" relies on. */
     var pageBoxes = clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]");
-    var pageCount = pageBoxes.length;
+    var pagesWithContent = Array.prototype.filter.call(pageBoxes, function (box) {
+      /* Direct-child guard: a user-authored .pagedjs_page inside the
+         content area doesn't satisfy :scope on .pagedjs_pages (the
+         querySelector above matches descendant too, so we filter here).
+         We require the canonical box to live one level under the
+         spread/flow container, with at least a sheet > pagebox. */
+      var parent = box.parentElement;
+      if (!parent) return false;
+      var isInFlow = parent.classList.contains("pagedjs_pages") ||
+        parent.classList.contains("pagedjs_sheet") ||
+        parent.hasAttribute("data-vivliostyle-spread-container") ||
+        parent.closest("[data-vivliostyle-spread-container]");
+      if (!isInFlow) return false;
+      if (box.classList.contains("pagedjs_page")) {
+        var sheet = box.querySelector(":scope > .pagedjs_sheet");
+        var pagebox = sheet ? sheet.querySelector(":scope > .pagedjs_pagebox") : null;
+        if (!sheet || !pagebox) return false;
+        /* An empty page renders only the margin grid; the .pagedjs_area
+           is absent. We treat those as phantom pages. */
+        if (!pagebox.querySelector(":scope > .pagedjs_area")) return false;
+      } else if (box.hasAttribute("data-vivliostyle-page-container")) {
+        if (!box.querySelector("[data-vivliostyle-page-margin-box], main, .pagedjs_area")) return false;
+      }
+      return true;
+    });
+    /* Drop the phantoms so the printed page count matches what the user
+       sees — and so the footer's "Page N of M" denominator is accurate. */
+    pageBoxes.forEach(function (box) {
+      if (pagesWithContent.indexOf(box) === -1) box.remove();
+    });
+    var pageCount = pagesWithContent.length;
     var footerMargin = showFooter ? (tbMm + " " + lrMm) : "0";
     var printCss = document.createElement("style");
     printCss.id = "_fw_print_snapshot";
@@ -4217,18 +4348,12 @@
       var parsed = parseShareYaml(content);
       documentContent = parsed.body;
       if (parsed.frontmatter) {
-        var fm = parsed.frontmatter;
-        if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
-        if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
-        if (fm.font) comfortFont = fm.font;
-        if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
-        if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
-        if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
-        if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
-        if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
-        showFooter = fm.footer === "true" || fm.footer === "on";
+        /* Share path uses the same hydration helper as loadSharedDocument
+           so a typo or unknown key silently keeps the prior state instead
+           of stomping unrelated globals. applyFrontmatter also syncs the
+           form controls so the dropdown always matches the active state. */
+        applyFrontmatter(parsed.frontmatter);
         setDocEngine(currentDocEngine);
-        syncDocControlsUI();
       }
       setMarkdownUrl("");
     } else {
