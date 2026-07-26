@@ -2955,21 +2955,113 @@
          CSS-generated ::after content) are preserved by cloneNode(). */
       + 'function _applyFooterContent() {'
       + '  if (!_footerOn || _engineKey !== "pagedjs") return;'
-      + '  var pages = document.querySelectorAll(".pagedjs_page");'
+      + '  /* Scope page selection to Paged.js’s own spread wrapper AND require'
+      + '     *direct* child placement of canonical structural classes. The'
+      + '     sanitizer allows class attributes on user content, so an author'
+      + '     <div class="pagedjs_page">…</div> would match plain descendant'
+      + '     selectors. Using :scope > restricts matching to the immediate'
+      + '     level paged.js itself emits — never anything paged.js then'
+      + '     rendered into .pagedjs_area from user markup. When .pagedjs_pages'
+      + '     itself is missing, bail out cleanly rather than scanning the'
+      + '     whole document; the footer simply remains empty (better than'
+      + '     touching user elements). */'
+      + '  var pageList = [];'
+      + '  var spread = document.querySelector(".pagedjs_pages");'
+      + '  if (spread) {'
+      + '    /* Real paged.js structure (verified against the polyfill source):'
+      + '         .pagedjs_pages'
+      + '           > .pagedjs_page'
+      + '               > .pagedjs_sheet'
+      + '                   > .pagedjs_pagebox'
+      + '                       > [margin holders / .pagedjs_area]'
+      + '       Note the order — sheet is the *direct* child of page, and'
+      + '       pagebox is the direct child of sheet. Each link must be a'
+      + '       direct child so a user-authored wrapper nested inside a real'
+      + '       page\'s content area can\'t impersonate a page of its own. */'
+      + '    var candidates = spread.querySelectorAll(":scope > .pagedjs_page");'
+      + '    for (var ci = 0; ci < candidates.length; ci++) {'
+      + '      var cand = candidates[ci];'
+      + '      var sheet = cand.querySelector(":scope > .pagedjs_sheet");'
+      + '      if (!sheet) continue;'
+      + '      var pagebox = sheet.querySelector(":scope > .pagedjs_pagebox");'
+      + '      if (!pagebox) continue;'
+      + '      pageList.push(cand);'
+      + '    }'
+      + '  }'
+      + '  var pages = pageList;'
       + '  var total = pages.length;'
+      + '  /* Pick the chapter title by the most-common h1 across trusted pages.'
+      + '     A user <h1> appended at the end would only appear on the last'
+      + '     page(s), so it cannot out-vote the real chapter that recurs on'
+      + '     every preceding page. Falls back to the first non-empty h1 if'
+      + '     every page is unique. */'
+      + '  var h1Freq = Object.create(null);'
+      + '  var h1Order = [];'
+      + '  for (var pi = 0; pi < pages.length; pi++) {'
+      + '    var pca = pages[pi].querySelector(".pagedjs_area");'
+      + '    if (!pca) continue;'
+      + '    var pch1 = pca.querySelector("h1");'
+      + '    if (!pch1) continue;'
+      + '    /* The map key is user-controlled (h1 textContent), so we cannot'
+      + '       safely use `in` on a plain object — prototype names like'
+      + '       "toString" or "constructor" would collide. Also trim because'
+      + '       whitespace-only headings would otherwise count as valid chapters. */'
+      + '    var pct = (pch1.textContent || "").replace(/^\\s+|\\s+$/g, "");'
+      + '    if (!pct) continue;'
+      + '    if (!Object.prototype.hasOwnProperty.call(h1Freq, pct)) { h1Freq[pct] = 0; h1Order.push(pct); }'
+      + '    h1Freq[pct]++;'
+      + '  }'
       + '  var chapter = "";'
+      + '  if (h1Order.length) {'
+      + '    var best = h1Order[0];'
+      + '    var bestCount = h1Freq[best];'
+      + '    for (var hi = 1; hi < h1Order.length; hi++) {'
+      + '      if (h1Freq[h1Order[hi]] > bestCount) { best = h1Order[hi]; bestCount = h1Freq[h1Order[hi]]; }'
+      + '    }'
+      + '    chapter = best;'
+      + '  }'
       + '  for (var i = 0; i < pages.length; i++) {'
       + '    var page = pages[i];'
-      + '    var h1 = page.querySelector("h1");'
-      + '    if (h1) chapter = h1.textContent;'
-      + '    var left = page.querySelector(".pagedjs_margin-bottom-left .pagedjs_margin-content");'
-      + '    var right = page.querySelector(".pagedjs_margin-bottom-right .pagedjs_margin-content");'
-      + '    if (left) left.textContent = chapter;'
-      + '    if (right) right.textContent = "Page " + (i + 1) + " of " + total;'
+      + '    /* Walk *direct* children only, following the canonical chain'
+      + '       confirmed by the pagebox filter above:'
+      + '         .pagedjs_page > .pagedjs_sheet > .pagedjs_pagebox >'
+      + '           .pagedjs_margin-bottom > .{left,right} > .pagedjs_margin-content.'
+      + '       Each link is resolved as a direct child of its expected parent'
+      + '       so a user wrapper nested inside .pagedjs_area cannot satisfy'
+      + '       the structural test. */'
+      + '    var sheet = page.querySelector(":scope > .pagedjs_sheet");'
+      + '    if (!sheet) continue;'
+      + '    var pagebox = sheet.querySelector(":scope > .pagedjs_pagebox");'
+      + '    if (!pagebox) continue;'
+      + '    var bottomGrid = pagebox.querySelector(":scope > .pagedjs_margin-bottom");'
+      + '    if (!bottomGrid) continue;'
+      + '    var leftBox = bottomGrid.querySelector(":scope > .pagedjs_margin-bottom-left");'
+      + '    var rightBox = bottomGrid.querySelector(":scope > .pagedjs_margin-bottom-right");'
+      + '    var left = leftBox ? leftBox.querySelector(":scope > .pagedjs_margin-content") : null;'
+      + '    var right = rightBox ? rightBox.querySelector(":scope > .pagedjs_margin-content") : null;'
+      + '    /* Final safety: the target must be a child of bottomGrid AND of'
+      + '       the correct-side margin box. closest() resolves the actual'
+      + '       ancestor even when the grid search returned a deeper node. */'
+      + '    function isTrustedMarginContent(el, side) {'
+      + '      if (!el) return false;'
+      + '      var sideBox = el.parentElement;'
+      + '      while (sideBox && !sideBox.classList.contains("pagedjs_margin-bottom-" + side)) {'
+      + '        sideBox = sideBox.parentElement;'
+      + '      }'
+      + '      return !!sideBox && bottomGrid && bottomGrid.contains(sideBox);'
+      + '    }'
+      + '    if (isTrustedMarginContent(left, "left")) left.textContent = chapter;'
+      + '    if (isTrustedMarginContent(right, "right")) right.textContent = "Page " + (i + 1) + " of " + total;'
       + '  }'
       + '}'
       + 'function _commitPagedPreview() {'
-      + '  if (_pagedReady || !document.querySelector(".pagedjs_page")) return;'
+      + '  /* Same hardened gate as _applyFooterContent uses internally: a direct'
+      + '     child of the spread wrapper, never a descendant match — keeps a'
+      + '     user-authored <div class="pagedjs_page"> from flipping'
+      + '     _pagedReady and triggering footer logic against the wrong tree. */'
+      + '  if (_pagedReady) return;'
+      + '  var initSpread = document.querySelector(".pagedjs_pages");'
+      + '  if (!initSpread || !initSpread.querySelector(":scope > .pagedjs_page")) return;'
       + '  _pagedReady = true;'
       + '  _applyFooterContent();'
       + '  _fitPage();'
@@ -3643,11 +3735,24 @@
        box, but without the @page margin-box rules they lose their
        positioning. We pin them to the bottom margin area. */
     if (showFooter) {
+      /* Pin the footer to the bottom of every page. The CSS must defeat
+         *any* transform inherited from the preview (zoom on .pagedjs_pages,
+         animation, or a future container) and must not get clipped by the
+         page's overflow: hidden when its content height is taller than the
+         computed font-size. Stacking at z-index 1 keeps it above the page
+         area even if a future rule adds a full-bleed background there. */
       printCss.textContent +=
         ".pagedjs_page .pagedjs_margin-bottom-left, .pagedjs_page .pagedjs_margin-bottom-right {" +
-        "position: absolute !important; bottom: 0 !important; font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important; }" +
+        "position: absolute !important; bottom: 0 !important; left: auto !important; right: auto !important;" +
+        "font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important;" +
+        "max-width: 45% !important; overflow: visible !important; transform: none !important; writing-mode: horizontal-tb !important;" +
+        "z-index: 1 !important; }" +
         ".pagedjs_page .pagedjs_margin-bottom-left { left: 0 !important; text-align: left !important; }" +
-        ".pagedjs_page .pagedjs_margin-bottom-right { right: 0 !important; text-align: right !important; }";
+        ".pagedjs_page .pagedjs_margin-bottom-right { right: 0 !important; text-align: right !important; }" +
+        ".pagedjs_page .pagedjs_margin-bottom-left .pagedjs_margin-content," +
+        ".pagedjs_page .pagedjs_margin-bottom-right .pagedjs_margin-content {" +
+        "display: inline-block !important; max-width: 100% !important; white-space: normal !important;" +
+        "word-break: break-word !important; }";
     }
     clone.querySelector("head").appendChild(printCss);
 

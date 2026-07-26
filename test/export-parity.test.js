@@ -128,9 +128,17 @@ describe("paged preview lifecycle", () => {
   });
 
   test("only commits a Paged.js frame after real page boxes exist", () => {
-    const body = fnBody("renderPreview");
-    expect(body).toContain('!document.querySelector(".pagedjs_page")');
-    expect(body).toContain('parent.postMessage({type:"paged-ready"');
+    /* Both _commitPagedPreview and _fitPage get used here; together they
+       signal "Paged.js has produced real pages and we're ready to commit".
+       Rather than rely on the leaky fnBody regex, scan the whole source
+       for the required commitment message and the safe spread-scope
+       gate that replaces the old document-wide `.pagedjs_page` query. */
+    expect(SRC).toContain('parent.postMessage({type:"paged-ready"');
+    expect(SRC).toContain(":scope > .pagedjs_page");
+    /* The unsafe global selector against bare `.pagedjs_page` is gone —
+       no consumer of the page list may scan the whole document for it. */
+    expect(SRC).not.toContain('document.querySelectorAll(".pagedjs_page")');
+    expect(SRC).not.toContain("!document.querySelector(\".pagedjs_page\")");
   });
 
   test("does not mutate page geometry while Paged.js is still paginating", () => {
@@ -397,6 +405,130 @@ describe("print snapshot footer", () => {
     expect(body).toContain("pagedjs_margin-bottom-right");
     expect(body).toContain("position: absolute");
     expect(body).toContain("bottom: 0");
+  });
+
+  test("print footer CSS defeats page transform inherited from preview zoom", () => {
+    /* Regression guard: if a container above the footer carries a
+       transform: rotate() / scale() from the live preview's zoom wrapper,
+       the absolutely-positioned footer would inherit it and end up rotated
+       or pushed off-page in the PDF. The print snapshot CSS must reset
+       transform and writing-mode on the footer itself. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("transform: none !important");
+    expect(body).toContain("writing-mode: horizontal-tb !important");
+  });
+
+  test("print footer CSS caps width and keeps footer visible above page edge", () => {
+    /* Long chapter titles or rules added later can blow the box past the
+       page edge; cap width and force overflow: visible so a tall descender
+       doesn't get clipped by .pagedjs_page's overflow: hidden. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("max-width: 45%");
+    expect(body).toContain("overflow: visible !important");
+    expect(body).toContain("z-index: 1 !important");
+  });
+});
+
+describe("footer DOM scoping", () => {
+  test("_applyFooterContent restricts page lookup to the paged.js spread wrapper", () => {
+    /* User-authored markdown may legitimately contain class="pagedjs_page".
+       Scoping the query to .pagedjs_pages (when present) prevents footers
+       from being injected into user content and stops colliding class names
+       from inflating the "Page N of M" total. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_pages");
+    expect(body).toContain(":scope > .pagedjs_page");
+  });
+
+  test("_applyFooterContent requires direct-child sheet>pagebox structure before treating a node as a real page", () => {
+    /* Real paged.js emits page > sheet > pagebox. Descendant-only matching
+       would still accept user-authored wrappers; require each link in the
+       chain to be the *direct* child of the parent paged.js itself emits. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(":scope > .pagedjs_sheet");
+    expect(body).toContain(":scope > .pagedjs_pagebox");
+    expect(body).toContain("pageList");
+    expect(body).toContain("pageList.push");
+  });
+
+  test("_applyFooterContent never falls back to a document-wide class scan", () => {
+    /* The previous fallback `document.querySelectorAll(".pagedjs_page")`
+       re-opened the very hole the spread wrapper closes. The single
+       legitimate document-wide call is for `.pagedjs_pages` itself; any
+       document-wide lookup against `.pagedjs_page` would re-open the hole. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).not.toContain('document.querySelectorAll(".pagedjs_page")');
+    expect(body).not.toMatch(/document\.querySelector\("\.pagedjs_page"\)/);
+  });
+
+  test("_applyFooterContent resolves margin content via direct children only", () => {
+    /* Each step on the path page > pagebox > margin-bottom > {left,right} >
+       content must be a direct child so a user wrapper nested inside the
+       page's content area cannot satisfy the structural test. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(":scope > .pagedjs_pagebox");
+    expect(body).toContain(":scope > .pagedjs_margin-bottom");
+    expect(body).toContain(":scope > .pagedjs_margin-bottom-left");
+    expect(body).toContain(":scope > .pagedjs_margin-bottom-right");
+    expect(body).toContain(":scope > .pagedjs_margin-content");
+  });
+
+  test("_applyFooterContent reads h1 only from the paged.js content area", () => {
+    /* A user <h1> outside .pagedjs_area (e.g. in a header element they added)
+       must not win as the chapter title — read from the engine-managed
+       content area only. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_area");
+    expect(body).toContain("h1Freq");
+  });
+
+  test("_applyFooterContent picks the most-common h1 across pages to resist user-authored h1 hijack", () => {
+    /* If the document contains an extra user h1 in body text, paged.js still
+       renders it inside .pagedjs_area on later pages. Picking the most-common
+       h1 (rather than the last one) keeps a real chapter title from being
+       overridden by a stray user heading. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain("h1Freq");
+    expect(body).toMatch(/bestCount\s*=\s*h1Freq\[/);
+  });
+
+  test("_applyFooterContent uses a prototype-less map for h1 frequency so user text can't shadow Object.prototype", () => {
+    /* Security/correctness guard: a chapter heading of "toString" or
+       "constructor" must not collide with Object.prototype keys. Earlier
+       versions used `pct in h1Freq` against a plain {} which would treat
+       those names as pre-existing and increment inherited methods,
+       producing NaN counts and wrong chapter selection. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain("Object.create(null)");
+    expect(body).toContain("Object.prototype.hasOwnProperty.call");
+  });
+
+  test("_applyFooterContent trims h1 text before keying the frequency map", () => {
+    /* Whitespace-only headings must not register as valid chapters; collapse
+       surrounding whitespace so visually identical headings share a bucket. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".replace(/^");
+    expect(body).toContain("|\\\\s+$/g");
+  });
+
+  test("_applyFooterContent verifies margin-content targets live in the bottom margin grid", () => {
+    /* Last-line defense: even if a stray author <div class="pagedjs_margin-bottom-left">
+       matches the selector, only overwrite if it actually sits inside the
+       paged.js .pagedjs_margin-bottom grid slot. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_margin-bottom");
+    expect(body).toContain("isTrustedMarginContent");
+    expect(body).toContain("bottomGrid.contains");
+  });
+
+  test("_commitPagedPreview gates on the spread wrapper, not a global .pagedjs_page query", () => {
+    /* A user-authored <div class="pagedjs_page"> must not flip _pagedReady
+       and trigger footer logic against the wrong tree. Use the same direct-
+       child scope inside .pagedjs_pages as _applyFooterContent. */
+    const body = fnBody("_commitPagedPreview");
+    expect(body).toContain(".pagedjs_pages");
+    expect(body).toContain(":scope > .pagedjs_page");
+    expect(body).not.toMatch(/!document\.querySelector\("\.pagedjs_page"\)/);
   });
 
   test("PDF popup is sized to the page, not the preview iframe", () => {
