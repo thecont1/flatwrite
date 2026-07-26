@@ -81,7 +81,7 @@ function mockUpstream({ ok = true, status = 200, text = "# Hello\n\nWorld", head
 // Public, non-private DNS resolution stub — most tests use example.com-style
 // hosts and don't want to depend on real network DNS during CI.
 function mockPublicDns() {
-  dns.promises.lookup = async () => ({ address: "93.184.216.34", family: 4 });
+  dns.promises.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
 }
 
 describe("api/import-url.js", () => {
@@ -259,8 +259,21 @@ describe("api/import-url.js", () => {
   });
 
   test("hostname that resolves (DNS rebinding) to a private IP → 400", async () => {
-    dns.promises.lookup = async () => ({ address: "10.1.2.3", family: 4 });
+    dns.promises.lookup = async () => [{ address: "10.1.2.3", family: 4 }];
     const req = mockReq({ body: { url: "https://rebind.example.com/page" } });
+    const res = mockRes();
+    await handler(req, res);
+    expect(res._status).toBe(400);
+    expect(res._body.error).toMatch(/private network/);
+  });
+
+  test("hostname with multiple A/AAAA records where any one is private → 400", async () => {
+    dns.promises.lookup = async () => [
+      { address: "93.184.216.34", family: 4 },
+      { address: "10.1.2.3", family: 4 },
+      { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+    ];
+    const req = mockReq({ body: { url: "https://mixed.example.com/page" } });
     const res = mockRes();
     await handler(req, res);
     expect(res._status).toBe(400);

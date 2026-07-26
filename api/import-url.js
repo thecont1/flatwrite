@@ -115,12 +115,20 @@ async function validateImportUrl(rawUrl) {
     return { ok: true, url: parsed };
   }
 
-  // DNS-rebinding guard: resolve the hostname and reject if it points at a
-  // private/reserved address, even though markdown.new does the real fetch.
+  // DNS-rebinding guard: resolve the hostname and reject if *any* resolved
+  // address (IPv4 or IPv6) is private/reserved, even though markdown.new
+  // does the real fetch. This is best-effort defense-in-depth — a TOCTOU
+  // gap exists between our resolution and the upstream fetch, but we still
+  // refuse to forward obviously unsafe targets.
   try {
-    const { address } = await dns.lookup(hostname);
-    if (isPrivateIp(address)) {
-      return { ok: false, error: 'URL resolves to a private network address' };
+    const addresses = await dns.lookup(hostname, { all: true });
+    if (!addresses.length) {
+      return { ok: false, error: 'Could not resolve host' };
+    }
+    for (const entry of addresses) {
+      if (isPrivateIp(entry.address)) {
+        return { ok: false, error: 'URL resolves to a private network address' };
+      }
     }
   } catch {
     return { ok: false, error: 'Could not resolve host' };
