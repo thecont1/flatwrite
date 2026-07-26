@@ -277,16 +277,43 @@ module.exports = async function handleImportUrl(req, res) {
     });
   }
 
+  // Early rejection if Content-Length already exceeds the cap.
+  const contentLength = parseInt(upstream.headers.get('content-length') || '', 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_MARKDOWN_BYTES) {
+    clearTimeout(timeout);
+    return json(res, 502, { ok: false, error: 'Imported content was too large.' });
+  }
+
+  // Stream the response body in chunks, enforcing the size limit during
+  // reading rather than after the full body is buffered. The AbortController
+  // timeout stays active until the body is fully consumed.
   let rawText;
   try {
-    const buffer = await upstream.arrayBuffer();
-    if (buffer.byteLength > MAX_MARKDOWN_BYTES) {
-      return json(res, 502, { ok: false, error: 'Imported content was too large.' });
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    let total = 0;
+    let text = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_MARKDOWN_BYTES) {
+        controller.abort();
+        clearTimeout(timeout);
+        return json(res, 502, { ok: false, error: 'Imported content was too large.' });
+      }
+      text += decoder.decode(value, { stream: true });
     }
-    rawText = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
-  } catch {
+    text += decoder.decode(); // flush
+    rawText = text;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err && err.name === 'AbortError') {
+      return json(res, 504, { ok: false, error: 'Import timed out while reading content.' });
+    }
     return json(res, 502, { ok: false, error: 'Failed to read imported content.' });
   }
+  clearTimeout(timeout);
 
   if (!rawText || !rawText.trim()) {
     return json(res, 502, { ok: false, error: 'The import service returned no content.' });

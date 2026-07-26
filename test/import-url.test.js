@@ -64,6 +64,22 @@ const handler = require("../api/import-url.js");
 const REAL_FETCH = global.fetch;
 const REAL_DNS_LOOKUP = dns.promises.lookup;
 
+function makeBody(text) {
+  const encoded = new TextEncoder().encode(text);
+  let read = false;
+  return {
+    getReader() {
+      return {
+        read() {
+          if (read) return Promise.resolve({ done: true, value: undefined });
+          read = true;
+          return Promise.resolve({ done: false, value: encoded });
+        },
+      };
+    },
+  };
+}
+
 function mockUpstream({ ok = true, status = 200, text = "# Hello\n\nWorld", headers = {} } = {}) {
   global.fetch = async () => ({
     ok,
@@ -74,7 +90,7 @@ function mockUpstream({ ok = true, status = 200, text = "# Hello\n\nWorld", head
         return found ? headers[found] : null;
       },
     },
-    arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+    body: makeBody(text),
   });
 }
 
@@ -128,7 +144,7 @@ describe("api/import-url.js", () => {
         ok: true,
         status: 200,
         headers: { get: (k) => (k.toLowerCase() === "content-type" ? "text/markdown" : null) },
-        arrayBuffer: async () => new TextEncoder().encode("# Doc").buffer,
+        body: makeBody("# Doc"),
       };
     };
     const req = mockReq({ body: { url: "https://example.com/x", method: "browser", retain_images: false } });
@@ -148,7 +164,7 @@ describe("api/import-url.js", () => {
       return {
         ok: true, status: 200,
         headers: { get: () => null },
-        arrayBuffer: async () => new TextEncoder().encode("# Doc").buffer,
+        body: makeBody("# Doc"),
       };
     };
     const req = mockReq({ body: { url: "https://example.com/x", method: "not-a-real-method" } });
@@ -285,7 +301,7 @@ describe("api/import-url.js", () => {
       ok: false,
       status: 500,
       headers: { get: () => null },
-      arrayBuffer: async () => new TextEncoder().encode("<html>secret internal error page</html>").buffer,
+      body: makeBody("<html>secret internal error page</html>"),
     });
     const req = mockReq({ body: { url: "https://example.com/article" } });
     const res = mockRes();
@@ -310,6 +326,33 @@ describe("api/import-url.js", () => {
     const res = mockRes();
     await handler(req, res);
     expect(res._status).toBe(502);
+  });
+
+  test("oversized content is rejected during streaming → 502", async () => {
+    // Build a body that exceeds MAX_MARKDOWN_BYTES (4 MB) in a single chunk.
+    const huge = "x".repeat(5 * 1024 * 1024);
+    mockUpstream({ text: huge });
+    const req = mockReq({ body: { url: "https://example.com/article" } });
+    const res = mockRes();
+    await handler(req, res);
+    expect(res._status).toBe(502);
+    expect(res._body.error).toMatch(/too large/i);
+  });
+
+  test("Content-Length header exceeding cap → early 502 rejection", async () => {
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (k) => (k.toLowerCase() === "content-length" ? String(10 * 1024 * 1024) : null),
+      },
+      body: makeBody("x"),
+    });
+    const req = mockReq({ body: { url: "https://example.com/article" } });
+    const res = mockRes();
+    await handler(req, res);
+    expect(res._status).toBe(502);
+    expect(res._body.error).toMatch(/too large/i);
   });
 
   test("GET method → 405", async () => {
