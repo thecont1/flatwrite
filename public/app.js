@@ -3585,8 +3585,19 @@
          inline style attributes, so users may have legitimate styles).
          We only strip properties that Vivliostyle uses for zoom/transform
          and page-box sizing — transform, zoom, width, height, position,
-         top, left, right, bottom — leaving all other inline styles intact. */
+         top, left, right, bottom — leaving all other inline styles intact.
+
+         Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
+         exception: Vivliostyle positions and sizes them with exactly the
+         same inline properties (position: absolute; left/right/top/bottom;
+         width/height) that this pass strips. Stripping those turns every
+         margin box into a static, full-width flex child that stacks
+         vertically instead of sitting in its own corner — the footer's
+         "Page N of M" ends up rendered directly on top of the chapter
+         title. Skip margin boxes (and anything inside them) so their
+         positioning survives into the print snapshot. */
       page.querySelectorAll("[style]").forEach(function (child) {
+        if (child.closest("[data-vivliostyle-page-margin-box]")) return;
         var style = child.getAttribute("style") || "";
         var cleaned = style.replace(
           /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
