@@ -399,6 +399,27 @@ describe("print snapshot footer", () => {
     expect(body).toContain("bottom: 0");
   });
 
+  test("print footer CSS defeats page transform inherited from preview zoom", () => {
+    /* Regression guard: if a container above the footer carries a
+       transform: rotate() / scale() from the live preview's zoom wrapper,
+       the absolutely-positioned footer would inherit it and end up rotated
+       or pushed off-page in the PDF. The print snapshot CSS must reset
+       transform and writing-mode on the footer itself. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("transform: none !important");
+    expect(body).toContain("writing-mode: horizontal-tb !important");
+  });
+
+  test("print footer CSS caps width and keeps footer visible above page edge", () => {
+    /* Long chapter titles or rules added later can blow the box past the
+       page edge; cap width and force overflow: visible so a tall descender
+       doesn't get clipped by .pagedjs_page's overflow: hidden. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain("max-width: 45%");
+    expect(body).toContain("overflow: visible !important");
+    expect(body).toContain("z-index: 1 !important");
+  });
+
   test("PDF popup is sized to the page, not the preview iframe", () => {
     const body = fnBody("exportPDF");
     expect(body).not.toContain("iframeRect");

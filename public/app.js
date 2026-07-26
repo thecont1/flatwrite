@@ -3643,11 +3643,24 @@
        box, but without the @page margin-box rules they lose their
        positioning. We pin them to the bottom margin area. */
     if (showFooter) {
+      /* Pin the footer to the bottom of every page. The CSS must defeat
+         *any* transform inherited from the preview (zoom on .pagedjs_pages,
+         animation, or a future container) and must not get clipped by the
+         page's overflow: hidden when its content height is taller than the
+         computed font-size. Stacking at z-index 1 keeps it above the page
+         area even if a future rule adds a full-bleed background there. */
       printCss.textContent +=
         ".pagedjs_page .pagedjs_margin-bottom-left, .pagedjs_page .pagedjs_margin-bottom-right {" +
-        "position: absolute !important; bottom: 0 !important; font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important; }" +
+        "position: absolute !important; bottom: 0 !important; left: auto !important; right: auto !important;" +
+        "font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important;" +
+        "max-width: 45% !important; overflow: visible !important; transform: none !important; writing-mode: horizontal-tb !important;" +
+        "z-index: 1 !important; }" +
         ".pagedjs_page .pagedjs_margin-bottom-left { left: 0 !important; text-align: left !important; }" +
-        ".pagedjs_page .pagedjs_margin-bottom-right { right: 0 !important; text-align: right !important; }";
+        ".pagedjs_page .pagedjs_margin-bottom-right { right: 0 !important; text-align: right !important; }" +
+        ".pagedjs_page .pagedjs_margin-bottom-left .pagedjs_margin-content," +
+        ".pagedjs_page .pagedjs_margin-bottom-right .pagedjs_margin-content {" +
+        "display: inline-block !important; max-width: 100% !important; white-space: normal !important;" +
+        "word-break: break-word !important; }";
     }
     clone.querySelector("head").appendChild(printCss);
 
