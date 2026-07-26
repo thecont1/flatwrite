@@ -3550,9 +3550,23 @@
     });
     clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
       page.removeAttribute("style");
-      /* Clear inline styles on child elements that Vivliostyle may have set */
-      page.querySelectorAll("*").forEach(function (child) {
-        child.removeAttribute("style");
+      /* Selectively remove Vivliostyle-injected layout overrides from
+         descendants while preserving author styles (the sanitizer allows
+         inline style attributes, so users may have legitimate styles).
+         We only strip properties that Vivliostyle uses for zoom/transform
+         and page-box sizing — transform, zoom, width, height, position,
+         top, left, right, bottom — leaving all other inline styles intact. */
+      page.querySelectorAll("[style]").forEach(function (child) {
+        var style = child.getAttribute("style") || "";
+        var cleaned = style.replace(
+          /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
+          ""
+        ).replace(/;\s*;+/g, ";").replace(/^\s+|\s+$/g, "");
+        if (cleaned) {
+          child.setAttribute("style", cleaned);
+        } else {
+          child.removeAttribute("style");
+        }
       });
     });
     var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -3607,13 +3621,22 @@
         if (text.indexOf("counter(pages)") !== -1) {
           style.textContent = text.split("counter(pages)").join(String(pageCount));
         }
-        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,\n           etc.) from the cloned styles. The browser's native print (which\n           window.print() uses) does not support these at-rules. When present,\n           some browsers discard the entire @page block — including size and\n           margin — which breaks page sizing for every page. The print snapshot\n           CSS (appended separately) already provides the correct @page size\n           and margin.\n\n           The old regex was greedy across the entire @page block: it matched\n           from `@page {` through the last `}`, which could swallow the `size`\n           and `margin` declarations when footer was ON, or fail to match at\n           all when nested braces (from string-set) altered the block structure.\n           This version surgically removes only the @bottom-* at-rules while\n           preserving everything else in the @page block. */
-        if (text.indexOf("@bottom-") !== -1) {
-          style.textContent = text.replace(/@page\s*\{([^}]*)\}/g, function(_m, inner) {
-            /* Remove only @bottom-* rules from inside the @page block */
-            var cleaned = inner.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[^}]*\}/g, "");
-            return "@page {" + cleaned + "}";
-          });
+        /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,
+           @top-left, etc.) from the cloned styles. The browser's native print
+           (which window.print() uses) does not support these at-rules. When
+           present, some browsers discard the entire @page block — including
+           size and margin — which breaks page sizing for every page. The print
+           snapshot CSS (appended separately) already provides the correct
+           @page size and margin.
+
+           We remove the margin-box at-rules directly rather than parsing the
+           @page block, because @page can contain nested braces (e.g.,
+           @page { @bottom-left { ... } }) that break single-level regex
+           matching. By targeting only the @bottom-*/@top-* at-rules with a
+           non-greedy pattern, we preserve the @page block's size and margin
+           declarations regardless of nesting. */
+        if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
+          style.textContent = text.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[\s\S]*?\}/g, "");
         }
       });
     }

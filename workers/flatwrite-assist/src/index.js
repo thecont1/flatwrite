@@ -71,6 +71,8 @@ function isBrowserRequest(req) {
   return Boolean(req.headers.get('Origin'));
 }
 
+const MAX_RATE_LIMIT_KEYS = 10000;
+
 function isRateLimited(map, ip, max) {
   if (!ip) return false;
   const now = Date.now();
@@ -84,6 +86,20 @@ function isRateLimited(map, ip, max) {
   }
   log.push(now);
   map.set(ip, log);
+  /* Evict oldest keys when the Map exceeds a hard cap. Cloudflare
+     Worker isolates can live for hours, so per-IP entries from
+     scanners/bots can accumulate indefinitely. We delete the
+     oldest-inserted keys (Map preserves insertion order) to bound
+     memory usage. */
+  if (map.size > MAX_RATE_LIMIT_KEYS) {
+    const keysToDelete = map.size - MAX_RATE_LIMIT_KEYS;
+    let deleted = 0;
+    for (const key of map.keys()) {
+      if (deleted >= keysToDelete) break;
+      map.delete(key);
+      deleted++;
+    }
+  }
   return false;
 }
 

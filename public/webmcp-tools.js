@@ -988,7 +988,7 @@ export const DOC_TOOLS = [
           "description": "Optional selection text (defaults to markdown.slice(start, end))."
         }
       },
-      "required": []
+      "required": ["markdown"]
     },
     "outputSchema": {
       "type": "object",
