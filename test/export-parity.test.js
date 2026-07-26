@@ -91,28 +91,31 @@ describe("syncExportActionsTop layout", () => {
 });
 
 describe("buildPageCSS page layout", () => {
-  test("emits @page rule and Page n of N footer marker", () => {
+  test("emits @page rule and column support, no footer content", () => {
+    /* Footer text is injected into .pagedjs_margin-content DOM, not via
+       @page { @bottom-left { content: string(...) } }. The latter would
+       produce a duplicate ::after pseudo-element AND leave an unresolvable
+       counter(pages) in the print snapshot (native window.print() does
+       not run Paged.js). */
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@page");
-    expect(body).toContain(
-      '"Page " counter(page) " of " counter(pages)'
-    );
+    expect(body).not.toContain("string(chapter");
+    expect(body).not.toContain('counter(page) " of " counter(pages)');
+    expect(body).not.toContain("string-set: chapter");
   });
 
-  test("guards columns and clears disabled footers", () => {
+  test("guards columns and break-inside rules", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@supports (column-count: 2)");
     expect(body).toContain("column-count: 1");
     expect(body).toContain("break-inside: avoid");
-    expect(body).toContain("@bottom-left { content: none; }");
-    expect(body).toContain("@bottom-right { content: none; }");
   });
 
-  test("reserves page margin boxes without pushing them into body content", () => {
+  test("does not pad body to fake a footer (margin-box reservation is the renderer's job)", () => {
     const body = fnBody("buildPageCSS");
-    expect(body).toContain("@bottom-left");
-    expect(body).toContain("@bottom-right");
     expect(body).not.toContain("padding-bottom: 3mm");
+    expect(body).not.toContain("@bottom-left");
+    expect(body).not.toContain("@bottom-right");
   });
 });
 
@@ -393,10 +396,16 @@ describe("print snapshot footer", () => {
     expect(body).toContain("style.id === \"_fw_print_snapshot\"");
   });
 
-  test("preserves margin box space when footer is on", () => {
+  test("forces @page margin to 0 so the .pagedjs_page sheet maps 1:1 to a Chrome PDF page", () => {
     const body = fnBody("buildPrintSnapshot");
-    expect(body).toContain("footerMargin");
-    expect(body).toContain("showFooter");
+    /* Adding @page margin here used to shrink Chrome's printable area below
+       the full page height; each .pagedjs_page would then spill onto a
+       second Chrome PDF page (10 pages instead of 5 when footer was on).
+       Footer positioning is handled separately via
+       .pagedjs_page .pagedjs_margin-bottom-left with `position: absolute;
+       bottom: 0`, so it stays anchored regardless of @page margin. */
+    expect(body).toMatch(/footerMargin\s*=\s*["']0["']/);
+    expect(body).not.toMatch(/footerMargin\s*=\s*showFooter/);
   });
 
   test("adds explicit footer positioning CSS when footer is on", () => {

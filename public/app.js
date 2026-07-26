@@ -2435,19 +2435,22 @@
       css += ' @supports (column-count: 2) { main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: auto; }';
       css += ' main > h1, main > h2, main > h3, main > h4, main > pre, main > table, main > blockquote, main > figure { break-inside: avoid; } }';
     }
-    /* Always capture the L1 heading so it can be used by the footer */
-    css += 'h1 { string-set: chapter content(); }';
-    if (showFooter) {
-      /* Margin boxes already occupy the configured @page margin. Padding the
-         boxes themselves moves generated content toward (and in some engines
-         over) the page area, making the last body lines appear clipped. */
-      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #666; vertical-align: middle; }';
-      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; } }';
-    } else {
-      /* Explicitly clear margin boxes. This prevents a renderer from keeping
-         stale generated content when the footer toggle is switched off. */
-      css += '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
-    }
+    /* Footer text is injected directly into the margin-box DOM via
+       _applyFooterContent. We deliberately do not rely on the CSS-driven
+       path (chapter running heading via string() / counter(page)/counter
+       (pages)). Two reasons, both reproducible in the field:
+         (a) Paged.js renders the same string twice — once as a ::after
+             pseudo-element on .pagedjs_margin-content and again from our
+             DOM textContent assignment. Every page shows the chapter title
+             twice in the bottom-left.
+         (b) counter(page)/counter(pages) only resolve when Paged.js /
+             Vivliostyle actively paginate. The print snapshot is emitted
+             as static HTML for window.print(), where counters stay at 0
+             and the page-count footer breaks the layout (pages counted as
+             zero ⇒ margin boxes collapse ⇒ body overflows ⇒ "gross
+             misalignment").
+       Sole owner of footer content: _applyFooterContent (writes real DOM
+       text nodes, resolves the total from the committed page list). */
     return css;
   }
 
@@ -3846,7 +3849,18 @@
       if (pagesWithContent.indexOf(box) === -1) box.remove();
     });
     var pageCount = pagesWithContent.length;
-    var footerMargin = showFooter ? (tbMm + " " + lrMm) : "0";
+    /* Chrome's @page margin must be 0 for the print snapshot because each
+       .pagedjs_page in the body is already sized to the FULL physical page
+       (e.g. 420mm x 297mm) with paged.js's own content margins accounted for
+       via the inner .pagedjs_pagebox. Adding margins here (e.g. "30mm 20mm")
+       shrinks Chrome's printable area below the full page height, so each
+       .pagedjs_page spills onto a second Chrome PDF page — producing 10 pages
+       instead of 5 when footer is on (which was the historical
+       `grossly misaligned` PDF symptom). The footer lives in
+       .pagedjs_page .pagedjs_margin-bottom-left with `position: absolute;
+       bottom: 0`, so it stays anchored at the page bottom regardless of
+       @page margin. */
+    var footerMargin = "0";
     var printCss = document.createElement("style");
     printCss.id = "_fw_print_snapshot";
     printCss.textContent =
