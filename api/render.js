@@ -35,9 +35,14 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Only trust X-Forwarded-For when explicitly configured — see import-url.js.
+const TRUST_PROXY = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true';
+
 function getClientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd) return String(fwd).split(',')[0].trim();
+  if (TRUST_PROXY) {
+    const fwd = req.headers['x-forwarded-for'];
+    if (fwd) return String(fwd).split(',')[0].trim();
+  }
   return req.socket && req.socket.remoteAddress || 'unknown';
 }
 
