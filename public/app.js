@@ -3751,7 +3751,13 @@
     var pagesFlow = clone.querySelector(".pagedjs_pages");
     if (pagesFlow) {
       pagesFlow.removeAttribute("style");
-      pagesFlow.querySelectorAll(".pagedjs_page").forEach(function (page) {
+      /* `:scope > .pagedjs_page` restricts to direct children of the
+         engine-owned flow container. The sanitizer allows class="pagedjs_page"
+         on arbitrary user HTML, so a clone-wide descendant search would
+         also catch user-authored .pagedjs_page divs sitting inside <main>
+         and inflate the page count. The previous looser filter inside the
+         pageBoxes loop only attempted to compensate after the fact. */
+      pagesFlow.querySelectorAll(":scope > .pagedjs_page").forEach(function (page) {
         page.removeAttribute("style");
       });
     }
@@ -3779,38 +3785,50 @@
         style.remove();
       }
     });
-    clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
-      page.removeAttribute("style");
-      /* Selectively remove Vivliostyle-injected layout overrides from
-         descendants while preserving author styles (the sanitizer allows
-         inline style attributes, so users may have legitimate styles).
-         We only strip properties that Vivliostyle uses for zoom/transform
-         and page-box sizing — transform, zoom, width, height, position,
-         top, left, right, bottom — leaving all other inline styles intact.
 
-         Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
-         exception: Vivliostyle positions and sizes them with exactly the
-         same inline properties (position: absolute; left/right/top/bottom;
-         width/height) that this pass strips. Stripping those turns every
-         margin box into a static, full-width flex child that stacks
-         vertically instead of sitting in its own corner — the footer's
-         "Page N of M" ends up rendered directly on top of the chapter
-         title. Skip margin boxes (and anything inside them) so their
-         positioning survives into the print snapshot. */
-      page.querySelectorAll("[style]").forEach(function (child) {
-        if (child.closest("[data-vivliostyle-page-margin-box]")) return;
-        var style = child.getAttribute("style") || "";
-        var cleaned = style.replace(
-          /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
-          ""
-        ).replace(/;\s*;+/g, ";").replace(/^\s+|\s+$/g, "");
-        if (cleaned) {
-          child.setAttribute("style", cleaned);
-        } else {
-          child.removeAttribute("style");
-        }
+    /* Collect Vivliostyle page containers from the engine-owned spread
+       root only — direct children via :scope >. The sanitizer allows
+       data-* attributes on arbitrary elements, so a clone-wide descendant
+       search for [data-vivliostyle-page-container] would catch user-
+       authored elements and pollute page count + style stripping. */
+    var vivliostylePages = [];
+    if (spread) {
+      vivliostylePages = Array.prototype.slice.call(
+        spread.querySelectorAll(":scope > [data-vivliostyle-page-container]")
+      );
+      vivliostylePages.forEach(function (page) {
+        page.removeAttribute("style");
+        /* Selectively remove Vivliostyle-injected layout overrides from
+           descendants while preserving author styles (the sanitizer allows
+           inline style attributes, so users may have legitimate styles).
+           We only strip properties that Vivliostyle uses for zoom/transform
+           and page-box sizing — transform, zoom, width, height, position,
+           top, left, right, bottom — leaving all other inline styles intact.
+
+           Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
+           exception: Vivliostyle positions and sizes them with exactly the
+           same inline properties (position: absolute; left/right/top/bottom;
+           width/height) that this pass strips. Stripping those turns every
+           margin box into a static, full-width flex child that stacks
+           vertically instead of sitting in its own corner — the footer's
+           "Page N of M" ends up rendered directly on top of the chapter
+           title. Skip margin boxes (and anything inside them) so their
+           positioning survives into the print snapshot. */
+        page.querySelectorAll("[style]").forEach(function (child) {
+          if (child.closest("[data-vivliostyle-page-margin-box]")) return;
+          var style = child.getAttribute("style") || "";
+          var cleaned = style.replace(
+            /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
+            ""
+          ).replace(/;\s*;+/g, ";").replace(/^\s+|\s+$/g, "");
+          if (cleaned) {
+            child.setAttribute("style", cleaned);
+          } else {
+            child.removeAttribute("style");
+          }
+        });
       });
-    });
+    }
     var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
     var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
@@ -3822,25 +3840,31 @@
        static total. counter(pages) only resolves when a CSS pagination
        engine runs, but the print snapshot is emitted as static HTML for
        window.print() — so replace it with the actual count.
-       pageBoxesWithContent is the same node list AFTER culling empty
+       pagesWithContent is the same node list AFTER culling empty
        pages (a paged.js artifact where wide content + column layout
        overflows into an intermediate box with no .pagedjs_area in it).
        Those phantom pages must NOT contribute to the public page count,
        which the footer's "Page N of M" relies on. */
-    var pageBoxes = clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]");
-    var pagesWithContent = Array.prototype.filter.call(pageBoxes, function (box) {
-      /* Direct-child guard: a user-authored .pagedjs_page inside the
-         content area doesn't satisfy :scope on .pagedjs_pages (the
-         querySelector above matches descendant too, so we filter here).
-         We require the canonical box to live one level under the
-         spread/flow container, with at least a sheet > pagebox. */
-      var parent = box.parentElement;
-      if (!parent) return false;
-      var isInFlow = parent.classList.contains("pagedjs_pages") ||
-        parent.classList.contains("pagedjs_sheet") ||
-        parent.hasAttribute("data-vivliostyle-spread-container") ||
-        parent.closest("[data-vivliostyle-spread-container]");
-      if (!isInFlow) return false;
+
+    /* Engine-rooted candidate set, NOT clone-wide. The previous code
+       queried '.pagedjs_page, [data-vivliostyle-page-container]' across
+       the entire cloned document and tried to filter after the fact,
+       using class-list membership as a provenance signal. The sanitizer
+       permits class="pagedjs_page" and data-vivliostyle-page-container on
+       arbitrary user-authored elements, so user HTML could inflate /
+       deflate pageCount, dictate phantom-page culling decisions, and
+       cause the wrong nodes to be removed or retained in the snapshot.
+       Scoping to the engine-emitted containers (.pagedjs_pages and
+       [data-vivliostyle-spread-container]) makes the candidate set safe
+       regardless of what the user wrote. */
+    var pagedPages = pagesFlow
+      ? Array.prototype.slice.call(
+          pagesFlow.querySelectorAll(":scope > .pagedjs_page")
+        )
+      : [];
+    var allPageBoxes = pagedPages.concat(vivliostylePages);
+
+    var pagesWithContent = allPageBoxes.filter(function (box) {
       if (box.classList.contains("pagedjs_page")) {
         var sheet = box.querySelector(":scope > .pagedjs_sheet");
         var pagebox = sheet ? sheet.querySelector(":scope > .pagedjs_pagebox") : null;
@@ -3850,12 +3874,19 @@
         if (!pagebox.querySelector(":scope > .pagedjs_area")) return false;
       } else if (box.hasAttribute("data-vivliostyle-page-container")) {
         if (!box.querySelector("[data-vivliostyle-page-margin-box], main, .pagedjs_area")) return false;
+      } else {
+        /* The engine-rooted candidates above only contain elements whose
+           classList contains "pagedjs_page" or which carry the
+           data-vivliostyle-page-container attribute (those are exactly
+           what we queried). Anything else would indicate a bug in the
+           scoping above. */
+        return false;
       }
       return true;
     });
     /* Drop the phantoms so the printed page count matches what the user
        sees — and so the footer's "Page N of M" denominator is accurate. */
-    pageBoxes.forEach(function (box) {
+    allPageBoxes.forEach(function (box) {
       if (pagesWithContent.indexOf(box) === -1) box.remove();
     });
     var pageCount = pagesWithContent.length;

@@ -416,6 +416,33 @@ describe("print snapshot footer", () => {
     expect(body).toContain("bottom: 0");
   });
 
+  test("scopes pagedjs_page / vivliostyle-page-container queries to engine-owned roots", () => {
+    /* User markdown is rendered with raw HTML enabled. The sanitizer
+       allows class="pagedjs_page" and data-vivliostyle-page-container on
+       arbitrary <div>/<span> elements, so a clone-wide descendant search
+       for those tokens would catch user-authored nodes and pollute both
+       the page count (footer's "Page N of M" denominator) and the
+       style-stripping pass. The functions must select from the engine-
+       emitted roots via :scope > child combinator. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).toContain('pagesFlow.querySelectorAll(":scope > .pagedjs_page")');
+    expect(body).toContain('spread.querySelectorAll(":scope > [data-vivliostyle-page-container]")');
+    /* The loose descending querySelector against clone/document is no
+       longer the primary provenance path. */
+    expect(body).not.toContain('clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]")');
+  });
+
+  test("buildPrintSnapshot no longer filters via parent.classList", () => {
+    /* The post-hoc filter `parent.classList.contains("pagedjs_pages") ||
+       .pagedjs_sheet || ...` was a defense-in-depth band-aid that still
+       relied on user-controlled class names as a provenance signal.
+       Now that selections are scoped to engine roots via :scope >,
+       candidates are guaranteed provenance-correct up front and the
+       band-aid filter is gone. */
+    const body = fnBody("buildPrintSnapshot");
+    expect(body).not.toContain('parent.classList.contains("pagedjs_pages")');
+  });
+
   test("print footer CSS defeats page transform inherited from preview zoom", () => {
     /* Regression guard: if a container above the footer carries a
        transform: rotate() / scale() from the live preview's zoom wrapper,
