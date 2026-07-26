@@ -231,12 +231,22 @@
     if (typeof (v = fm.columns) === "string" || typeof v === "number") {
       pageColumns = clampInt(String(v).trim(), 1, 3, pageColumns);
     }
-    /* Footer is a boolean carried as a string ("true" / "on"). Anything
-       else (including absence) leaves the existing setting alone. */
-    if (typeof (v = fm.footer) === "string" &&
-        (v = v.trim().toLowerCase()) &&
-        (v === "true" || v === "on")) {
-      showFooter = true;
+    /* Footer accepts boolean (programmatic callers — IDB autosave,
+       restoreFromIDB) OR string ("true"/"on"/"false"/"off" from YAML
+       frontmatter). Both an explicit `false` and an explicit `"false"`
+       restore as off so a user who deliberately disabled the footer
+       gets the same state after reload. Anything else (undefined,
+       other strings, null) leaves the current setting alone so existing
+       callers that omit footer don't accidentally toggle the toggle. */
+    if (fm.footer !== undefined) {
+      v = fm.footer;
+      if (typeof v === "boolean") {
+        showFooter = v;
+      } else if (typeof v === "string") {
+        var fv = v.trim().toLowerCase();
+        if (fv === "true" || fv === "on") showFooter = true;
+        else if (fv === "false" || fv === "off") showFooter = false;
+      }
     }
     if (typeof (v = fm.font) === "string" && (v = v.trim()) &&
         COMFORT_FONTS.some(function (f) { return f.value === v; })) {

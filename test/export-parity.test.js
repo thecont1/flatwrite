@@ -722,6 +722,28 @@ describe("shared-doc YAML pipeline", () => {
     expect(body).toContain(".trim()");
   });
 
+  test("applyFrontmatter coerces footer to boolean (true/false/on/off) and respects explicit false", () => {
+    /* saveToIDB persists docLayout.footer as a boolean. restoreFromIDB
+       then routes that map through applyFrontmatter(). The helper used
+       to only flip showFooter when fm.footer === "true" or "on"
+       (string), so a saved `true` reload came back as the default
+       (off), and an explicit `false` was silently swallowed too.
+       The new gate must:
+         - accept boolean (true/false) from IDB / programmatic callers,
+         - accept "true"/"on" => true,
+         - accept "false"/"off" => false (so the off-toggle survives
+           reload, not just the on-toggle),
+         - leave showFooter untouched when fm.footer is undefined or
+           any other value. */
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain('fm.footer');
+    expect(body).toMatch(/typeof\s+v\s*===\s*["']boolean["']/);
+    expect(body).toContain('"true"');
+    expect(body).toContain('"on"');
+    expect(body).toContain('"false"');
+    expect(body).toContain('"off"');
+  });
+
   test("restoreFromIDB reapplies form controls after restoring docLayout", () => {
     /* The IDB restore path must follow the same contract: globals from
        record.docLayout are hydrated through applyFrontmatter (which
