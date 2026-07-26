@@ -772,25 +772,28 @@
       }
     }
 
-    // Image-like src — apply ?raw=true on GitHub
+    // Image-like src — apply ?raw=true on GitHub. The capture group for
+    // everything up to and including "src=" lets us splice in the resolved
+    // value without any manual index arithmetic (a previous version of
+    // this code hand-computed slice offsets and silently mangled the
+    // rewritten attribute — e.g. "/library/foo.jpg" style root-relative
+    // paths came out as a duplicated/broken src attribute).
     html = html.replace(
-      /<(?:img|video|source)\s[^>]*?src=(["'])([^"']+)\1/gi,
-      function (match, q, src) {
+      /(<(?:img|video|source)\s[^>]*?src=)(["'])([^"']+)\2/gi,
+      function (match, prefix, q, src) {
         var resolved = resolveAgainst(src);
         if (resolved === src) return match;
-        return match.slice(0, match.length - src.length - q.length - 1)
-          + "src=" + q + stampRaw(resolved) + q;
+        return prefix + q + stampRaw(resolved) + q;
       }
     );
 
     // Anchor href — never stamp ?raw=true (would break link navigation)
     html = html.replace(
-      /<a\s[^>]*?href=(["'])([^"']+)\1/gi,
-      function (match, q, href) {
+      /(<a\s[^>]*?href=)(["'])([^"']+)\2/gi,
+      function (match, prefix, q, href) {
         var resolved = resolveAgainst(href);
         if (resolved === href) return match;
-        var idx = match.indexOf("href");
-        return match.slice(0, idx + 5) + q + resolved + q + match.slice(idx + 6 + href.length);
+        return prefix + q + resolved + q;
       }
     );
 
@@ -3632,7 +3635,7 @@
            We remove the margin-box at-rules directly rather than parsing the
            @page block, because @page can contain nested braces (e.g.,
            @page { @bottom-left { ... } }) that break single-level regex
-           matching. By targeting only the @bottom-*/@top-* at-rules with a
+           matching. By targeting only the @bottom- and @top- at-rules with a
            non-greedy pattern, we preserve the @page block's size and margin
            declarations regardless of nesting. */
         if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
@@ -3772,12 +3775,14 @@
     var btnFetch = document.getElementById("load-modal-insert");
     var btnCancel = document.getElementById("load-modal-cancel");
     var btnClose  = document.getElementById("load-modal-close");
+    var webpageToggle = document.getElementById("load-url-webpage-toggle");
     if (!overlay || !urlInput) return;
 
     var returnFocusTo = document.activeElement;
     urlInput.value = "";
     status.textContent = "";
     status.className = "load-url-status";
+    if (webpageToggle) webpageToggle.checked = false;
     overlay.classList.remove("hidden");
     urlInput.focus();
 
@@ -3788,9 +3793,91 @@
       }
     }
 
+    /**
+     * POST a webpage URL to /api/import-url (which proxies markdown.new)
+     * and load the returned markdown into the editor. Reuses the same
+     * dirty-check + setEditorContent + renderPreview flow as every other
+     * load path so there is no parallel document model.
+     *
+     * No method/retain-images pickers are exposed in the UI — markdown.new
+     * already knows how to pick the right conversion strategy for a given
+     * page. We just ask for "auto" with images retained, and if that
+     * attempt fails outright or comes back suspiciously thin (a likely
+     * sign of a JS-heavy site "auto" couldn't handle), we silently retry
+     * once with "browser" mode before giving up.
+     */
+    function doImportWebpage(url, isRetry) {
+      var method = isRetry ? "browser" : "auto";
+
+      status.textContent = isRetry ? "That didn\u2019t work — retrying with full browser rendering…" : "Importing webpage…";
+      status.className = "load-url-status loading";
+      btnFetch.disabled = true;
+
+      fetch("/api/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url, method: method, retain_images: true }),
+      })
+        .then(function (res) {
+          return res.json().catch(function () { return null; }).then(function (data) {
+            return { ok: res.ok, status: res.status, data: data };
+          });
+        })
+        .then(function (result) {
+          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
+          var meaningfulLength = succeeded
+            ? result.data.document.content.replace(/^---[\s\S]*?---/, "").trim().length
+            : 0;
+
+          if ((!succeeded || meaningfulLength < 60) && !isRetry) {
+            // First attempt failed or looks too thin to be useful — retry
+            // once with browser rendering before bothering the user.
+            doImportWebpage(url, true);
+            return;
+          }
+
+          btnFetch.disabled = false;
+          if (!succeeded) {
+            var friendly = (result.data && result.data.error) || "Could not import this page.";
+            status.textContent = friendly;
+            status.className = "load-url-status error";
+            return;
+          }
+
+          var doc = result.data.document;
+          if (isEditorDirty()) {
+            var okReplace = confirm("Replace current content with imported page?");
+            if (!okReplace) return;
+          }
+          close();
+          setEditorContent(doc.content);
+          // Root-relative and relative image/link paths are common in
+          // markdown.new's output (e.g. "/library/originals/photo.jpg").
+          // Reuse the same base-URL resolution the GitHub/file-URL load
+          // paths already rely on (see setMarkdownUrl/resolveRelativeUrls)
+          // so these paths get prefixed with the source page's origin
+          // instead of resolving against flatwrite.md and 404ing.
+          setMarkdownUrl(doc.sourceUrl);
+          if (mode !== "edit") renderPreview();
+          showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
+        })
+        .catch(function (err) {
+          if (!isRetry) { doImportWebpage(url, true); return; }
+          btnFetch.disabled = false;
+          status.textContent = "Could not import this page. Check the URL and try again.";
+          status.className = "load-url-status error";
+          console.error("[import-url]", err);
+        });
+    }
+
     function doFetch() {
       var url = urlInput.value.trim();
       if (!url) { status.textContent = "Enter a URL"; status.className = "load-url-status error"; return; }
+
+      if (webpageToggle && webpageToggle.checked) {
+        doImportWebpage(url);
+        return;
+      }
 
       status.textContent = "Loading…";
       status.className = "load-url-status loading";

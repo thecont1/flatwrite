@@ -386,8 +386,13 @@
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close" aria-label="Close load dialog">&times;</button>
       </div>
       <div class="load-modal-body" id="load-modal-body">
-          <label for="load-url-input" class="load-modal-label">File URL (.md, .pdf, .pptx, .docx, .xlsx, .csv, .json, images, audio…)</label>
-          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/file.pdf" autocomplete="off" />
+          <label for="load-url-input" class="load-modal-label">URL (markdown/file URL, or any webpage to import)</label>
+          <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/article" autocomplete="off" />
+          <label class="load-url-checkbox-row" for="load-url-webpage-toggle">
+            <input type="checkbox" id="load-url-webpage-toggle" />
+            Import as a webpage (via markdown.new)
+          </label>
+          <p class="modal-hint">Converts any webpage to Markdown. Leave unchecked to fetch a raw file URL directly (.md, .pdf, .docx, images, etc.).</p>
           <p class="load-url-status" id="load-url-status" role="status" aria-live="polite"></p>
         </div>
       <div class="load-modal-footer">
