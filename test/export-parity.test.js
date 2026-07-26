@@ -419,6 +419,55 @@ describe("print snapshot footer", () => {
     expect(body).toContain("overflow: visible !important");
     expect(body).toContain("z-index: 1 !important");
   });
+});
+
+describe("footer DOM scoping", () => {
+  test("_applyFooterContent restricts page lookup to the paged.js spread wrapper", () => {
+    /* User-authored markdown may legitimately contain class="pagedjs_page".
+       Scoping the query to .pagedjs_pages (when present) prevents footers
+       from being injected into user content and stops colliding class names
+       from inflating the "Page N of M" total. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_pages");
+    expect(body).toContain("spread.querySelectorAll");
+  });
+
+  test("_applyFooterContent requires the nested pagebox/sheet structure before treating a node as a real page", () => {
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_pagebox");
+    expect(body).toContain(".pagedjs_sheet");
+    expect(body).toContain("pageList");
+    expect(body).toContain("pageList.push");
+  });
+
+  test("_applyFooterContent reads h1 only from the paged.js content area", () => {
+    /* A user <h1> outside .pagedjs_area (e.g. in a header element they added)
+       must not win as the chapter title — read from the engine-managed
+       content area only. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_area");
+    expect(body).toContain("h1Freq");
+  });
+
+  test("_applyFooterContent picks the most-common h1 across pages to resist user-authored h1 hijack", () => {
+    /* If the document contains an extra user h1 in body text, paged.js still
+       renders it inside .pagedjs_area on later pages. Picking the most-common
+       h1 (rather than the last one) keeps a real chapter title from being
+       overridden by a stray user heading. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain("h1Freq");
+    expect(body).toMatch(/bestCount\s*=\s*h1Freq\[/);
+  });
+
+  test("_applyFooterContent verifies margin-content targets live in the bottom margin grid", () => {
+    /* Last-line defense: even if a stray author <div class="pagedjs_margin-bottom-left">
+       matches the selector, only overwrite if it actually sits inside the
+       paged.js .pagedjs_margin-bottom grid slot. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toContain(".pagedjs_margin-bottom");
+    expect(body).toContain("isTrustedMarginContent");
+    expect(body).toContain("bottomGrid.contains");
+  });
 
   test("PDF popup is sized to the page, not the preview iframe", () => {
     const body = fnBody("exportPDF");
