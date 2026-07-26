@@ -393,8 +393,8 @@ describe("print snapshot footer", () => {
 
   test("adds explicit footer positioning CSS when footer is on", () => {
     const body = fnBody("buildPrintSnapshot");
-    expect(body).toContain("pagedjs_bottom-left");
-    expect(body).toContain("pagedjs_bottom-right");
+    expect(body).toContain("pagedjs_margin-bottom-left");
+    expect(body).toContain("pagedjs_margin-bottom-right");
     expect(body).toContain("position: absolute");
     expect(body).toContain("bottom: 0");
   });

@@ -2908,6 +2908,8 @@
       + 'var _orientation = "' + orientation + '";'
       + 'var _renderId = ' + renderId + ';'
       + 'window.__flatwriteRenderId = _renderId;'
+      + 'var _footerOn = ' + (showFooter ? 'true' : 'false') + ';'
+      + 'var _engineKey = "' + renderEngineKey + '";'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'function _setPagedCanvasExtent(flowW, flowH, s) {'
       + '  document.body.style.width = Math.ceil(flowW * s) + "px";'
@@ -2942,9 +2944,34 @@
       + '  window.scrollTo(0, 0);'
       + '  _updatePanCursor();'
       + '}'
+      /* Paged.js's CSS string()/counter() margin-box content is fragile —
+         it silently resolves to `content: none` on both the bottom-left
+         and bottom-right boxes once the full document stylesheet (with its
+         !important overrides, :has() selectors, etc.) is combined with the
+         @bottom-left/@bottom-right @page rules. Rather than depend on that,
+         write the chapter title and "Page N of M" directly into the DOM as
+         real text nodes. This also means the footer survives being cloned
+         into the PDF print snapshot, since real text nodes (unlike
+         CSS-generated ::after content) are preserved by cloneNode(). */
+      + 'function _applyFooterContent() {'
+      + '  if (!_footerOn || _engineKey !== "pagedjs") return;'
+      + '  var pages = document.querySelectorAll(".pagedjs_page");'
+      + '  var total = pages.length;'
+      + '  var chapter = "";'
+      + '  for (var i = 0; i < pages.length; i++) {'
+      + '    var page = pages[i];'
+      + '    var h1 = page.querySelector("h1");'
+      + '    if (h1) chapter = h1.textContent;'
+      + '    var left = page.querySelector(".pagedjs_margin-bottom-left .pagedjs_margin-content");'
+      + '    var right = page.querySelector(".pagedjs_margin-bottom-right .pagedjs_margin-content");'
+      + '    if (left) left.textContent = chapter;'
+      + '    if (right) right.textContent = "Page " + (i + 1) + " of " + total;'
+      + '  }'
+      + '}'
       + 'function _commitPagedPreview() {'
       + '  if (_pagedReady || !document.querySelector(".pagedjs_page")) return;'
       + '  _pagedReady = true;'
+      + '  _applyFooterContent();'
       + '  _fitPage();'
       + '  _killBorders();'
       + '  var mx = document.documentElement.scrollHeight - window.innerHeight;'
@@ -3558,8 +3585,19 @@
          inline style attributes, so users may have legitimate styles).
          We only strip properties that Vivliostyle uses for zoom/transform
          and page-box sizing — transform, zoom, width, height, position,
-         top, left, right, bottom — leaving all other inline styles intact. */
+         top, left, right, bottom — leaving all other inline styles intact.
+
+         Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
+         exception: Vivliostyle positions and sizes them with exactly the
+         same inline properties (position: absolute; left/right/top/bottom;
+         width/height) that this pass strips. Stripping those turns every
+         margin box into a static, full-width flex child that stacks
+         vertically instead of sitting in its own corner — the footer's
+         "Page N of M" ends up rendered directly on top of the chapter
+         title. Skip margin boxes (and anything inside them) so their
+         positioning survives into the print snapshot. */
       page.querySelectorAll("[style]").forEach(function (child) {
+        if (child.closest("[data-vivliostyle-page-margin-box]")) return;
         var style = child.getAttribute("style") || "";
         var cleaned = style.replace(
           /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
@@ -3600,16 +3638,16 @@
        Paged.js/Vivliostyle already rendered into the page DOM. The
        @bottom-* at-rules were stripped (browser native print does not
        support them), so we need explicit positioning for the rendered
-       footer elements (.pagedjs_bottom-left, .pagedjs_bottom-right).
+       footer elements (.pagedjs_margin-bottom-left, .pagedjs_margin-bottom-right).
        These elements exist in the cloned DOM as children of each page
        box, but without the @page margin-box rules they lose their
        positioning. We pin them to the bottom margin area. */
     if (showFooter) {
       printCss.textContent +=
-        ".pagedjs_page .pagedjs_bottom-left, .pagedjs_page .pagedjs_bottom-right {" +
+        ".pagedjs_page .pagedjs_margin-bottom-left, .pagedjs_page .pagedjs_margin-bottom-right {" +
         "position: absolute !important; bottom: 0 !important; font-size: 8px !important; color: #666 !important; width: auto !important; height: auto !important; }" +
-        ".pagedjs_page .pagedjs_bottom-left { left: 0 !important; text-align: left !important; }" +
-        ".pagedjs_page .pagedjs_bottom-right { right: 0 !important; text-align: right !important; }";
+        ".pagedjs_page .pagedjs_margin-bottom-left { left: 0 !important; text-align: left !important; }" +
+        ".pagedjs_page .pagedjs_margin-bottom-right { right: 0 !important; text-align: right !important; }";
     }
     clone.querySelector("head").appendChild(printCss);
 
