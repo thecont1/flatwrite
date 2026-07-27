@@ -379,7 +379,8 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=128');
+    expect(INDEX).toContain('url-routing.js?v=1');
+    expect(INDEX).toContain('app.js?v=129');
   });
 
   test("loads the stylesheet revision", () => {
