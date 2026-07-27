@@ -5,7 +5,7 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
-  var DIRECT_EXTENSIONS = /\.(?:md|markdown|txt|pdf|docx?|pptx?|xlsx?|csv|json|xml|zip|epub|html?|png|jpe?g|gif|webp|tiff?|svg|mp3|wav|m4a|ogg|flac)$/i;
+  var DIRECT_EXTENSIONS = /\.(?:md|markdown|txt|pdf|docx?|pptx?|xlsx?|csv|json|xml|zip|epub|png|jpe?g|gif|webp|tiff?|svg|mp3|wav|m4a|ogg|flac)$/i;
   var DIRECT_CONTENT_TYPES = /^(?:text\/(?:markdown|plain)|application\/(?:pdf|json|xml|zip|epub\+zip|msword|vnd\.|octet-stream)|image\/|audio\/)/i;
 
   function isKnownRawUrl(url) {

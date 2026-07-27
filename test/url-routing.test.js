@@ -15,6 +15,10 @@ describe('smart URL routing', () => {
     ['https://example.com/essay', 'text/markdown', 'direct'],
     ['https://example.com/download', 'application/pdf', 'direct'],
     ['https://example.com/essay', '', 'probe'],
+    ['https://example.com/page.html', '', 'probe'],
+    ['https://example.com/page.html', 'text/html', 'import'],
+    ['https://example.com/page.htm', 'text/html; charset=utf-8', 'import'],
+    ['https://example.com/page.html', 'application/pdf', 'direct'],
   ];
 
   for (const [url, contentType, expected] of cases) {
