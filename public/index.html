@@ -58,7 +58,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
-  <script src="app.js?v=128" defer></script>
+  <script src="url-routing.js?v=1" defer></script>
+  <script src="app.js?v=129" defer></script>
 
 </head>
 <body>
@@ -232,7 +233,7 @@
               <div class="toolbar-slides">
                 <!-- Markdown formatting toolbar (Edit mode) -->
                 <div class="toolbar-slide md-toolbar" id="md-toolbar" role="toolbar" aria-label="Markdown formatting">
-                  <button class="md-btn md-btn-assist" id="btn-assist" type="button" aria-label="AI Assist" aria-expanded="false" aria-controls="assist-panel">
+                  <button class="md-btn md-btn-assist" id="btn-assist" type="button" aria-label="AI Assist — Coming Soon!" aria-expanded="false" aria-controls="assist-panel">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.8L20 12l-6.1 3.2L12 21l-1.9-5.8L4 12l6.1-3.2L12 3z"/></svg>
                   </button>
                   <span class="md-toolbar-sep" aria-hidden="true"></span>
@@ -304,7 +305,7 @@
               spellcheck="true"
               placeholder="Start writing your markdown here…"
             ></textarea>
-            <!-- Morph AI Assist panel (Edit mode) -->
+            <!-- Morph AI Assist panel (Coming Soon) -->
             <div class="assist-panel hidden" id="assist-panel" role="dialog" aria-label="AI Assist">
               <div class="assist-panel-header">
                 <strong>AI Assist</strong>
@@ -386,13 +387,9 @@
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close" aria-label="Close load dialog">&times;</button>
       </div>
       <div class="load-modal-body" id="load-modal-body">
-          <label for="load-url-input" class="load-modal-label">URL (markdown/file URL, or any webpage to import)</label>
+          <label for="load-url-input" class="load-modal-label">Document or webpage URL</label>
           <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/article" autocomplete="off" />
-          <label class="load-url-checkbox-row" for="load-url-webpage-toggle">
-            <input type="checkbox" id="load-url-webpage-toggle" />
-            Import as a webpage (via markdown.new)
-          </label>
-          <p class="modal-hint">Converts any webpage to Markdown. Leave unchecked to fetch a raw file URL directly (.md, .pdf, .docx, images, etc.).</p>
+          <p class="modal-hint">FlatWrite loads document files directly and converts webpages to Markdown automatically.</p>
           <p class="load-url-status" id="load-url-status" role="status" aria-live="polite"></p>
         </div>
       <div class="load-modal-footer">

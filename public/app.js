@@ -151,17 +151,136 @@
     if (!md) return { frontmatter: null, body: md };
     var match = md.match(/^\s*---\n([\s\S]*?)\n---\n?/);
     if (!match) return { frontmatter: null, body: md };
+    return {
+      frontmatter: parseShareYamlMap(match[1]),
+      body: md.substring(match[0].length)
+    };
+  }
 
+  /* Split each `key: value` line of a frontmatter block into a flat map.
+     Strings are trimmed; whitespace-only values are kept as "" so callers
+     can distinguish "absent" from "present but empty". */
+  function parseShareYamlMap(block) {
     var fm = {};
-    match[1].split("\n").forEach(function (line) {
+    block.split("\n").forEach(function (line) {
       var idx = line.indexOf(":");
       if (idx === -1) return;
       var key = line.substring(0, idx).trim();
       var val = line.substring(idx + 1).trim();
       fm[key] = val;
     });
+    return fm;
+  }
 
-    return { frontmatter: fm, body: md.substring(match[0].length) };
+  /* ── Apply parsed frontmatter to live state ──────────────────────────────
+   *
+   * One source of truth for hydrating globals from a frontmatter map. Used
+   * by both `loadSharedDocument` (shared-doc flow, line ~1180) and the
+   * markdown-import path (line ~4226). Every registry key is validated
+   * against its own lookup map so a typo like `pageSze: A3` is rejected
+   * and silently falls back to the prior value rather than corrupting the
+   * pagination. String values are trimmed before lookup so trailing
+   * whitespace from hand-edited shares doesn't fail the registry check.
+   *
+   * After mutation, syncs the form controls via `syncDocControlsUI()` so
+   * the dropdowns always reflect the live state — this is the entire
+   * reason every YAML hydration path now routes through here. Before this
+   * helper, `loadSharedDocument` set globals but never refreshed the UI,
+   * leaving `document.getElementById("page-size").value === "A4"` while
+   * the underlying `pageSize` global was "A3"; the cached srcdoc path in
+   * `buildPrintSnapshot` then read the stale form value and exported A4
+   * portrait regardless of the YAML.
+   *
+   * The returned object is reserved for future test introspection; the
+   * current tests pin the side-effects (syncDocControlsUI ran, every key
+   * was validated) rather than the return value.
+   */
+  function applyFrontmatter(fm) {
+    if (!fm || typeof fm !== "object") return {};
+    var v;
+    /* docEngine is the engine registry, not a free text. A bad value must
+       NEVER downgrade a working engine to "none" — silently keep the
+       current engine. */
+    if (typeof (v = fm.docEngine) === "string" && DOC_ENGINES[v.trim()]) {
+      currentDocEngine = v.trim();
+    }
+    if (typeof (v = fm.surfaceMode) === "string" && (v = v.trim()) &&
+        (v === "doc" || v === "app")) {
+      surfaceMode = v;
+    }
+    if (typeof (v = fm.appFramework) === "string" && (v = v.trim()) &&
+        APP_FRAMEWORKS[v]) {
+      currentAppFramework = v;
+    }
+    if (typeof (v = fm.pageSize) === "string" && (v = v.trim()) &&
+        PAGE_SIZES[v]) {
+      pageSize = v;
+    }
+    if (typeof (v = fm.orientation) === "string" && (v = v.trim()) &&
+        (v === "portrait" || v === "landscape")) {
+      orientation = v;
+    }
+    if (typeof (v = fm.marginsLR) === "string" && (v = v.trim()) &&
+        MARGIN_MAP[v]) {
+      pageMarginsLR = v;
+    }
+    if (typeof (v = fm.marginsTB) === "string" && (v = v.trim()) &&
+        MARGIN_MAP[v]) {
+      pageMarginsTB = v;
+    }
+    if (typeof (v = fm.columns) === "string" || typeof v === "number") {
+      pageColumns = clampInt(String(v).trim(), 1, 3, pageColumns);
+    }
+    /* Footer accepts boolean (programmatic callers — IDB autosave,
+       restoreFromIDB) OR string ("true"/"on"/"false"/"off" from YAML
+       frontmatter). Both an explicit `false` and an explicit `"false"`
+       restore as off so a user who deliberately disabled the footer
+       gets the same state after reload. Anything else (undefined,
+       other strings, null) leaves the current setting alone so existing
+       callers that omit footer don't accidentally toggle the toggle. */
+    if (fm.footer !== undefined) {
+      v = fm.footer;
+      if (typeof v === "boolean") {
+        showFooter = v;
+      } else if (typeof v === "string") {
+        var fv = v.trim().toLowerCase();
+        if (fv === "true" || fv === "on") showFooter = true;
+        else if (fv === "false" || fv === "off") showFooter = false;
+      }
+    }
+    if (typeof (v = fm.font) === "string" && (v = v.trim()) &&
+        COMFORT_FONTS.some(function (f) { return f.value === v; })) {
+      comfortFont = v;
+      if (fontPickerLabel) {
+        fontPickerLabel.textContent = v;
+        fontPickerLabel.style.fontFamily = '"' + v + '", system-ui, sans-serif';
+      }
+    }
+    if (typeof (v = fm.size) === "string" || typeof v === "number") {
+      sizeStep = clampInt(String(v).trim(), SIZE_MIN, SIZE_MAX, sizeStep);
+    }
+    if (typeof (v = fm.weight) === "string" || typeof v === "number") {
+      weightStep = clampInt(String(v).trim(), WEIGHT_MIN, WEIGHT_MAX, weightStep);
+    }
+    if (typeof (v = fm.line) === "string" || typeof v === "number") {
+      lineStep = clampInt(String(v).trim(), LINE_MIN, LINE_MAX, lineStep);
+    }
+    if (typeof (v = fm.width) === "string" || typeof v === "number") {
+      contentWidth = clampInt(String(v).trim(), 400, 1400, contentWidth);
+    }
+    if (typeof (v = fm.zoom) === "string" || typeof v === "number") {
+      zoomStep = clampInt(String(v).trim(), 50, 150, zoomStep);
+    }
+    /* URL inside frontmatter (`url: ...`) is also a knob — mirror the
+       global setMarkdownUrl side-effect the inline branch did. */
+    if (typeof (v = fm.url) === "string" && (v = v.trim())) {
+      setMarkdownUrl(v);
+    }
+    /* Once every knob is hydrated, push the new values into the form so
+       the user immediately sees what the frontmatter asked for. Critically,
+       this must happen BEFORE renderPreview is invoked downstream so the
+       doc CSS that depends on these globals matches what the form shows. */
+    if (typeof syncDocControlsUI === "function") syncDocControlsUI();
   }
 
   /* ==========================================================================
@@ -761,17 +880,6 @@
       }
     }
 
-    function resolveAgainst(url) {
-      if (!url) return url;
-      if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
-      if (/^\/\//i.test(url)) return url;
-      try {
-        return new URL(url, githubBaseUrl).href;
-      } catch (e) {
-        return url;
-      }
-    }
-
     // Image-like src — apply ?raw=true on GitHub. The capture group for
     // everything up to and including "src=" lets us splice in the resolved
     // value without any manual index arithmetic (a previous version of
@@ -781,7 +889,7 @@
     html = html.replace(
       /(<(?:img|video|source)\s[^>]*?src=)(["'])([^"']+)\2/gi,
       function (match, prefix, q, src) {
-        var resolved = resolveAgainst(src);
+        var resolved = resolveUrlTarget(src, githubBaseUrl);
         if (resolved === src) return match;
         return prefix + q + stampRaw(resolved) + q;
       }
@@ -791,13 +899,34 @@
     html = html.replace(
       /(<a\s[^>]*?href=)(["'])([^"']+)\2/gi,
       function (match, prefix, q, href) {
-        var resolved = resolveAgainst(href);
+        var resolved = resolveUrlTarget(href, githubBaseUrl);
         if (resolved === href) return match;
         return prefix + q + resolved + q;
       }
     );
 
     return html;
+  }
+
+  function resolveUrlTarget(url, baseUrl) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.resolveUrlTarget(url, baseUrl);
+    }
+    return url;
+  }
+
+  function rewriteMarkdownUrls(markdown, baseUrl) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.rewriteMarkdownUrls(markdown, baseUrl);
+    }
+    return markdown;
+  }
+
+  function decideUrlRoute(url, contentType) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.decideUrlRoute(url, contentType);
+    }
+    return "direct";
   }
 
   function isEditorDirty() {
@@ -1174,35 +1303,16 @@
         /* Metadata belongs to the share envelope, not the user's Markdown. */
         editor.value = parsed.body;
 
-        /* Apply preferences from YAML front-matter if present */
+        /* Apply preferences from YAML front-matter if present. The helper
+           validates each key against its own registry, mutates globals,
+           and pushes the new values into the form via syncDocControlsUI()
+           (called inside the helper, since every hydration path must
+           share it). Without that sync the #page-size dropdown would
+           still read "A4" while pageSize is "A3", so the cached-srcdoc
+           fast-path in buildPrintSnapshot would silently re-export A4. */
         if (parsed.frontmatter) {
           var fm = parsed.frontmatter;
-          if (fm.url) setMarkdownUrl(fm.url);
-          if (fm.docEngine && DOC_ENGINES[fm.docEngine]) {
-            currentDocEngine = fm.docEngine;
-          }
-          if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") {
-            surfaceMode = fm.surfaceMode;
-          }
-          if (fm.appFramework && APP_FRAMEWORKS[fm.appFramework]) {
-            currentAppFramework = fm.appFramework;
-          }
-          if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
-          if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
-          if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
-          if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
-          if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
-          if (fm.footer === "true" || fm.footer === "on") showFooter = true;
-          if (fm.font && COMFORT_FONTS.some(function (f) { return f.value === fm.font; })) {
-            comfortFont = fm.font;
-            fontPickerLabel.textContent = comfortFont;
-      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
-          }
-          if (fm.size !== undefined)   sizeStep   = clampInt(fm.size,   SIZE_MIN,   SIZE_MAX,   sizeStep);
-          if (fm.weight !== undefined) weightStep = clampInt(fm.weight, WEIGHT_MIN, WEIGHT_MAX, weightStep);
-          if (fm.line !== undefined)   lineStep   = clampInt(fm.line,   LINE_MIN,   LINE_MAX,   lineStep);
-          if (fm.width !== undefined)  contentWidth = clampInt(fm.width, 400, 1400, contentWidth);
-          if (fm.zoom !== undefined)   zoomStep     = clampInt(fm.zoom, 50, 150, zoomStep);
+          applyFrontmatter(fm);
           zoomSlider.value = zoomStep;
           zoomValue.textContent = zoomStep + "%";
           applyZoom();
@@ -1213,11 +1323,14 @@
         editor.setSelectionRange(0, 0);
         initialEditorContent = parsed.body;
         lastScrollRatio = 0;
-        setMode("read");
+        /* paginated engines (pagedjs/vivliostyle) need preview mode;
+           read mode forces engine to "none" at render time */
+        setMode(currentDocEngine === "none" ? "read" : "preview");
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
         history.replaceState(null, "", window.location.pathname);
       })
-      .catch(function () {
+      .catch(function (e) {
+        console.error("[loadSharedDocument] failed:", e && e.stack || e);
         showError("Could not load shared document. Please try again.");
       });
   }
@@ -1367,14 +1480,19 @@
       setDocEngine(currentDocEngine);
 
       var dl = record.docLayout || {};
-      if (dl.pageSize && PAGE_SIZES[dl.pageSize]) pageSize = dl.pageSize;
-      if (dl.orientation === "portrait" || dl.orientation === "landscape") orientation = dl.orientation;
-      if (dl.marginsLR && MARGIN_MAP[dl.marginsLR]) pageMarginsLR = dl.marginsLR;
-      if (dl.marginsTB && MARGIN_MAP[dl.marginsTB]) pageMarginsTB = dl.marginsTB;
-      if (dl.margins && MARGIN_MAP[dl.margins]) { pageMarginsLR = dl.margins; pageMarginsTB = dl.margins; }
-      if (dl.columns)   pageColumns  = clampInt(dl.columns, 1, 3, 1);
-      if (dl.footer)    showFooter   = true;
-      syncDocControlsUI();
+      /* Reconstruct a share-shaped frontmatter map from the IDB docLayout
+         record so the same validation pipeline that hydrates `?s=…` URLs
+         also hydrates the IDB restore. Then push the new values into the
+         form via syncDocControlsUI inside applyFrontmatter. The legacy
+         `margins` field (single string for both LR/TB) is folded into both
+         marginsLR and marginsTB so old IDB records from before the split
+         still restore. */
+      var legacy = Object.assign({}, dl);
+      if (dl.margins && MARGIN_MAP[dl.margins]) {
+        legacy.marginsLR = dl.margins;
+        legacy.marginsTB = dl.margins;
+      }
+      applyFrontmatter(legacy);
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -1406,7 +1524,7 @@
     "btn-preview": "Preview the rendered document",
     "btn-read": "Read without editing controls",
     "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
-    "btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)",
+    "btn-assist": "AI Assist — Coming Soon!",
     "assist-close": "Close AI Assist",
     "assist-run": "Run the selected AI Assist operation",
     "assist-accept": "Apply the proposed AI edit",
@@ -2297,6 +2415,10 @@
   };
   var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
   var MARGIN_MAP = { narrow: "10mm", normal: "20mm", wide: "30mm" };
+  /* Footer content has exactly one owner per engine. Paged.js keeps the DOM
+     path because its generated margin content must survive a static print
+     snapshot; Vivliostyle owns its footer through CSS Paged Media. */
+  var FOOTER_OWNERS = { pagedjs: "dom", vivliostyle: "css", none: "none" };
 
   function getPageCSS() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -2335,24 +2457,55 @@
       /* Default to one column when a renderer does not implement CSS
          Multi-column Layout. Paged.js and Vivliostyle opt into the requested
          layout only when they advertise support. */
-      css += ' main { column-count: 1; }';
-      css += ' @supports (column-count: 2) { main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: auto; }';
-      css += ' main > h1, main > h2, main > h3, main > h4, main > pre, main > table, main > blockquote, main > figure { break-inside: avoid; } }';
+      css += ' .fw-column-flow { column-count: 1; }';
+      css += ' @supports (column-count: 2) { .fw-column-flow { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: balance; }';
+      css += ' .fw-column-flow > h1, .fw-column-flow > h2, .fw-column-flow > h3, .fw-column-flow > h4, .fw-column-flow > pre, .fw-column-flow > table, .fw-column-flow > blockquote, .fw-column-flow > figure { break-inside: avoid; } }';
     }
-    /* Always capture the L1 heading so it can be used by the footer */
-    css += 'h1 { string-set: chapter content(); }';
-    if (showFooter) {
-      /* Margin boxes already occupy the configured @page margin. Padding the
-         boxes themselves moves generated content toward (and in some engines
-         over) the page area, making the last body lines appear clipped. */
-      css += '@page { @bottom-left { content: string(chapter, first); font-size: 8px; color: #666; vertical-align: middle; }';
-      css += ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; } }';
-    } else {
-      /* Explicitly clear margin boxes. This prevents a renderer from keeping
-         stale generated content when the footer toggle is switched off. */
-      css += '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
-    }
+    /* Footer text is injected directly into the margin-box DOM via
+       _applyFooterContent. We deliberately do not rely on the CSS-driven
+       path (chapter running heading via string() / counter(page)/counter
+       (pages)). Two reasons, both reproducible in the field:
+         (a) Paged.js renders the same string twice — once as a ::after
+             pseudo-element on .pagedjs_margin-content and again from our
+             DOM textContent assignment. Every page shows the chapter title
+             twice in the bottom-left.
+         (b) counter(page)/counter(pages) only resolve when Paged.js /
+             Vivliostyle actively paginate. The print snapshot is emitted
+             as static HTML for window.print(), where counters stay at 0
+             and the page-count footer breaks the layout (pages counted as
+             zero ⇒ margin boxes collapse ⇒ body overflows ⇒ "gross
+             misalignment").
+       Sole owner of footer content: _applyFooterContent (writes real DOM
+       text nodes, resolves the total from the committed page list). */
     return css;
+  }
+
+  /* Escape a string for safe interpolation into a CSS `content: "..."`
+     value that lives inside an inline <style> element. Beyond the usual
+     CSS string escaping (backslash, double-quote, newline), this also
+     neutralizes `<` and `&` using CSS numeric escapes so a user-authored
+     chapter title containing `</style>` (or an HTML entity) can never
+     terminate the style element or inject markup. `\3C ` is `<` and
+     `\26 ` is `&`; the trailing space terminates the CSS escape. */
+  function escapeCssStringForStyleElement(value) {
+    return String(value == null ? "" : value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/</g, "\\3C ")
+      .replace(/&/g, "\\26 ")
+      .replace(/\r?\n/g, " ");
+  }
+
+  function buildFooterCSS(engineKey, chapterTitle) {
+    if (FOOTER_OWNERS[engineKey] !== "css") return "";
+    if (!showFooter) {
+      return '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
+    }
+    var safeChapter = escapeCssStringForStyleElement(chapterTitle);
+    return '@page {'
+      + ' @bottom-left { content: "' + safeChapter + '"; font-size: 8px; color: #666; vertical-align: middle; }'
+      + ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; }'
+      + ' }';
   }
 
   function syncDocumentSettingsFromControls() {
@@ -2680,6 +2833,8 @@
     );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     var scrollRatio = lastScrollRatio;
     var renderId = ++currentRenderId;
@@ -2692,6 +2847,7 @@
 
     /* One canonical stylesheet feeds preview, HTML export, and PDF export. */
     var docCss = buildDocumentCSS(renderEngineKey)
+      + buildFooterCSS(renderEngineKey, chapterTitle)
       + ' .pagedjs_page { margin: 8px 0; }'
 
     var html;
@@ -2702,7 +2858,7 @@
         + '<base target="_blank" rel="noopener noreferrer">'
         + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + '<style>' + docCss + '</style>'
-        + '</head><body><main>' + renderedHTML + '</main></body></html>';
+        + '</head><body><main><div class="fw-column-flow">' + renderedHTML + '</div></main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         // Stripe placeholder background for View/Preview mode. The old
@@ -2713,8 +2869,9 @@
         // with many explicit stops so the stripes are drawn as one
         // continuous gradient — no tile boundary, no seams. The stripe
         // thickness scales with the iframe height (~40 stripes per 1280px).
-        + '<style>' + stripePlaceholderCss()
-        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + '<style id="_fw_vivl_shell">' + stripePlaceholderCss()
+        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0!important;outline:0.8px solid #000!important;outline-offset:-0.8px!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + '<style id="_fw_document_css">' + docCss + '</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
         + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
@@ -2750,7 +2907,7 @@
         + '    style.id = "vivl-scroll-style";'
         + '    style.textContent = "'
         + htmlResetCss()
-        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
+        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
         + '    document.head.appendChild(style);'
         + '  }'
         + '  /* Smooth zoom: apply CSS transform: scale() to the spread container'
@@ -2886,7 +3043,7 @@
         + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
         /* --- Page-boundary dashed borders on all four sides --- */
         + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; background: transparent !important; }'
-        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.8px solid #000 !important; outline: none !important; box-shadow: none !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; box-shadow: none !important; }'
         + '.pagedjs_pagebox { box-shadow: none !important; outline: none !important; border: none !important; }'
         + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; box-shadow: none !important; }'
         + '.pagedjs_bleed, .pagedjs_bleed-top, .pagedjs_bleed-bottom, .pagedjs_bleed-left, .pagedjs_bleed-right { display: none !important; }'
@@ -2897,7 +3054,7 @@
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
         + '</style>'
         + (mode !== "read" ? '<style id="_fw_stripe">' + stripePlaceholderCss() + ' .pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }</style>' : '')
-        + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
+        + '</head><body class="engine-' + renderEngineKey + '"><main><div class="fw-column-flow">' + renderedHTML + '</div></main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
@@ -2910,6 +3067,7 @@
       + 'window.__flatwriteRenderId = _renderId;'
       + 'var _footerOn = ' + (showFooter ? 'true' : 'false') + ';'
       + 'var _engineKey = "' + renderEngineKey + '";'
+      + 'var _footerOwner = "' + (FOOTER_OWNERS[renderEngineKey] || 'none') + '";'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'function _setPagedCanvasExtent(flowW, flowH, s) {'
       + '  document.body.style.width = Math.ceil(flowW * s) + "px";'
@@ -2954,7 +3112,7 @@
          into the PDF print snapshot, since real text nodes (unlike
          CSS-generated ::after content) are preserved by cloneNode(). */
       + 'function _applyFooterContent() {'
-      + '  if (!_footerOn || _engineKey !== "pagedjs") return;'
+      + '  if (!_footerOn || _footerOwner !== "dom") return;'
       + '  /* Scope page selection to Paged.js’s own spread wrapper AND require'
       + '     *direct* child placement of canonical structural classes. The'
       + '     sanitizer allows class attributes on user content, so an author'
@@ -3098,7 +3256,7 @@
       + '  if (!s) {'
       + '    s = document.createElement("style");'
       + '    s.id = "_fw_kill_borders";'
-      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_sheet,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; } .pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0.8px solid #000 !important; box-sizing: border-box !important; background: #fff !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
+      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; box-sizing: border-box !important; background: #fff !important; box-shadow: none !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
       + '    document.head.appendChild(s);'
       + '  }'
       + '}'
@@ -3597,6 +3755,8 @@
     );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     /* Engine script tag — self-paginating HTML export (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
@@ -3611,17 +3771,17 @@
       + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + buildFooterCSS(currentDocEngine, chapterTitle) + '\n'
       + '  </style>\n'
-      + '</head>\n<body>\n  <main>\n'
+      + '</head>\n<body>\n  <main><div class="fw-column-flow">\n'
       + renderedHTML
-      + '\n  </main>\n'
+      + '\n  </div></main>\n'
       + '</body>\n</html>';
 
     openInNewTab(html, "text/html;charset=utf-8");
   }
 
-  function buildPrintSnapshot(sourceDocument, engineKey) {
+  function buildEnginePrintSnapshot(sourceDocument, engineKey) {
     if (!sourceDocument) return "";
     var clone = sourceDocument.documentElement.cloneNode(true);
     clone.querySelectorAll("script, #_fw_stripe, #_fw_kill_borders, link[rel=\"modulepreload\"]").forEach(function (node) {
@@ -3642,7 +3802,13 @@
     var pagesFlow = clone.querySelector(".pagedjs_pages");
     if (pagesFlow) {
       pagesFlow.removeAttribute("style");
-      pagesFlow.querySelectorAll(".pagedjs_page").forEach(function (page) {
+      /* `:scope > .pagedjs_page` restricts to direct children of the
+         engine-owned flow container. The sanitizer allows class="pagedjs_page"
+         on arbitrary user HTML, so a clone-wide descendant search would
+         also catch user-authored .pagedjs_page divs sitting inside <main>
+         and inflate the page count. The previous looser filter inside the
+         pageBoxes loop only attempted to compensate after the fact. */
+      pagesFlow.querySelectorAll(":scope > .pagedjs_page").forEach(function (page) {
         page.removeAttribute("style");
       });
     }
@@ -3653,55 +3819,63 @@
     if (outerZoom) outerZoom.removeAttribute("style");
     var viewport = clone.querySelector("#vivl-viewport");
     if (viewport) viewport.removeAttribute("style");
+    /* Remove only FlatWrite's known preview-only Vivliostyle styles. Keep the
+       engine's generated layout stylesheets: their page-box selectors are
+       required by the cloned DOM and print CSS overrides zoom/geometry below. */
+    if (engineKey === "vivliostyle") {
+      var vivlShellStyle = clone.querySelector("#_fw_vivl_shell");
+      if (vivlShellStyle) vivlShellStyle.remove();
+    }
     /* Remove Vivliostyle's dynamically injected scroll/zoom style element.
        This <style id="vivl-scroll-style"> contains transform: scale() and
        other overrides that would distort the print snapshot. The print
        snapshot CSS (appended below) provides its own clean page geometry. */
     var vivlScrollStyle = clone.querySelector("#vivl-scroll-style");
     if (vivlScrollStyle) vivlScrollStyle.remove();
-    /* Also remove any other dynamically injected Vivliostyle <style> elements
-       that may contain transform/scale/zoom overrides. We preserve the
-       original document CSS (which has the @page rules and typography) and
-       the _fw_print_snapshot style (appended below). */
-    clone.querySelectorAll("style").forEach(function(style) {
-      if (style.id === "_fw_print_snapshot" || style.id === "_fw_stripe") return;
-      var text = style.textContent || "";
-      if (text.indexOf("transform: scale") !== -1 || text.indexOf("data-vivliostyle") !== -1) {
-        style.remove();
-      }
-    });
-    clone.querySelectorAll("[data-vivliostyle-page-container]").forEach(function (page) {
-      page.removeAttribute("style");
-      /* Selectively remove Vivliostyle-injected layout overrides from
-         descendants while preserving author styles (the sanitizer allows
-         inline style attributes, so users may have legitimate styles).
-         We only strip properties that Vivliostyle uses for zoom/transform
-         and page-box sizing — transform, zoom, width, height, position,
-         top, left, right, bottom — leaving all other inline styles intact.
 
-         Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
-         exception: Vivliostyle positions and sizes them with exactly the
-         same inline properties (position: absolute; left/right/top/bottom;
-         width/height) that this pass strips. Stripping those turns every
-         margin box into a static, full-width flex child that stacks
-         vertically instead of sitting in its own corner — the footer's
-         "Page N of M" ends up rendered directly on top of the chapter
-         title. Skip margin boxes (and anything inside them) so their
-         positioning survives into the print snapshot. */
-      page.querySelectorAll("[style]").forEach(function (child) {
-        if (child.closest("[data-vivliostyle-page-margin-box]")) return;
-        var style = child.getAttribute("style") || "";
-        var cleaned = style.replace(
-          /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
-          ""
-        ).replace(/;\s*;+/g, ";").replace(/^\s+|\s+$/g, "");
-        if (cleaned) {
-          child.setAttribute("style", cleaned);
-        } else {
-          child.removeAttribute("style");
-        }
+    /* Collect Vivliostyle page containers from the engine-owned spread
+       root only — direct children via :scope >. The sanitizer allows
+       data-* attributes on arbitrary elements, so a clone-wide descendant
+       search for [data-vivliostyle-page-container] would catch user-
+       authored elements and pollute page count + style stripping. */
+    var vivliostylePages = [];
+    if (spread) {
+      vivliostylePages = Array.prototype.slice.call(
+        spread.querySelectorAll(":scope > [data-vivliostyle-page-container]")
+      );
+      vivliostylePages.forEach(function (page) {
+        page.removeAttribute("style");
+        /* Selectively remove Vivliostyle-injected layout overrides from
+           descendants while preserving author styles (the sanitizer allows
+           inline style attributes, so users may have legitimate styles).
+           We only strip properties that Vivliostyle uses for zoom/transform
+           and page-box sizing — transform, zoom, width, height, position,
+           top, left, right, bottom — leaving all other inline styles intact.
+
+           Page-margin boxes (@bottom-left, @bottom-right, etc.) are the one
+           exception: Vivliostyle positions and sizes them with exactly the
+           same inline properties (position: absolute; left/right/top/bottom;
+           width/height) that this pass strips. Stripping those turns every
+           margin box into a static, full-width flex child that stacks
+           vertically instead of sitting in its own corner — the footer's
+           "Page N of M" ends up rendered directly on top of the chapter
+           title. Skip margin boxes (and anything inside them) so their
+           positioning survives into the print snapshot. */
+        page.querySelectorAll("[style]").forEach(function (child) {
+          if (child.closest("[data-vivliostyle-page-margin-box]")) return;
+          var style = child.getAttribute("style") || "";
+          var cleaned = style.replace(
+            /\b(transform|zoom|width|height|position|top|left|right|bottom)\s*:\s*[^;]+;?/gi,
+            ""
+          ).replace(/;\s*;+/g, ";").replace(/^\s+|\s+$/g, "");
+          if (cleaned) {
+            child.setAttribute("style", cleaned);
+          } else {
+            child.removeAttribute("style");
+          }
+        });
       });
-    });
+    }
     var pageMm = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
     var printPageW = orientation === "landscape" ? pageMm[1] : pageMm[0];
     var printPageH = orientation === "landscape" ? pageMm[0] : pageMm[1];
@@ -3712,10 +3886,72 @@
     /* Count committed page boxes so the footer's "Page N of M" can use a
        static total. counter(pages) only resolves when a CSS pagination
        engine runs, but the print snapshot is emitted as static HTML for
-       window.print() — so replace it with the actual count. */
-    var pageBoxes = clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]");
-    var pageCount = pageBoxes.length;
-    var footerMargin = showFooter ? (tbMm + " " + lrMm) : "0";
+       window.print() — so replace it with the actual count.
+       pagesWithContent is the same node list AFTER culling empty
+       pages (a paged.js artifact where wide content + column layout
+       overflows into an intermediate box with no .pagedjs_area in it).
+       Those phantom pages must NOT contribute to the public page count,
+       which the footer's "Page N of M" relies on. */
+
+    /* Engine-rooted candidate set, NOT clone-wide. The previous code
+       queried '.pagedjs_page, [data-vivliostyle-page-container]' across
+       the entire cloned document and tried to filter after the fact,
+       using class-list membership as a provenance signal. The sanitizer
+       permits class="pagedjs_page" and data-vivliostyle-page-container on
+       arbitrary user-authored elements, so user HTML could inflate /
+       deflate pageCount, dictate phantom-page culling decisions, and
+       cause the wrong nodes to be removed or retained in the snapshot.
+       Scoping to the engine-emitted containers (.pagedjs_pages and
+       [data-vivliostyle-spread-container]) makes the candidate set safe
+       regardless of what the user wrote. */
+    var pagedPages = pagesFlow
+      ? Array.prototype.slice.call(
+          pagesFlow.querySelectorAll(":scope > .pagedjs_page")
+        )
+      : [];
+    var allPageBoxes = pagedPages.concat(vivliostylePages);
+
+    var pagesWithContent = allPageBoxes.filter(function (box) {
+      if (box.classList.contains("pagedjs_page")) {
+        var sheet = box.querySelector(":scope > .pagedjs_sheet");
+        var pagebox = sheet ? sheet.querySelector(":scope > .pagedjs_pagebox") : null;
+        if (!sheet || !pagebox) return false;
+        /* An empty page renders only the margin grid; the .pagedjs_area
+           is absent. We treat those as phantom pages. */
+        if (!pagebox.querySelector(":scope > .pagedjs_area")) return false;
+      } else if (box.hasAttribute("data-vivliostyle-page-container")) {
+        if (!box.querySelector("[data-vivliostyle-page-margin-box], main, .pagedjs_area")) return false;
+      } else {
+        /* The engine-rooted candidates above only contain elements whose
+           classList contains "pagedjs_page" or which carry the
+           data-vivliostyle-page-container attribute (those are exactly
+           what we queried). Anything else would indicate a bug in the
+           scoping above. */
+        return false;
+      }
+      return true;
+    });
+    /* Drop the phantoms so the printed page count matches what the user
+       sees — and so the footer's "Page N of M" denominator is accurate. */
+    allPageBoxes.forEach(function (box) {
+      if (pagesWithContent.indexOf(box) === -1) box.remove();
+    });
+    var pageCount = pagesWithContent.length;
+    if (pageCount === 0) {
+      throw new Error("The pagination engine produced no printable pages");
+    }
+    /* Chrome's @page margin must be 0 for the print snapshot because each
+       .pagedjs_page in the body is already sized to the FULL physical page
+       (e.g. 420mm x 297mm) with paged.js's own content margins accounted for
+       via the inner .pagedjs_pagebox. Adding margins here (e.g. "30mm 20mm")
+       shrinks Chrome's printable area below the full page height, so each
+       .pagedjs_page spills onto a second Chrome PDF page — producing 10 pages
+       instead of 5 when footer is on (which was the historical
+       `grossly misaligned` PDF symptom). The footer lives in
+       .pagedjs_page .pagedjs_margin-bottom-left with `position: absolute;
+       bottom: 0`, so it stays anchored at the page bottom regardless of
+       @page margin. */
+    var footerMargin = "0";
     var printCss = document.createElement("style");
     printCss.id = "_fw_print_snapshot";
     printCss.textContent =
@@ -3760,13 +3996,12 @@
        The snapshot is printed via window.print() (browser native), which does
        not run Paged.js/Vivliostyle pagination — so counter(pages) stays 0
        and footers read "Page N of 0". */
-    if (pageCount > 0) {
-      clone.querySelectorAll("style").forEach(function (style) {
-        if (style.id === "_fw_print_snapshot") return;
-        var text = style.textContent;
-        if (text.indexOf("counter(pages)") !== -1) {
-          style.textContent = text.split("counter(pages)").join(String(pageCount));
-        }
+    clone.querySelectorAll("style").forEach(function (style) {
+      if (style.id === "_fw_print_snapshot") return;
+      var text = style.textContent;
+      if (text.indexOf("counter(pages)") !== -1) {
+        style.textContent = text.split("counter(pages)").join(String(pageCount));
+      }
         /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,
            @top-left, etc.) from the cloned styles. The browser's native print
            (which window.print() uses) does not support these at-rules. When
@@ -3781,16 +4016,29 @@
            matching. By targeting only the @bottom- and @top- at-rules with a
            non-greedy pattern, we preserve the @page block's size and margin
            declarations regardless of nesting. */
-        if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
-          style.textContent = text.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[\s\S]*?\}/g, "");
-        }
-      });
-    }
+      if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
+        style.textContent = style.textContent.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[\s\S]*?\}/g, "");
+      }
+    });
 
     var printScript = sourceDocument.createElement("script");
     printScript.textContent = "window.addEventListener('load',function(){var f=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();f.then(function(){setTimeout(function(){window.print();},100);});});";
     clone.querySelector("body").appendChild(printScript);
     return "<!DOCTYPE html>\n" + clone.outerHTML;
+  }
+
+  function buildPagedPrintSnapshot(sourceDocument) {
+    return buildEnginePrintSnapshot(sourceDocument, "pagedjs");
+  }
+
+  function buildVivliostylePrintSnapshot(sourceDocument) {
+    return buildEnginePrintSnapshot(sourceDocument, "vivliostyle");
+  }
+
+  function buildPrintSnapshot(sourceDocument, engineKey) {
+    if (engineKey === "pagedjs") return buildPagedPrintSnapshot(sourceDocument);
+    if (engineKey === "vivliostyle") return buildVivliostylePrintSnapshot(sourceDocument);
+    throw new Error("Choose a pagination engine before exporting PDF");
   }
 
   function exportPDF() {
@@ -3810,7 +4058,13 @@
        generated `.pagedjs_page` / Vivliostyle page boxes back through the
        pagination engine: that is what created n² print-preview pages. */
     var sourceDocument = isCurrentPreviewCommitted() ? previewFrame.contentDocument : null;
-    var printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    var printHtml = "";
+    try {
+      printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    } catch (err) {
+      showToast(err && err.message ? err.message : "Could not build the PDF snapshot");
+      return;
+    }
     if (!printHtml || (mode !== "preview" && mode !== "read")) {
       showToast("Open View and wait for pagination before exporting PDF");
       return;
@@ -3918,14 +4172,12 @@
     var btnFetch = document.getElementById("load-modal-insert");
     var btnCancel = document.getElementById("load-modal-cancel");
     var btnClose  = document.getElementById("load-modal-close");
-    var webpageToggle = document.getElementById("load-url-webpage-toggle");
     if (!overlay || !urlInput) return;
 
     var returnFocusTo = document.activeElement;
     urlInput.value = "";
     status.textContent = "";
     status.className = "load-url-status";
-    if (webpageToggle) webpageToggle.checked = false;
     overlay.classList.remove("hidden");
     urlInput.focus();
 
@@ -3944,15 +4196,22 @@
      *
      * No method/retain-images pickers are exposed in the UI — markdown.new
      * already knows how to pick the right conversion strategy for a given
-     * page. We just ask for "auto" with images retained, and if that
-     * attempt fails outright or comes back suspiciously thin (a likely
-     * sign of a JS-heavy site "auto" couldn't handle), we silently retry
-     * once with "browser" mode before giving up.
+     * page. We ask once for "auto" with images retained; markdown.new owns
+     * the internal escalation chain for JS-heavy sites.
      */
-    function doImportWebpage(url, isRetry) {
-      var method = isRetry ? "browser" : "auto";
+    function addBrowserRetry(url) {
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-mode load-url-try-browser";
+      retry.textContent = "Try browser rendering";
+      retry.addEventListener("click", function () { doImportWebpage(url, "browser"); });
+      status.appendChild(document.createTextNode(" "));
+      status.appendChild(retry);
+    }
 
-      status.textContent = isRetry ? "That didn\u2019t work — retrying with full browser rendering…" : "Importing webpage…";
+    function doImportWebpage(url, method) {
+      method = method === "browser" ? "browser" : "auto";
+      status.textContent = method === "browser" ? "Trying browser rendering…" : "Importing webpage…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
 
@@ -3968,22 +4227,12 @@
         })
         .then(function (result) {
           var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
-          var meaningfulLength = succeeded
-            ? result.data.document.content.replace(/^---[\s\S]*?---/, "").trim().length
-            : 0;
-
-          if ((!succeeded || meaningfulLength < 60) && !isRetry) {
-            // First attempt failed or looks too thin to be useful — retry
-            // once with browser rendering before bothering the user.
-            doImportWebpage(url, true);
-            return;
-          }
-
           btnFetch.disabled = false;
           if (!succeeded) {
             var friendly = (result.data && result.data.error) || "Could not import this page.";
             status.textContent = friendly;
             status.className = "load-url-status error";
+            if (method === "auto") addBrowserRetry(url);
             return;
           }
 
@@ -3993,7 +4242,11 @@
             if (!okReplace) return;
           }
           close();
-          setEditorContent(doc.content);
+          var importedMarkdown = rewriteMarkdownUrls(doc.content, doc.sourceUrl);
+          if (window.FlatwriteUrlRouting) {
+            importedMarkdown = window.FlatwriteUrlRouting.ensureMarkdownH1(importedMarkdown, doc.title);
+          }
+          setEditorContent(importedMarkdown);
           // Root-relative and relative image/link paths are common in
           // markdown.new's output (e.g. "/library/originals/photo.jpg").
           // Reuse the same base-URL resolution the GitHub/file-URL load
@@ -4005,10 +4258,10 @@
           showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
         })
         .catch(function (err) {
-          if (!isRetry) { doImportWebpage(url, true); return; }
           btnFetch.disabled = false;
           status.textContent = "Could not import this page. Check the URL and try again.";
           status.className = "load-url-status error";
+          if (method === "auto") addBrowserRetry(url);
           console.error("[import-url]", err);
         });
     }
@@ -4016,11 +4269,6 @@
     function doFetch() {
       var url = urlInput.value.trim();
       if (!url) { status.textContent = "Enter a URL"; status.className = "load-url-status error"; return; }
-
-      if (webpageToggle && webpageToggle.checked) {
-        doImportWebpage(url);
-        return;
-      }
 
       status.textContent = "Loading…";
       status.className = "load-url-status loading";
@@ -4031,15 +4279,26 @@
       // if the URL has no recognizable basename.
       var filename = deriveFilenameFromUrl(url);
 
-      // Always fetch as a Blob so binary files (PDF, PPTX, etc.) are
-      // preserved through the network hop. Routing is decided after
-      // we know the byte length and filename.
+      var initialRoute = decideUrlRoute(url, "");
+      if (initialRoute === "import") {
+        doImportWebpage(url);
+        return;
+      }
+
+      // Fetch once so extensionless URLs can be routed by response
+      // Content-Type. Known raw/file URLs still remain on the direct path.
       fetch(rewriteGitHubUrl(url))
         .then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
+          var route = decideUrlRoute(url, res.headers.get("Content-Type") || "");
+          if (route === "import") {
+            doImportWebpage(url);
+            return null;
+          }
           return res.blob();
         })
         .then(function (blob) {
+          if (!blob) return;
           btnFetch.disabled = false;
           close();
           // Wrap the Blob in a File so the dispatcher's filename
@@ -4059,6 +4318,10 @@
           }
         })
         .catch(function (err) {
+          if (initialRoute === "probe") {
+            doImportWebpage(url);
+            return;
+          }
           btnFetch.disabled = false;
           var detail = err && err.message ? err.message : "";
           status.textContent = "Could not load. Check the URL and try again."
@@ -4217,18 +4480,12 @@
       var parsed = parseShareYaml(content);
       documentContent = parsed.body;
       if (parsed.frontmatter) {
-        var fm = parsed.frontmatter;
-        if (fm.docEngine && DOC_ENGINES[fm.docEngine]) currentDocEngine = fm.docEngine;
-        if (fm.surfaceMode === "doc" || fm.surfaceMode === "app") surfaceMode = fm.surfaceMode;
-        if (fm.font) comfortFont = fm.font;
-        if (fm.pageSize && PAGE_SIZES[fm.pageSize]) pageSize = fm.pageSize;
-        if (fm.orientation === "portrait" || fm.orientation === "landscape") orientation = fm.orientation;
-        if (fm.marginsLR && MARGIN_MAP[fm.marginsLR]) pageMarginsLR = fm.marginsLR;
-        if (fm.marginsTB && MARGIN_MAP[fm.marginsTB]) pageMarginsTB = fm.marginsTB;
-        if (fm.columns !== undefined) pageColumns = clampInt(fm.columns, 1, 3, pageColumns);
-        showFooter = fm.footer === "true" || fm.footer === "on";
+        /* Share path uses the same hydration helper as loadSharedDocument
+           so a typo or unknown key silently keeps the prior state instead
+           of stomping unrelated globals. applyFrontmatter also syncs the
+           form controls so the dropdown always matches the active state. */
+        applyFrontmatter(parsed.frontmatter);
         setDocEngine(currentDocEngine);
-        syncDocControlsUI();
       }
       setMarkdownUrl("");
     } else {
@@ -4554,9 +4811,7 @@
     btn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
-      var panel = document.getElementById("assist-panel");
-      var open = panel && panel.classList.contains("hidden");
-      setAssistOpen(open);
+      showToast("AI Assist is coming soon!");
     });
     if (close) close.addEventListener("click", function () { setAssistOpen(false); });
     if (run) run.addEventListener("click", function () { onAssistRun(); });

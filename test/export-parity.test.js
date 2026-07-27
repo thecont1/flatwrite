@@ -91,28 +91,37 @@ describe("syncExportActionsTop layout", () => {
 });
 
 describe("buildPageCSS page layout", () => {
-  test("emits @page rule and Page n of N footer marker", () => {
+  test("keeps page geometry separate from the per-engine footer layer", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@page");
-    expect(body).toContain(
-      '"Page " counter(page) " of " counter(pages)'
-    );
+    expect(body).not.toContain("@bottom-left");
+    const footer = fnBody("buildFooterCSS");
+    expect(footer).toContain("FOOTER_OWNERS");
+    expect(footer).toContain("safeChapter");
+    expect(footer).toContain('counter(page) " of " counter(pages)');
   });
 
-  test("guards columns and clears disabled footers", () => {
+  test("CSS footer strings cannot terminate their containing style element", () => {
+    const body = fnBody("escapeCssStringForStyleElement");
+    expect(body).toContain('.replace(/</g, "\\\\3C ")');
+    expect(body).toContain('.replace(/&/g, "\\\\26 ")');
+    expect(fnBody("buildFooterCSS")).toContain("escapeCssStringForStyleElement(chapterTitle)");
+  });
+
+  test("guards columns and break-inside rules", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@supports (column-count: 2)");
+    expect(body).toContain(".fw-column-flow");
     expect(body).toContain("column-count: 1");
     expect(body).toContain("break-inside: avoid");
-    expect(body).toContain("@bottom-left { content: none; }");
-    expect(body).toContain("@bottom-right { content: none; }");
+    expect(body).toContain("column-fill: balance");
   });
 
-  test("reserves page margin boxes without pushing them into body content", () => {
+  test("does not pad body to fake a footer (margin-box reservation is the renderer's job)", () => {
     const body = fnBody("buildPageCSS");
-    expect(body).toContain("@bottom-left");
-    expect(body).toContain("@bottom-right");
     expect(body).not.toContain("padding-bottom: 3mm");
+    expect(body).not.toContain("@bottom-left");
+    expect(body).not.toContain("@bottom-right");
   });
 });
 
@@ -196,11 +205,11 @@ describe("exportPDF", () => {
   test("validates settings and waits for snapshot fonts", () => {
     const body = fnBody("exportPDF");
     expect(body).toContain("syncDocumentSettingsFromControls()");
-    expect(fnBody("buildPrintSnapshot")).toContain("document.fonts.ready");
+    expect(fnBody("buildEnginePrintSnapshot")).toContain("document.fonts.ready");
   });
 
   test("removes preview-only page-flow scaling before printing", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain('clone.querySelector(".pagedjs_pages")');
     expect(body).toContain('pagesFlow.removeAttribute("style")');
     expect(body).toContain('clone.querySelector("[data-vivliostyle-spread-container]")');
@@ -209,9 +218,10 @@ describe("exportPDF", () => {
   });
 
   test("strips Vivliostyle dynamically injected zoom/scale styles", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain('clone.querySelector("#vivl-scroll-style")');
-    expect(body).toContain('text.indexOf("transform: scale")');
+    expect(body).toContain('clone.querySelector("#_fw_vivl_shell")');
+    expect(body).not.toContain('text.indexOf("data-vivliostyle")');
     expect(body).toContain('page.querySelectorAll("[style]")');
     expect(body).toContain("transform|zoom|width|height|position");
   });
@@ -221,7 +231,7 @@ describe("exportPDF", () => {
        to blanket-remove style attributes from all descendants, destroying
        legitimate author styles (the sanitizer allows inline style). The new
        code selectively strips only Vivliostyle layout properties. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).not.toContain('page.querySelectorAll("*")');
     expect(body).toContain('getAttribute("style")');
     expect(body).toContain('setAttribute("style", cleaned)');
@@ -229,7 +239,7 @@ describe("exportPDF", () => {
 
   test("prints the committed pagination once instead of re-running the engine", () => {
     const body = fnBody("exportPDF");
-    const snapshot = fnBody("buildPrintSnapshot");
+    const snapshot = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("buildPrintSnapshot");
     expect(body).not.toContain('window.PagedPolyfill.on("afterPreview"');
     expect(body).not.toContain('window.PagedPolyfill.on("afterRenderation"');
@@ -296,7 +306,7 @@ describe("FlatWrite PDF spacing tag", () => {
       '"btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)"'
     );
     expect(SRC).toContain(
-      '"btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)"'
+      '"btn-assist": "AI Assist — Coming Soon!"'
     );
   });
 
@@ -376,7 +386,8 @@ describe("Read mode logo position", () => {
 
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
-    expect(INDEX).toContain('app.js?v=128');
+    expect(INDEX).toContain('url-routing.js?v=1');
+    expect(INDEX).toContain('app.js?v=129');
   });
 
   test("loads the stylesheet revision", () => {
@@ -386,25 +397,58 @@ describe("asset cache keys", () => {
 
 describe("print snapshot footer", () => {
   test("replaces counter(pages) with the static page count", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("pageCount");
     expect(body).toContain("counter(pages)");
     expect(body).toContain("String(pageCount)");
     expect(body).toContain("style.id === \"_fw_print_snapshot\"");
   });
 
-  test("preserves margin box space when footer is on", () => {
-    const body = fnBody("buildPrintSnapshot");
-    expect(body).toContain("footerMargin");
-    expect(body).toContain("showFooter");
+  test("forces @page margin to 0 so the .pagedjs_page sheet maps 1:1 to a Chrome PDF page", () => {
+    const body = fnBody("buildEnginePrintSnapshot");
+    /* Adding @page margin here used to shrink Chrome's printable area below
+       the full page height; each .pagedjs_page would then spill onto a
+       second Chrome PDF page (10 pages instead of 5 when footer was on).
+       Footer positioning is handled separately via
+       .pagedjs_page .pagedjs_margin-bottom-left with `position: absolute;
+       bottom: 0`, so it stays anchored regardless of @page margin. */
+    expect(body).toMatch(/footerMargin\s*=\s*["']0["']/);
+    expect(body).not.toMatch(/footerMargin\s*=\s*showFooter/);
   });
 
   test("adds explicit footer positioning CSS when footer is on", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("pagedjs_margin-bottom-left");
     expect(body).toContain("pagedjs_margin-bottom-right");
     expect(body).toContain("position: absolute");
     expect(body).toContain("bottom: 0");
+  });
+
+  test("scopes pagedjs_page / vivliostyle-page-container queries to engine-owned roots", () => {
+    /* User markdown is rendered with raw HTML enabled. The sanitizer
+       allows class="pagedjs_page" and data-vivliostyle-page-container on
+       arbitrary <div>/<span> elements, so a clone-wide descendant search
+       for those tokens would catch user-authored nodes and pollute both
+       the page count (footer's "Page N of M" denominator) and the
+       style-stripping pass. The functions must select from the engine-
+       emitted roots via :scope > child combinator. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toContain('pagesFlow.querySelectorAll(":scope > .pagedjs_page")');
+    expect(body).toContain('spread.querySelectorAll(":scope > [data-vivliostyle-page-container]")');
+    /* The loose descending querySelector against clone/document is no
+       longer the primary provenance path. */
+    expect(body).not.toContain('clone.querySelectorAll(".pagedjs_page, [data-vivliostyle-page-container]")');
+  });
+
+  test("buildPrintSnapshot no longer filters via parent.classList", () => {
+    /* The post-hoc filter `parent.classList.contains("pagedjs_pages") ||
+       .pagedjs_sheet || ...` was a defense-in-depth band-aid that still
+       relied on user-controlled class names as a provenance signal.
+       Now that selections are scoped to engine roots via :scope >,
+       candidates are guaranteed provenance-correct up front and the
+       band-aid filter is gone. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).not.toContain('parent.classList.contains("pagedjs_pages")');
   });
 
   test("print footer CSS defeats page transform inherited from preview zoom", () => {
@@ -413,7 +457,7 @@ describe("print snapshot footer", () => {
        the absolutely-positioned footer would inherit it and end up rotated
        or pushed off-page in the PDF. The print snapshot CSS must reset
        transform and writing-mode on the footer itself. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("transform: none !important");
     expect(body).toContain("writing-mode: horizontal-tb !important");
   });
@@ -422,7 +466,7 @@ describe("print snapshot footer", () => {
     /* Long chapter titles or rules added later can blow the box past the
        page edge; cap width and force overflow: visible so a tall descender
        doesn't get clipped by .pagedjs_page's overflow: hidden. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("max-width: 45%");
     expect(body).toContain("overflow: visible !important");
     expect(body).toContain("z-index: 1 !important");
@@ -541,7 +585,7 @@ describe("footer DOM scoping", () => {
   });
 
   test("print snapshot strips @bottom- margin-box rules for native print", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("@bottom-");
     expect(body).toContain("replace(/@(?:bottom|top)-(?:left|center|right)\\s*\\{[\\s\\S]*?\\}/g");
   });
@@ -550,7 +594,7 @@ describe("footer DOM scoping", () => {
     /* Regression test: the old regex /@page\s*\{([^}]*)\}/g failed on nested
        braces like @page { @bottom-left { ... } }. The new approach removes
        margin-box at-rules directly, preserving the @page block's size/margin. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("@top-");
     expect(body).toContain("[\\s\\S]*?");
   });
@@ -650,5 +694,216 @@ describe("accessibility contracts", () => {
 
   test("muted normal text uses the AA-safe token", () => {
     expect(STYLES).toContain("--text-muted: #67627e");
+  });
+});
+
+describe("shared-doc YAML pipeline", () => {
+  test("loadSharedDocument parses key: value frontmatter without quotes", () => {
+    /* The fixture format is single-quote-free block scalar YAML; the parser
+       must read each `key: value` line into the frontmatter map. A widely
+       used markdown frontmatter parser (js-yaml, etc.) would interpret
+       `Unbounded` as a string and `pagedjs` as a value — but FlatWrite's
+       own parseShareYaml is intentionally minimal: split on `:`, trim,
+       stash. Parsing is delegated to a shared `parseShareYamlMap` helper
+       so applyFrontmatter can hydrate from any frontmatter-shaped map
+       without re-implementing validation. */
+    const body = fnBody("parseShareYaml");
+    expect(body).toContain("match(/^\\s*---\\n");
+    expect(body).toContain("parseShareYamlMap");
+  });
+
+  test("loadSharedDocument routes every frontmatter knob through a single validator", () => {
+    /* Today, `loadSharedDocument` (and its sibling in restoreFromIDB) each
+       copy-paste the validation ladder. A regression-prone spot: if a new
+       frontmatter key is added but one branch forgets to validate, the
+       page silently sticks at A4 portrait. Pin the symptom so the helper
+       becomes the only place validation lives. */
+    const body = fnBody("loadSharedDocument");
+    expect(body).toMatch(/applyFrontmatter\(|applyFrontmatter\s*\(/);
+  });
+
+  test("loadSharedDocument syncs form controls after applying frontmatter", () => {
+    /* Root cause of the "PDF still A4 even though YAML said A3" bug.
+       Either applyFrontmatter itself must call syncDocControlsUI, or
+       loadSharedDocument must call it explicitly after applying the
+       frontmatter map. Both forms are acceptable; the form must be
+       synced before renderPreview runs downstream. */
+    const shBody = fnBody("loadSharedDocument");
+    const afBody = fnBody("applyFrontmatter");
+    expect(shBody).toMatch(/applyFrontmatter\(fm\)/);
+    expect(shBody).toMatch(/setDocEngine\(currentDocEngine\)/);
+    /* The sync could live in applyFrontmatter itself (one source of truth)
+       or in shBody explicitly. Pin the helper to own the sync so a
+       regression elsewhere doesn't drift. */
+    expect(afBody).toMatch(/syncDocControlsUI\(\)/);
+  });
+
+  test("applyFrontmatter normalizes every key against its registry", () => {
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain("PAGE_SIZES");
+    expect(body).toContain("DOC_ENGINES");
+    expect(body).toContain("MARGIN_MAP");
+    expect(body).toContain("COMFORT_FONTS");
+    expect(body).toContain("showFooter");
+    expect(body).toContain("pageColumns");
+    expect(body).toContain("syncDocControlsUI");
+  });
+
+  test("applyFrontmatter trims string before registry lookup so typos stay invalid", () => {
+    /* `pageSize:  A3 ` (trailing whitespace) must collapse to "A3"; raw
+       spaces that aren't trimmed would fail PAGE_SIZES lookup silently
+       and fall back to A4 portrait in the print snapshot. */
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain(".trim()");
+  });
+
+  test("applyFrontmatter coerces footer to boolean (true/false/on/off) and respects explicit false", () => {
+    /* saveToIDB persists docLayout.footer as a boolean. restoreFromIDB
+       then routes that map through applyFrontmatter(). The helper used
+       to only flip showFooter when fm.footer === "true" or "on"
+       (string), so a saved `true` reload came back as the default
+       (off), and an explicit `false` was silently swallowed too.
+       The new gate must:
+         - accept boolean (true/false) from IDB / programmatic callers,
+         - accept "true"/"on" => true,
+         - accept "false"/"off" => false (so the off-toggle survives
+           reload, not just the on-toggle),
+         - leave showFooter untouched when fm.footer is undefined or
+           any other value. */
+    const body = fnBody("applyFrontmatter");
+    expect(body).toContain('fm.footer');
+    expect(body).toMatch(/typeof\s+v\s*===\s*["']boolean["']/);
+    expect(body).toContain('"true"');
+    expect(body).toContain('"on"');
+    expect(body).toContain('"false"');
+    expect(body).toContain('"off"');
+  });
+
+  test("restoreFromIDB reapplies form controls after restoring docLayout", () => {
+    /* The IDB restore path must follow the same contract: globals from
+       record.docLayout are hydrated through applyFrontmatter (which
+       itself calls syncDocControlsUI), so a refresh never silently
+       returns the user to A4 after the IDB record said A3. */
+    const body = fnBody("restoreFromIDB");
+    expect(body).toContain("docLayout");
+    expect(body).toContain("applyFrontmatter");
+  });
+
+  test("share fixture exists for the canonical Ayodhya breakage repro", () => {
+    /* The Ayodhya essay at ?s=IUWxUVzE.md is the document the user
+       hit the breakage on. Pin the fixture so a regression test can
+       re-use it without Dustebin. */
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const fixture = fs.readFileSync(
+      resolve(
+        import.meta.dir,
+        "..",
+        "public",
+        "test",
+        "fixtures",
+        "shares",
+        "IUWxUVzE.md"
+      ),
+      "utf-8"
+    );
+    expect(fixture.startsWith("---\n")).toBe(true);
+    expect(fixture).toContain("pageSize: A3");
+    expect(fixture).toContain("orientation: landscape");
+    expect(fixture).toContain("footer: true");
+    expect(fixture).toContain("# Ayodhya: Myth Under Construction");
+  });
+});
+
+describe("print snapshot geometry", () => {
+  test("buildPrintSnapshot recomputes @page size from current globals", () => {
+    /* Even when the cached srcdoc fast-path wins (line ~3590), the
+       rebuilt snapshot must reflect today's pageSize/orientation — not
+       the iframe HTML's first @page rule (which can be stale if the
+       user changed controls after paginating but before exporting). */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toContain("PAGE_SIZES[pageSize]");
+    expect(body).toContain('orientation === "landscape"');
+  });
+
+  test("buildPrintSnapshot uses both width AND height from the page-size registry", () => {
+    /* A regression that maps A4 to [297, 0] (transposed) would slip a
+       297mm × 0mm @page rule to the snapshot and Chromium would render
+       a one-pixel-tall page. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toContain("printPageW");
+    expect(body).toContain("printPageH");
+    expect(body).not.toMatch(/printPageW\s*=\s*pageMm\[0\]\s*;\s*printPageH\s*=\s*pageMm\[1\]/);
+  });
+
+  test("print snapshot removes trailing empty .pagedjs_page elements", () => {
+    /* When wide content + columns spills across an offset column
+       boundary, paged.js emits a blank trailing page between content
+       runs. Strip those before passing the snapshot to the print
+       dialog so the exported PDF has every page printed. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toMatch(/emptyPage|\.pagedjs_area.*height|pagesWithContent/);
+    expect(body).toContain(":scope > .pagedjs_page");
+  });
+
+  test("print snapshot injects @page size at the TOP of the document head", () => {
+    /* Chromium's cascade gives precedence to @page rules declared LATER
+       in the cascade. Polyfill defaults @page { size: letter } emit
+       BEFORE FlatWrite's @page; both end up in the snapshot, but
+       FlatWrite's wins. To survive a cached iframe with stale
+       @page { size: letter }, the print snapshot's @page must be
+       appended at the bottom — but ALSO emit a top-of-head
+       `<meta name="print-page-size">`-equivalent that tells Chromium
+       to prefer @page over the browser default. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toContain("@page");
+  });
+
+  test("exportPDF doesn't depend on the cached srcdoc path for shared-doc loads", () => {
+    /* The cached srcdoc fast-path (line ~3588) bypasses
+       syncDocumentSettingsFromControls. For shared docs that means a
+       stale form = stale print dimensions. exportPDF must explicitly
+       call syncDocumentSettingsFromControls before
+       buildPrintSnapshot, regardless of cache state. */
+    const body = fnBody("exportPDF");
+    expect(body).toContain("syncDocumentSettingsFromControls");
+    expect(body).not.toMatch(/syncDocumentSettingsFromControls\(\)\s*\|\|\s*syncDocumentSettingsFromControls\(\)/);
+  });
+});
+
+describe("page-number footer", () => {
+  test("_applyFooterContent writes BOTH bottom-left and bottom-right margin content", () => {
+    /* The Ayodhya PDF was missing the "Page N of M" right footer.
+       _applyFooterContent MUST populate both cells (chapter on left,
+       "Page N of M" on right) so the print dialog doesn't have to rely
+       on browser-side counter() resolution, which never runs for
+       window.print() snapshots. */
+    const body = fnBody("_applyFooterContent");
+    expect(body).toMatch(/left\.textContent\s*=\s*chapter|leftBox.*chapter/);
+    expect(body).toMatch(/right\.textContent\s*=\s*["']Page /);
+    expect(body).toMatch(/" of " \+ (total|pageCount)/);
+  });
+
+  test("print snapshot has BOTH left and right margin-box containers wired for @page", () => {
+    /* Even if _applyFooterContent runs perfectly, the snapshot HTML
+       must contain the DOM elements (left + right .pagedjs_margin-bottom-*)
+       so the JS finds them. The snapshot output's appended <style>
+       pins their positioning. */
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toContain(".pagedjs_margin-bottom-left");
+    expect(body).toContain(".pagedjs_margin-bottom-right");
+  });
+});
+
+/* (The Phase 2 empty-page filter is verified at the structural level via
+   pagesWithContent / "Page " + (i + 1) + " of " + total assertions above
+   and the .pagedjs_area filter inside buildPrintSnapshot — but pinning
+   that filter explicitly so future refactors don't trivially regress.) */
+describe("empty-page culling", () => {
+  test("buildPrintSnapshot drops phantom paged.js pages with no .pagedjs_area", () => {
+    const body = fnBody("buildEnginePrintSnapshot");
+    expect(body).toMatch(/pagesWithContent|emptyPage|hasContentArea/);
+    expect(body).toContain(".pagedjs_area");
+    expect(body).toMatch(/pageBoxes.*forEach|\.forEach\(function \(box\)/);
   });
 });
