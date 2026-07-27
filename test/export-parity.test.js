@@ -306,7 +306,7 @@ describe("FlatWrite PDF spacing tag", () => {
       '"btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)"'
     );
     expect(SRC).toContain(
-      '"btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)"'
+      '"btn-assist": "AI Assist — Coming Soon!"'
     );
   });
 

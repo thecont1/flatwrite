@@ -1524,7 +1524,7 @@
     "btn-preview": "Preview the rendered document",
     "btn-read": "Read without editing controls",
     "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
-    "btn-assist": "Rewrite, shorten, or fix grammar with AI Assist (Morph)",
+    "btn-assist": "AI Assist — Coming Soon!",
     "assist-close": "Close AI Assist",
     "assist-run": "Run the selected AI Assist operation",
     "assist-accept": "Apply the proposed AI edit",
@@ -4811,9 +4811,7 @@
     btn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
-      var panel = document.getElementById("assist-panel");
-      var open = panel && panel.classList.contains("hidden");
-      setAssistOpen(open);
+      showToast("AI Assist is coming soon!");
     });
     if (close) close.addEventListener("click", function () { setAssistOpen(false); });
     if (run) run.addEventListener("click", function () { onAssistRun(); });
