@@ -2405,6 +2405,10 @@
   };
   var PAGE_SIZE_KEYS = ["A0", "A1", "A2", "A3", "A4", "A5", "Letter", "Legal"];
   var MARGIN_MAP = { narrow: "10mm", normal: "20mm", wide: "30mm" };
+  /* Footer content has exactly one owner per engine. Paged.js keeps the DOM
+     path because its generated margin content must survive a static print
+     snapshot; Vivliostyle owns its footer through CSS Paged Media. */
+  var FOOTER_OWNERS = { pagedjs: "dom", vivliostyle: "css", none: "none" };
 
   function getPageCSS() {
     var dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
@@ -2443,9 +2447,9 @@
       /* Default to one column when a renderer does not implement CSS
          Multi-column Layout. Paged.js and Vivliostyle opt into the requested
          layout only when they advertise support. */
-      css += ' main { column-count: 1; }';
-      css += ' @supports (column-count: 2) { main { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: auto; }';
-      css += ' main > h1, main > h2, main > h3, main > h4, main > pre, main > table, main > blockquote, main > figure { break-inside: avoid; } }';
+      css += ' .fw-column-flow { column-count: 1; }';
+      css += ' @supports (column-count: 2) { .fw-column-flow { column-count: ' + pageColumns + '; column-gap: ' + gap + '; column-fill: balance; }';
+      css += ' .fw-column-flow > h1, .fw-column-flow > h2, .fw-column-flow > h3, .fw-column-flow > h4, .fw-column-flow > pre, .fw-column-flow > table, .fw-column-flow > blockquote, .fw-column-flow > figure { break-inside: avoid; } }';
     }
     /* Footer text is injected directly into the margin-box DOM via
        _applyFooterContent. We deliberately do not rely on the CSS-driven
@@ -2464,6 +2468,18 @@
        Sole owner of footer content: _applyFooterContent (writes real DOM
        text nodes, resolves the total from the committed page list). */
     return css;
+  }
+
+  function buildFooterCSS(engineKey, chapterTitle) {
+    if (FOOTER_OWNERS[engineKey] !== "css") return "";
+    if (!showFooter) {
+      return '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
+    }
+    var safeChapter = String(chapterTitle || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ");
+    return '@page {'
+      + ' @bottom-left { content: "' + safeChapter + '"; font-size: 8px; color: #666; vertical-align: middle; }'
+      + ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; }'
+      + ' }';
   }
 
   function syncDocumentSettingsFromControls() {
@@ -2791,6 +2807,8 @@
     );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim() : "";
 
     var scrollRatio = lastScrollRatio;
     var renderId = ++currentRenderId;
@@ -2803,6 +2821,7 @@
 
     /* One canonical stylesheet feeds preview, HTML export, and PDF export. */
     var docCss = buildDocumentCSS(renderEngineKey)
+      + buildFooterCSS(renderEngineKey, chapterTitle)
       + ' .pagedjs_page { margin: 8px 0; }'
 
     var html;
@@ -2813,7 +2832,7 @@
         + '<base target="_blank" rel="noopener noreferrer">'
         + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
         + '<style>' + docCss + '</style>'
-        + '</head><body><main>' + renderedHTML + '</main></body></html>';
+        + '</head><body><main><div class="fw-column-flow">' + renderedHTML + '</div></main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         // Stripe placeholder background for View/Preview mode. The old
@@ -2824,8 +2843,9 @@
         // with many explicit stops so the stripes are drawn as one
         // continuous gradient — no tile boundary, no seams. The stripe
         // thickness scales with the iframe height (~40 stripes per 1280px).
-        + '<style>' + stripePlaceholderCss()
-        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0.8px solid #000!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + '<style id="_fw_vivl_shell">' + stripePlaceholderCss()
+        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0!important;outline:0.8px solid #000!important;outline-offset:-0.8px!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + '<style id="_fw_document_css">' + docCss + '</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
         + 'import Vivliostyle from "https://esm.unpkg.com/@vivliostyle/core@2.43.3";'
@@ -2861,7 +2881,7 @@
         + '    style.id = "vivl-scroll-style";'
         + '    style.textContent = "'
         + htmlResetCss()
-        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0.8px solid #000 !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
+        + ' [data-vivliostyle-page-container] { display: block !important; visibility: visible !important; opacity: 1 !important; position: relative !important; overflow: visible !important; margin: 0 auto !important; box-sizing: border-box !important; border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; background: #fff !important; box-shadow: none !important; } [data-vivliostyle-spread-container] { display: flex !important; flex-direction: column !important; height: auto !important; width: max-content !important; min-width: 0 !important; align-items: flex-start !important; zoom: 1 !important; transform-origin: top left !important; background: transparent !important; } [data-vivliostyle-outer-zoom-box] { height: auto !important; width: max-content !important; min-width: 0 !important; background: transparent !important; }";'
         + '    document.head.appendChild(style);'
         + '  }'
         + '  /* Smooth zoom: apply CSS transform: scale() to the spread container'
@@ -2997,7 +3017,7 @@
         + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
         /* --- Page-boundary dashed borders on all four sides --- */
         + '.pagedjs_page { overflow: visible !important; margin: 8px 0 !important; outline: none !important; border: none !important; box-shadow: none !important; background: transparent !important; }'
-        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0.8px solid #000 !important; outline: none !important; box-shadow: none !important; }'
+        + '.pagedjs_sheet { box-sizing: border-box !important; border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; box-shadow: none !important; }'
         + '.pagedjs_pagebox { box-shadow: none !important; outline: none !important; border: none !important; }'
         + '.pagedjs_margin-left, .pagedjs_margin-right { border: none !important; outline: none !important; box-shadow: none !important; }'
         + '.pagedjs_bleed, .pagedjs_bleed-top, .pagedjs_bleed-bottom, .pagedjs_bleed-left, .pagedjs_bleed-right { display: none !important; }'
@@ -3008,7 +3028,7 @@
         + 'body.engine-pagedjs, body.engine-vivliostyle { max-width: none; margin: 0; background: transparent !important; }'
         + '</style>'
         + (mode !== "read" ? '<style id="_fw_stripe">' + stripePlaceholderCss() + ' .pagedjs_sheet, .pagedjs_pagebox, .pagedjs_area { background: #fff !important; }</style>' : '')
-        + '</head><body class="engine-' + renderEngineKey + '"><main>' + renderedHTML + '</main>'
+        + '</head><body class="engine-' + renderEngineKey + '"><main><div class="fw-column-flow">' + renderedHTML + '</div></main>'
         + '<script>'
       + 'var _scrollRatio = ' + scrollRatio + ';'
       + 'var _pagedReady = false;'
@@ -3021,6 +3041,7 @@
       + 'window.__flatwriteRenderId = _renderId;'
       + 'var _footerOn = ' + (showFooter ? 'true' : 'false') + ';'
       + 'var _engineKey = "' + renderEngineKey + '";'
+      + 'var _footerOwner = "' + (FOOTER_OWNERS[renderEngineKey] || 'none') + '";'
       /* After Paged.js finishes, scale page to fit iframe, center, restore scroll */
       + 'function _setPagedCanvasExtent(flowW, flowH, s) {'
       + '  document.body.style.width = Math.ceil(flowW * s) + "px";'
@@ -3065,7 +3086,7 @@
          into the PDF print snapshot, since real text nodes (unlike
          CSS-generated ::after content) are preserved by cloneNode(). */
       + 'function _applyFooterContent() {'
-      + '  if (!_footerOn || _engineKey !== "pagedjs") return;'
+      + '  if (!_footerOn || _footerOwner !== "dom") return;'
       + '  /* Scope page selection to Paged.js’s own spread wrapper AND require'
       + '     *direct* child placement of canonical structural classes. The'
       + '     sanitizer allows class attributes on user content, so an author'
@@ -3209,7 +3230,7 @@
       + '  if (!s) {'
       + '    s = document.createElement("style");'
       + '    s.id = "_fw_kill_borders";'
-      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_sheet,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; } .pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0.8px solid #000 !important; box-sizing: border-box !important; background: #fff !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
+      + '    s.textContent = ".pagedjs_page,.pagedjs_pagebox,.pagedjs_margin-left,.pagedjs_margin-right,.pagedjs_area { box-shadow: none !important; outline: none !important; border: none !important; } .pagedjs_page { background: transparent !important; } .pagedjs_sheet { border: 0 !important; outline: 0.8px solid #000 !important; outline-offset: -0.8px !important; box-sizing: border-box !important; background: #fff !important; box-shadow: none !important; } @media screen { .pagedjs_page { box-shadow: none !important; } }";'
       + '    document.head.appendChild(s);'
       + '  }'
       + '}'
@@ -3708,6 +3729,8 @@
     );
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim() : "";
 
     /* Engine script tag — self-paginating HTML export (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
@@ -3722,17 +3745,17 @@
       + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
       + engineScript
       + '  <style>\n'
-      + '    ' + buildDocumentCSS(currentDocEngine) + '\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + buildFooterCSS(currentDocEngine, chapterTitle) + '\n'
       + '  </style>\n'
-      + '</head>\n<body>\n  <main>\n'
+      + '</head>\n<body>\n  <main><div class="fw-column-flow">\n'
       + renderedHTML
-      + '\n  </main>\n'
+      + '\n  </div></main>\n'
       + '</body>\n</html>';
 
     openInNewTab(html, "text/html;charset=utf-8");
   }
 
-  function buildPrintSnapshot(sourceDocument, engineKey) {
+  function buildEnginePrintSnapshot(sourceDocument, engineKey) {
     if (!sourceDocument) return "";
     var clone = sourceDocument.documentElement.cloneNode(true);
     clone.querySelectorAll("script, #_fw_stripe, #_fw_kill_borders, link[rel=\"modulepreload\"]").forEach(function (node) {
@@ -3770,23 +3793,19 @@
     if (outerZoom) outerZoom.removeAttribute("style");
     var viewport = clone.querySelector("#vivl-viewport");
     if (viewport) viewport.removeAttribute("style");
+    /* Remove only FlatWrite's known preview-only Vivliostyle styles. Keep the
+       engine's generated layout stylesheets: their page-box selectors are
+       required by the cloned DOM and print CSS overrides zoom/geometry below. */
+    if (engineKey === "vivliostyle") {
+      var vivlShellStyle = clone.querySelector("#_fw_vivl_shell");
+      if (vivlShellStyle) vivlShellStyle.remove();
+    }
     /* Remove Vivliostyle's dynamically injected scroll/zoom style element.
        This <style id="vivl-scroll-style"> contains transform: scale() and
        other overrides that would distort the print snapshot. The print
        snapshot CSS (appended below) provides its own clean page geometry. */
     var vivlScrollStyle = clone.querySelector("#vivl-scroll-style");
     if (vivlScrollStyle) vivlScrollStyle.remove();
-    /* Also remove any other dynamically injected Vivliostyle <style> elements
-       that may contain transform/scale/zoom overrides. We preserve the
-       original document CSS (which has the @page rules and typography) and
-       the _fw_print_snapshot style (appended below). */
-    clone.querySelectorAll("style").forEach(function(style) {
-      if (style.id === "_fw_print_snapshot" || style.id === "_fw_stripe") return;
-      var text = style.textContent || "";
-      if (text.indexOf("transform: scale") !== -1 || text.indexOf("data-vivliostyle") !== -1) {
-        style.remove();
-      }
-    });
 
     /* Collect Vivliostyle page containers from the engine-owned spread
        root only — direct children via :scope >. The sanitizer allows
@@ -3892,6 +3911,9 @@
       if (pagesWithContent.indexOf(box) === -1) box.remove();
     });
     var pageCount = pagesWithContent.length;
+    if (pageCount === 0) {
+      throw new Error("The pagination engine produced no printable pages");
+    }
     /* Chrome's @page margin must be 0 for the print snapshot because each
        .pagedjs_page in the body is already sized to the FULL physical page
        (e.g. 420mm x 297mm) with paged.js's own content margins accounted for
@@ -3948,13 +3970,12 @@
        The snapshot is printed via window.print() (browser native), which does
        not run Paged.js/Vivliostyle pagination — so counter(pages) stays 0
        and footers read "Page N of 0". */
-    if (pageCount > 0) {
-      clone.querySelectorAll("style").forEach(function (style) {
-        if (style.id === "_fw_print_snapshot") return;
-        var text = style.textContent;
-        if (text.indexOf("counter(pages)") !== -1) {
-          style.textContent = text.split("counter(pages)").join(String(pageCount));
-        }
+    clone.querySelectorAll("style").forEach(function (style) {
+      if (style.id === "_fw_print_snapshot") return;
+      var text = style.textContent;
+      if (text.indexOf("counter(pages)") !== -1) {
+        style.textContent = text.split("counter(pages)").join(String(pageCount));
+      }
         /* Strip CSS Paged Media margin-box rules (@bottom-left, @bottom-right,
            @top-left, etc.) from the cloned styles. The browser's native print
            (which window.print() uses) does not support these at-rules. When
@@ -3969,16 +3990,29 @@
            matching. By targeting only the @bottom- and @top- at-rules with a
            non-greedy pattern, we preserve the @page block's size and margin
            declarations regardless of nesting. */
-        if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
-          style.textContent = text.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[\s\S]*?\}/g, "");
-        }
-      });
-    }
+      if (text.indexOf("@bottom-") !== -1 || text.indexOf("@top-") !== -1) {
+        style.textContent = style.textContent.replace(/@(?:bottom|top)-(?:left|center|right)\s*\{[\s\S]*?\}/g, "");
+      }
+    });
 
     var printScript = sourceDocument.createElement("script");
     printScript.textContent = "window.addEventListener('load',function(){var f=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();f.then(function(){setTimeout(function(){window.print();},100);});});";
     clone.querySelector("body").appendChild(printScript);
     return "<!DOCTYPE html>\n" + clone.outerHTML;
+  }
+
+  function buildPagedPrintSnapshot(sourceDocument) {
+    return buildEnginePrintSnapshot(sourceDocument, "pagedjs");
+  }
+
+  function buildVivliostylePrintSnapshot(sourceDocument) {
+    return buildEnginePrintSnapshot(sourceDocument, "vivliostyle");
+  }
+
+  function buildPrintSnapshot(sourceDocument, engineKey) {
+    if (engineKey === "pagedjs") return buildPagedPrintSnapshot(sourceDocument);
+    if (engineKey === "vivliostyle") return buildVivliostylePrintSnapshot(sourceDocument);
+    throw new Error("Choose a pagination engine before exporting PDF");
   }
 
   function exportPDF() {
@@ -3998,7 +4032,13 @@
        generated `.pagedjs_page` / Vivliostyle page boxes back through the
        pagination engine: that is what created n² print-preview pages. */
     var sourceDocument = isCurrentPreviewCommitted() ? previewFrame.contentDocument : null;
-    var printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    var printHtml = "";
+    try {
+      printHtml = buildPrintSnapshot(sourceDocument, currentDocEngine);
+    } catch (err) {
+      showToast(err && err.message ? err.message : "Could not build the PDF snapshot");
+      return;
+    }
     if (!printHtml || (mode !== "preview" && mode !== "read")) {
       showToast("Open View and wait for pagination before exporting PDF");
       return;

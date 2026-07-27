@@ -91,24 +91,23 @@ describe("syncExportActionsTop layout", () => {
 });
 
 describe("buildPageCSS page layout", () => {
-  test("emits @page rule and column support, no footer content", () => {
-    /* Footer text is injected into .pagedjs_margin-content DOM, not via
-       @page { @bottom-left { content: string(...) } }. The latter would
-       produce a duplicate ::after pseudo-element AND leave an unresolvable
-       counter(pages) in the print snapshot (native window.print() does
-       not run Paged.js). */
+  test("keeps page geometry separate from the per-engine footer layer", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@page");
-    expect(body).not.toContain("string(chapter");
-    expect(body).not.toContain('counter(page) " of " counter(pages)');
-    expect(body).not.toContain("string-set: chapter");
+    expect(body).not.toContain("@bottom-left");
+    const footer = fnBody("buildFooterCSS");
+    expect(footer).toContain("FOOTER_OWNERS");
+    expect(footer).toContain("safeChapter");
+    expect(footer).toContain('counter(page) " of " counter(pages)');
   });
 
   test("guards columns and break-inside rules", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@supports (column-count: 2)");
+    expect(body).toContain(".fw-column-flow");
     expect(body).toContain("column-count: 1");
     expect(body).toContain("break-inside: avoid");
+    expect(body).toContain("column-fill: balance");
   });
 
   test("does not pad body to fake a footer (margin-box reservation is the renderer's job)", () => {
@@ -199,11 +198,11 @@ describe("exportPDF", () => {
   test("validates settings and waits for snapshot fonts", () => {
     const body = fnBody("exportPDF");
     expect(body).toContain("syncDocumentSettingsFromControls()");
-    expect(fnBody("buildPrintSnapshot")).toContain("document.fonts.ready");
+    expect(fnBody("buildEnginePrintSnapshot")).toContain("document.fonts.ready");
   });
 
   test("removes preview-only page-flow scaling before printing", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain('clone.querySelector(".pagedjs_pages")');
     expect(body).toContain('pagesFlow.removeAttribute("style")');
     expect(body).toContain('clone.querySelector("[data-vivliostyle-spread-container]")');
@@ -212,9 +211,10 @@ describe("exportPDF", () => {
   });
 
   test("strips Vivliostyle dynamically injected zoom/scale styles", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain('clone.querySelector("#vivl-scroll-style")');
-    expect(body).toContain('text.indexOf("transform: scale")');
+    expect(body).toContain('clone.querySelector("#_fw_vivl_shell")');
+    expect(body).not.toContain('text.indexOf("data-vivliostyle")');
     expect(body).toContain('page.querySelectorAll("[style]")');
     expect(body).toContain("transform|zoom|width|height|position");
   });
@@ -224,7 +224,7 @@ describe("exportPDF", () => {
        to blanket-remove style attributes from all descendants, destroying
        legitimate author styles (the sanitizer allows inline style). The new
        code selectively strips only Vivliostyle layout properties. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).not.toContain('page.querySelectorAll("*")');
     expect(body).toContain('getAttribute("style")');
     expect(body).toContain('setAttribute("style", cleaned)');
@@ -232,7 +232,7 @@ describe("exportPDF", () => {
 
   test("prints the committed pagination once instead of re-running the engine", () => {
     const body = fnBody("exportPDF");
-    const snapshot = fnBody("buildPrintSnapshot");
+    const snapshot = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("buildPrintSnapshot");
     expect(body).not.toContain('window.PagedPolyfill.on("afterPreview"');
     expect(body).not.toContain('window.PagedPolyfill.on("afterRenderation"');
@@ -389,7 +389,7 @@ describe("asset cache keys", () => {
 
 describe("print snapshot footer", () => {
   test("replaces counter(pages) with the static page count", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("pageCount");
     expect(body).toContain("counter(pages)");
     expect(body).toContain("String(pageCount)");
@@ -397,7 +397,7 @@ describe("print snapshot footer", () => {
   });
 
   test("forces @page margin to 0 so the .pagedjs_page sheet maps 1:1 to a Chrome PDF page", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     /* Adding @page margin here used to shrink Chrome's printable area below
        the full page height; each .pagedjs_page would then spill onto a
        second Chrome PDF page (10 pages instead of 5 when footer was on).
@@ -409,7 +409,7 @@ describe("print snapshot footer", () => {
   });
 
   test("adds explicit footer positioning CSS when footer is on", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("pagedjs_margin-bottom-left");
     expect(body).toContain("pagedjs_margin-bottom-right");
     expect(body).toContain("position: absolute");
@@ -424,7 +424,7 @@ describe("print snapshot footer", () => {
        the page count (footer's "Page N of M" denominator) and the
        style-stripping pass. The functions must select from the engine-
        emitted roots via :scope > child combinator. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain('pagesFlow.querySelectorAll(":scope > .pagedjs_page")');
     expect(body).toContain('spread.querySelectorAll(":scope > [data-vivliostyle-page-container]")');
     /* The loose descending querySelector against clone/document is no
@@ -439,7 +439,7 @@ describe("print snapshot footer", () => {
        Now that selections are scoped to engine roots via :scope >,
        candidates are guaranteed provenance-correct up front and the
        band-aid filter is gone. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).not.toContain('parent.classList.contains("pagedjs_pages")');
   });
 
@@ -449,7 +449,7 @@ describe("print snapshot footer", () => {
        the absolutely-positioned footer would inherit it and end up rotated
        or pushed off-page in the PDF. The print snapshot CSS must reset
        transform and writing-mode on the footer itself. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("transform: none !important");
     expect(body).toContain("writing-mode: horizontal-tb !important");
   });
@@ -458,7 +458,7 @@ describe("print snapshot footer", () => {
     /* Long chapter titles or rules added later can blow the box past the
        page edge; cap width and force overflow: visible so a tall descender
        doesn't get clipped by .pagedjs_page's overflow: hidden. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("max-width: 45%");
     expect(body).toContain("overflow: visible !important");
     expect(body).toContain("z-index: 1 !important");
@@ -577,7 +577,7 @@ describe("footer DOM scoping", () => {
   });
 
   test("print snapshot strips @bottom- margin-box rules for native print", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("@bottom-");
     expect(body).toContain("replace(/@(?:bottom|top)-(?:left|center|right)\\s*\\{[\\s\\S]*?\\}/g");
   });
@@ -586,7 +586,7 @@ describe("footer DOM scoping", () => {
     /* Regression test: the old regex /@page\s*\{([^}]*)\}/g failed on nested
        braces like @page { @bottom-left { ... } }. The new approach removes
        margin-box at-rules directly, preserving the @page block's size/margin. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("@top-");
     expect(body).toContain("[\\s\\S]*?");
   });
@@ -813,7 +813,7 @@ describe("print snapshot geometry", () => {
        rebuilt snapshot must reflect today's pageSize/orientation — not
        the iframe HTML's first @page rule (which can be stale if the
        user changed controls after paginating but before exporting). */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("PAGE_SIZES[pageSize]");
     expect(body).toContain('orientation === "landscape"');
   });
@@ -822,7 +822,7 @@ describe("print snapshot geometry", () => {
     /* A regression that maps A4 to [297, 0] (transposed) would slip a
        297mm × 0mm @page rule to the snapshot and Chromium would render
        a one-pixel-tall page. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("printPageW");
     expect(body).toContain("printPageH");
     expect(body).not.toMatch(/printPageW\s*=\s*pageMm\[0\]\s*;\s*printPageH\s*=\s*pageMm\[1\]/);
@@ -833,7 +833,7 @@ describe("print snapshot geometry", () => {
        boundary, paged.js emits a blank trailing page between content
        runs. Strip those before passing the snapshot to the print
        dialog so the exported PDF has every page printed. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toMatch(/emptyPage|\.pagedjs_area.*height|pagesWithContent/);
     expect(body).toContain(":scope > .pagedjs_page");
   });
@@ -847,7 +847,7 @@ describe("print snapshot geometry", () => {
        appended at the bottom — but ALSO emit a top-of-head
        `<meta name="print-page-size">`-equivalent that tells Chromium
        to prefer @page over the browser default. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain("@page");
   });
 
@@ -881,7 +881,7 @@ describe("page-number footer", () => {
        must contain the DOM elements (left + right .pagedjs_margin-bottom-*)
        so the JS finds them. The snapshot output's appended <style>
        pins their positioning. */
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toContain(".pagedjs_margin-bottom-left");
     expect(body).toContain(".pagedjs_margin-bottom-right");
   });
@@ -893,7 +893,7 @@ describe("page-number footer", () => {
    that filter explicitly so future refactors don't trivially regress.) */
 describe("empty-page culling", () => {
   test("buildPrintSnapshot drops phantom paged.js pages with no .pagedjs_area", () => {
-    const body = fnBody("buildPrintSnapshot");
+    const body = fnBody("buildEnginePrintSnapshot");
     expect(body).toMatch(/pagesWithContent|emptyPage|hasContentArea/);
     expect(body).toContain(".pagedjs_area");
     expect(body).toMatch(/pageBoxes.*forEach|\.forEach\(function \(box\)/);
