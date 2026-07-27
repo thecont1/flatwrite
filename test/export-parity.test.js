@@ -101,6 +101,13 @@ describe("buildPageCSS page layout", () => {
     expect(footer).toContain('counter(page) " of " counter(pages)');
   });
 
+  test("CSS footer strings cannot terminate their containing style element", () => {
+    const body = fnBody("escapeCssStringForStyleElement");
+    expect(body).toContain('.replace(/</g, "\\\\3C ")');
+    expect(body).toContain('.replace(/&/g, "\\\\26 ")');
+    expect(fnBody("buildFooterCSS")).toContain("escapeCssStringForStyleElement(chapterTitle)");
+  });
+
   test("guards columns and break-inside rules", () => {
     const body = fnBody("buildPageCSS");
     expect(body).toContain("@supports (column-count: 2)");

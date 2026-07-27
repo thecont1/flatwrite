@@ -2480,12 +2480,28 @@
     return css;
   }
 
+  /* Escape a string for safe interpolation into a CSS `content: "..."`
+     value that lives inside an inline <style> element. Beyond the usual
+     CSS string escaping (backslash, double-quote, newline), this also
+     neutralizes `<` and `&` using CSS numeric escapes so a user-authored
+     chapter title containing `</style>` (or an HTML entity) can never
+     terminate the style element or inject markup. `\3C ` is `<` and
+     `\26 ` is `&`; the trailing space terminates the CSS escape. */
+  function escapeCssStringForStyleElement(value) {
+    return String(value == null ? "" : value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/</g, "\\3C ")
+      .replace(/&/g, "\\26 ")
+      .replace(/\r?\n/g, " ");
+  }
+
   function buildFooterCSS(engineKey, chapterTitle) {
     if (FOOTER_OWNERS[engineKey] !== "css") return "";
     if (!showFooter) {
       return '@page { @bottom-left { content: none; } @bottom-right { content: none; } }';
     }
-    var safeChapter = String(chapterTitle || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ");
+    var safeChapter = escapeCssStringForStyleElement(chapterTitle);
     return '@page {'
       + ' @bottom-left { content: "' + safeChapter + '"; font-size: 8px; color: #666; vertical-align: middle; }'
       + ' @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #666; vertical-align: middle; }'
@@ -2818,7 +2834,7 @@
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
-    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim() : "";
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     var scrollRatio = lastScrollRatio;
     var renderId = ++currentRenderId;
@@ -3740,7 +3756,7 @@
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
-    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim() : "";
+    var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     /* Engine script tag — self-paginating HTML export (skip ESM modules) */
     var engineScript = (engine && engine.script && !engine.module)
