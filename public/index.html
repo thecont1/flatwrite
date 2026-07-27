@@ -58,7 +58,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
-  <script src="app.js?v=128" defer></script>
+  <script src="url-routing.js?v=1" defer></script>
+  <script src="app.js?v=129" defer></script>
 
 </head>
 <body>
@@ -386,13 +387,9 @@
         <button class="load-modal-close" id="load-modal-close" type="button" title="Close" aria-label="Close load dialog">&times;</button>
       </div>
       <div class="load-modal-body" id="load-modal-body">
-          <label for="load-url-input" class="load-modal-label">URL (markdown/file URL, or any webpage to import)</label>
+          <label for="load-url-input" class="load-modal-label">Document or webpage URL</label>
           <input type="url" id="load-url-input" class="load-url-input" placeholder="https://example.com/article" autocomplete="off" />
-          <label class="load-url-checkbox-row" for="load-url-webpage-toggle">
-            <input type="checkbox" id="load-url-webpage-toggle" />
-            Import as a webpage (via markdown.new)
-          </label>
-          <p class="modal-hint">Converts any webpage to Markdown. Leave unchecked to fetch a raw file URL directly (.md, .pdf, .docx, images, etc.).</p>
+          <p class="modal-hint">FlatWrite loads document files directly and converts webpages to Markdown automatically.</p>
           <p class="load-url-status" id="load-url-status" role="status" aria-live="polite"></p>
         </div>
       <div class="load-modal-footer">

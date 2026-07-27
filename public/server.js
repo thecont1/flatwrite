@@ -17,6 +17,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const importUrlHandler = require("../api/import-url.js");
 
 const PORT = process.env.PORT || 3000;
 
@@ -83,11 +84,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const pathOnly = req.url.split("?")[0];
+  if (pathOnly === "/api/import-url") {
+    await importUrlHandler(req, res);
+    return;
+  }
+
   /* Exact-path match: split off the query string first, then require
      the path component to be exactly "/api/s". The previous
      startsWith("/api/s") check accidentally matched /api/sx,
      /api/secrets, /api/s/anything, etc. */
-  const pathOnly = req.url.split("?")[0];
   if (STUB_SHARES && pathOnly === "/api/s") {
     if (req.method !== "GET") {
       res.writeHead(405, { "Content-Type": "application/json" });

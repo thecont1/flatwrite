@@ -880,17 +880,6 @@
       }
     }
 
-    function resolveAgainst(url) {
-      if (!url) return url;
-      if (/^(?:https?:|data:|mailto:|#)/i.test(url)) return url;
-      if (/^\/\//i.test(url)) return url;
-      try {
-        return new URL(url, githubBaseUrl).href;
-      } catch (e) {
-        return url;
-      }
-    }
-
     // Image-like src — apply ?raw=true on GitHub. The capture group for
     // everything up to and including "src=" lets us splice in the resolved
     // value without any manual index arithmetic (a previous version of
@@ -900,7 +889,7 @@
     html = html.replace(
       /(<(?:img|video|source)\s[^>]*?src=)(["'])([^"']+)\2/gi,
       function (match, prefix, q, src) {
-        var resolved = resolveAgainst(src);
+        var resolved = resolveUrlTarget(src, githubBaseUrl);
         if (resolved === src) return match;
         return prefix + q + stampRaw(resolved) + q;
       }
@@ -910,13 +899,34 @@
     html = html.replace(
       /(<a\s[^>]*?href=)(["'])([^"']+)\2/gi,
       function (match, prefix, q, href) {
-        var resolved = resolveAgainst(href);
+        var resolved = resolveUrlTarget(href, githubBaseUrl);
         if (resolved === href) return match;
         return prefix + q + resolved + q;
       }
     );
 
     return html;
+  }
+
+  function resolveUrlTarget(url, baseUrl) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.resolveUrlTarget(url, baseUrl);
+    }
+    return url;
+  }
+
+  function rewriteMarkdownUrls(markdown, baseUrl) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.rewriteMarkdownUrls(markdown, baseUrl);
+    }
+    return markdown;
+  }
+
+  function decideUrlRoute(url, contentType) {
+    if (window.FlatwriteUrlRouting) {
+      return window.FlatwriteUrlRouting.decideUrlRoute(url, contentType);
+    }
+    return "direct";
   }
 
   function isEditorDirty() {
@@ -4146,14 +4156,12 @@
     var btnFetch = document.getElementById("load-modal-insert");
     var btnCancel = document.getElementById("load-modal-cancel");
     var btnClose  = document.getElementById("load-modal-close");
-    var webpageToggle = document.getElementById("load-url-webpage-toggle");
     if (!overlay || !urlInput) return;
 
     var returnFocusTo = document.activeElement;
     urlInput.value = "";
     status.textContent = "";
     status.className = "load-url-status";
-    if (webpageToggle) webpageToggle.checked = false;
     overlay.classList.remove("hidden");
     urlInput.focus();
 
@@ -4172,15 +4180,22 @@
      *
      * No method/retain-images pickers are exposed in the UI — markdown.new
      * already knows how to pick the right conversion strategy for a given
-     * page. We just ask for "auto" with images retained, and if that
-     * attempt fails outright or comes back suspiciously thin (a likely
-     * sign of a JS-heavy site "auto" couldn't handle), we silently retry
-     * once with "browser" mode before giving up.
+     * page. We ask once for "auto" with images retained; markdown.new owns
+     * the internal escalation chain for JS-heavy sites.
      */
-    function doImportWebpage(url, isRetry) {
-      var method = isRetry ? "browser" : "auto";
+    function addBrowserRetry(url) {
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-mode load-url-try-browser";
+      retry.textContent = "Try browser rendering";
+      retry.addEventListener("click", function () { doImportWebpage(url, "browser"); });
+      status.appendChild(document.createTextNode(" "));
+      status.appendChild(retry);
+    }
 
-      status.textContent = isRetry ? "That didn\u2019t work — retrying with full browser rendering…" : "Importing webpage…";
+    function doImportWebpage(url, method) {
+      method = method === "browser" ? "browser" : "auto";
+      status.textContent = method === "browser" ? "Trying browser rendering…" : "Importing webpage…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
 
@@ -4196,22 +4211,12 @@
         })
         .then(function (result) {
           var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
-          var meaningfulLength = succeeded
-            ? result.data.document.content.replace(/^---[\s\S]*?---/, "").trim().length
-            : 0;
-
-          if ((!succeeded || meaningfulLength < 60) && !isRetry) {
-            // First attempt failed or looks too thin to be useful — retry
-            // once with browser rendering before bothering the user.
-            doImportWebpage(url, true);
-            return;
-          }
-
           btnFetch.disabled = false;
           if (!succeeded) {
             var friendly = (result.data && result.data.error) || "Could not import this page.";
             status.textContent = friendly;
             status.className = "load-url-status error";
+            if (method === "auto") addBrowserRetry(url);
             return;
           }
 
@@ -4221,7 +4226,11 @@
             if (!okReplace) return;
           }
           close();
-          setEditorContent(doc.content);
+          var importedMarkdown = rewriteMarkdownUrls(doc.content, doc.sourceUrl);
+          if (window.FlatwriteUrlRouting) {
+            importedMarkdown = window.FlatwriteUrlRouting.ensureMarkdownH1(importedMarkdown, doc.title);
+          }
+          setEditorContent(importedMarkdown);
           // Root-relative and relative image/link paths are common in
           // markdown.new's output (e.g. "/library/originals/photo.jpg").
           // Reuse the same base-URL resolution the GitHub/file-URL load
@@ -4233,10 +4242,10 @@
           showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
         })
         .catch(function (err) {
-          if (!isRetry) { doImportWebpage(url, true); return; }
           btnFetch.disabled = false;
           status.textContent = "Could not import this page. Check the URL and try again.";
           status.className = "load-url-status error";
+          if (method === "auto") addBrowserRetry(url);
           console.error("[import-url]", err);
         });
     }
@@ -4244,11 +4253,6 @@
     function doFetch() {
       var url = urlInput.value.trim();
       if (!url) { status.textContent = "Enter a URL"; status.className = "load-url-status error"; return; }
-
-      if (webpageToggle && webpageToggle.checked) {
-        doImportWebpage(url);
-        return;
-      }
 
       status.textContent = "Loading…";
       status.className = "load-url-status loading";
@@ -4259,15 +4263,26 @@
       // if the URL has no recognizable basename.
       var filename = deriveFilenameFromUrl(url);
 
-      // Always fetch as a Blob so binary files (PDF, PPTX, etc.) are
-      // preserved through the network hop. Routing is decided after
-      // we know the byte length and filename.
+      var initialRoute = decideUrlRoute(url, "");
+      if (initialRoute === "import") {
+        doImportWebpage(url);
+        return;
+      }
+
+      // Fetch once so extensionless URLs can be routed by response
+      // Content-Type. Known raw/file URLs still remain on the direct path.
       fetch(rewriteGitHubUrl(url))
         .then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
+          var route = decideUrlRoute(url, res.headers.get("Content-Type") || "");
+          if (route === "import") {
+            doImportWebpage(url);
+            return null;
+          }
           return res.blob();
         })
         .then(function (blob) {
+          if (!blob) return;
           btnFetch.disabled = false;
           close();
           // Wrap the Blob in a File so the dispatcher's filename
@@ -4287,6 +4302,10 @@
           }
         })
         .catch(function (err) {
+          if (initialRoute === "probe") {
+            doImportWebpage(url);
+            return;
+          }
           btnFetch.disabled = false;
           var detail = err && err.message ? err.message : "";
           status.textContent = "Could not load. Check the URL and try again."
