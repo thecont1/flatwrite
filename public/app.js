@@ -1313,7 +1313,9 @@
         editor.setSelectionRange(0, 0);
         initialEditorContent = parsed.body;
         lastScrollRatio = 0;
-        setMode("read");
+        /* paginated engines (pagedjs/vivliostyle) need preview mode;
+           read mode forces engine to "none" at render time */
+        setMode(currentDocEngine === "none" ? "read" : "preview");
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
         history.replaceState(null, "", window.location.pathname);
       })
