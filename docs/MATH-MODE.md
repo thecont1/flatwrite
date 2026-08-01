@@ -48,18 +48,19 @@ inline code **before** our inline extensions, so `$` inside `` `code` `` or
 When OFF, `parseMarkdown(md, false)` calls the default marked parse with
 **zero** extension registration.
 
-## Nudge heuristic (load/save only)
+## Load-time prompt heuristic
 
 `hasMathHeuristic(body)`:
 
 1. positive on fenced `math|latex|tex`, `$$`, `\(`, `\[`, or `$` not followed
    by whitespace/digit,
 2. strips fenced/indented/inline code first,
-3. runs only from load (shared doc, IDB restore, URL import) and autosave —
-   never on `input`.
+3. runs only when a **new document is loaded** (share, IDB restore, URL
+   import, file drop/extract) — never on `input` or autosave.
 
-UI: `#math-nudge` pill next to the toggle. Dismiss sticks for the session
-(`mathNudgeDismissed`); enabling Math Mode dismisses automatically.
+UI: `#math-modal-overlay` dialog on document load. Dismiss sticks for
+the current document (`mathPromptDismissed`); enabling Math Mode dismisses
+automatically. Never shown from the toolbar or on autosave.
 
 ## Engine integration (Plain / Paged.js / Vivliostyle)
 
@@ -124,8 +125,8 @@ horizontal overflow for long expressions.
 - `core/math.js` — source of truth
 - `core/render.js` — server flag + asset injection
 - `public/math-render.js` — browser IIFE
-- `public/app.js` — toggle, persistence, finalize-before-paginate, nudge
-- `public/index.html` — `#btn-math`, `#math-nudge`
-- `public/styles.css` — toggle/nudge chrome
+- `public/app.js` — toggle, persistence, finalize-before-paginate, load dialog
+- `public/index.html` — `#btn-math`, `#math-modal-overlay`
+- `public/styles.css` — Math Mode toggle chrome
 - `test/math.test.js` — unit coverage
 - `test/fixtures/math-*.md` — fixtures

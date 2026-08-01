@@ -1560,51 +1560,6 @@ body {
   border-color: rgba(120, 90, 180, 0.28);
 }
 
-/* Opt-in math nudge (load/save only) */
-.md-toolbar-nudge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  max-width: min(280px, 40vw);
-}
-
-.md-toolbar-nudge.hidden {
-  display: none !important;
-}
-
-.md-btn-nudge {
-  width: auto !important;
-  min-width: 0 !important;
-  height: 32px !important;
-  min-height: 32px !important;
-  padding: 0 10px !important;
-  font-size: 0.72rem !important;
-  font-weight: 600;
-  border: 1px solid rgba(120, 90, 180, 0.35);
-  border-radius: 999px;
-  background: rgba(120, 90, 180, 0.10);
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.md-btn-nudge:hover {
-  background: rgba(120, 90, 180, 0.18);
-}
-
-.md-btn-nudge.md-btn-nudge-dismiss {
-  min-width: 28px !important;
-  width: 28px !important;
-  padding: 0 !important;
-  border-radius: 50%;
-  font-weight: 700;
-  opacity: 0.75;
-}
-
-.md-btn-nudge::after {
-  display: none;
-}
-
 /* ==========================================================================
    SIDEBAR ZOOM SELECTOR
    ========================================================================== */

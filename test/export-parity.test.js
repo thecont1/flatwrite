@@ -394,12 +394,12 @@ describe("Read mode logo position", () => {
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
     expect(INDEX).toContain('url-routing.js?v=1');
-    expect(INDEX).toContain('app.js?v=130');
-    expect(INDEX).toContain('math-render.js?v=2');
+    expect(INDEX).toContain('app.js?v=131');
+    expect(INDEX).toContain('math-render.js?v=3');
   });
 
   test("loads the stylesheet revision", () => {
-    expect(INDEX).toContain('styles.css?v=125');
+    expect(INDEX).toContain('styles.css?v=126');
   });
 });
 
@@ -931,11 +931,14 @@ describe("Math Mode", () => {
     expect(fnBody("_commitPreviewHtml")).toContain("mathHeadAssets()");
   });
 
-  test("toolbar exposes Math Mode toggle and load/save nudge", () => {
+  test("toolbar exposes Math Mode toggle; load dialog prompts on new docs", () => {
     expect(INDEX).toContain('id="btn-math"');
-    expect(INDEX).toContain('id="math-nudge"');
-    expect(SRC).toContain("maybeNudgeMathMode");
+    expect(INDEX).toContain('id="math-modal-overlay"');
+    expect(INDEX).not.toContain('id="math-nudge"');
+    expect(SRC).toContain("maybePromptMathMode");
+    expect(SRC).toContain("bindMathPromptDialog");
     expect(SRC).toContain("hasMathHeuristic");
+    expect(SRC).not.toContain("maybeNudgeMathMode");
   });
 });
 

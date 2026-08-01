@@ -103,9 +103,6 @@
     idbPut("activeDocument", "current", record).catch(function (err) {
       console.error("IDB autosave failed:", err);
     });
-    /* Checkpoint nudge: only on autosave, never per-keystroke parsing beyond
-       the cheap delimiter heuristic. */
-    maybeNudgeMathMode(editor && editor.value);
   }
 
   /* ==========================================================================
@@ -736,7 +733,9 @@
      backslash-parens are plain text and KaTeX is never loaded. Persist via
      frontmatter `math:` and IDB docLayout.math (same path as footer). */
   var mathMode = false;
-  var mathNudgeDismissed = false;
+  /* One-shot load dialog: once dismissed (or accepted) for the current
+     document session, do not re-prompt until a new document is loaded. */
+  var mathPromptDismissed = false;
   /* ==========================================================================
      DOM references
      ========================================================================== */
@@ -982,6 +981,8 @@
       // this, dropping a .md in View or Read mode leaves a blank
       // preview pane (the textarea is hidden, so the new content
       // isn't visible until something else triggers a render).
+      mathPromptDismissed = false;
+      maybePromptMathMode(reader.result);
       if (mode !== "edit") renderPreview();
     };
     reader.readAsText(file);
@@ -1120,6 +1121,8 @@
       setEditorContent(data.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
+      mathPromptDismissed = false;
+      maybePromptMathMode(data.markdown);
       if (mode !== "edit") renderPreview();
       var meta = data.metadata || {};
       showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
@@ -1347,7 +1350,9 @@
         /* paginated engines (pagedjs/vivliostyle) need preview mode;
            read mode forces engine to "none" at render time */
         setMode(currentDocEngine === "none" ? "read" : "preview");
-        maybeNudgeMathMode(parsed.body);
+        /* Fresh document load — allow one Math Mode prompt for this body. */
+        mathPromptDismissed = false;
+        maybePromptMathMode(parsed.body);
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
         history.replaceState(null, "", window.location.pathname);
       })
@@ -1565,7 +1570,9 @@
         legacy.marginsTB = dl.margins;
       }
       applyFrontmatter(legacy);
-      maybeNudgeMathMode(editor && editor.value);
+      /* IDB restore is a document load — prompt once if math looks present. */
+      mathPromptDismissed = false;
+      maybePromptMathMode(editor && editor.value);
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -1883,9 +1890,9 @@
         applyContentWidth();
         showFooter = false;
         mathMode = false;
-        mathNudgeDismissed = false;
+        mathPromptDismissed = false;
         syncDocControlsUI();
-        hideMathNudge();
+        hideMathPrompt();
         suppressAutosave = false;
         mode = "edit";
         setMode("edit");
@@ -2116,27 +2123,14 @@
       });
     }
 
-    /* Math Mode toolbar toggle + nudge */
+    /* Math Mode toolbar toggle + one-shot load dialog */
     var btnMath = document.getElementById("btn-math");
     if (btnMath) {
       btnMath.addEventListener("click", function () {
         setMathMode(!mathMode);
       });
     }
-    var mathNudge = document.getElementById("math-nudge");
-    if (mathNudge) {
-      mathNudge.addEventListener("click", function (e) {
-        var t = e.target.closest("[data-cmd]");
-        if (!t) return;
-        var cmd = t.getAttribute("data-cmd");
-        if (cmd === "nudge-enable") {
-          setMathMode(true);
-        } else if (cmd === "nudge-dismiss") {
-          mathNudgeDismissed = true;
-          hideMathNudge();
-        }
-      });
-    }
+    bindMathPromptDialog();
     syncMathModeUI();
 
     /* Orientation toggle */
@@ -2279,6 +2273,13 @@
            close a dialog AND change editor mode on one keypress. */
         var loadOverlay = document.getElementById("load-modal-overlay");
         var compOverlay = document.getElementById("comp-modal-overlay");
+        var mathOverlay = document.getElementById("math-modal-overlay");
+        if (mathOverlay && !mathOverlay.classList.contains("hidden")) {
+          e.preventDefault();
+          mathPromptDismissed = true;
+          hideMathPrompt();
+          return;
+        }
         if ((loadOverlay && !loadOverlay.classList.contains("hidden"))
             || (compOverlay && !compOverlay.classList.contains("hidden"))
             || appShell.classList.contains("drawer-open")) {
@@ -2737,38 +2738,68 @@
       btn.dataset.state = mathMode ? "on" : "off";
       btn.title = mathMode ? "Math Mode on — click to disable" : "Math Mode off — click to enable KaTeX";
     }
-    if (mathMode) hideMathNudge();
+    if (mathMode) hideMathPrompt();
   }
 
-  function hideMathNudge() {
-    var nudge = document.getElementById("math-nudge");
-    if (nudge) nudge.classList.add("hidden");
+  function hideMathPrompt() {
+    var overlay = document.getElementById("math-modal-overlay");
+    if (overlay) overlay.classList.add("hidden");
   }
 
-  function showMathNudge() {
-    if (mathMode || mathNudgeDismissed) return;
-    var nudge = document.getElementById("math-nudge");
-    if (nudge) nudge.classList.remove("hidden");
+  function showMathPrompt() {
+    if (mathMode || mathPromptDismissed) return;
+    var overlay = document.getElementById("math-modal-overlay");
+    if (!overlay) return;
+    overlay.classList.remove("hidden");
+    var enableBtn = document.getElementById("math-modal-enable");
+    if (enableBtn) enableBtn.focus();
   }
 
   /**
-   * Cheap opt-in nudge: only on load / save checkpoints, never per keystroke.
-   * Uses FlatWriteMath.hasMathHeuristic when available.
+   * One-shot Math Mode prompt when a *new document is loaded* (share, IDB
+   * restore, URL import, file drop). Never on keystroke or autosave.
+   * Cheap delimiter heuristic only — no full marked parse.
    */
-  function maybeNudgeMathMode(body) {
-    if (mathMode || mathNudgeDismissed) {
-      hideMathNudge();
+  function maybePromptMathMode(body) {
+    if (mathMode || mathPromptDismissed) {
+      hideMathPrompt();
       return;
     }
     var src = body != null ? body : (editor && editor.value) || "";
-    /* Heuristic must see body only — strip frontmatter first. */
     src = stripYamlFrontMatter(src);
     var hit = false;
     if (window.FlatWriteMath && typeof FlatWriteMath.hasMathHeuristic === "function") {
       hit = FlatWriteMath.hasMathHeuristic(src);
     }
-    if (hit) showMathNudge();
-    else hideMathNudge();
+    if (hit) showMathPrompt();
+    else hideMathPrompt();
+  }
+
+  function bindMathPromptDialog() {
+    var overlay = document.getElementById("math-modal-overlay");
+    if (!overlay || overlay.dataset.bound === "1") return;
+    overlay.dataset.bound = "1";
+
+    function dismiss() {
+      mathPromptDismissed = true;
+      hideMathPrompt();
+    }
+
+    var enableBtn = document.getElementById("math-modal-enable");
+    var dismissBtn = document.getElementById("math-modal-dismiss");
+    var closeBtn = document.getElementById("math-modal-close");
+    if (enableBtn) {
+      enableBtn.addEventListener("click", function () {
+        mathPromptDismissed = true;
+        hideMathPrompt();
+        setMathMode(true);
+      });
+    }
+    if (dismissBtn) dismissBtn.addEventListener("click", dismiss);
+    if (closeBtn) closeBtn.addEventListener("click", dismiss);
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) dismiss();
+    });
   }
 
   function setMathMode(on, opts) {
@@ -2780,8 +2811,8 @@
     }
     mathMode = next;
     if (mathMode) {
-      mathNudgeDismissed = true;
-      hideMathNudge();
+      mathPromptDismissed = true;
+      hideMathPrompt();
     }
     syncMathModeUI();
     if (!opts.skipSave) scheduleAutosave();
@@ -4431,7 +4462,8 @@
           // so these paths get prefixed with the source page's origin
           // instead of resolving against flatwrite.md and 404ing.
           setMarkdownUrl(doc.sourceUrl);
-          maybeNudgeMathMode(importedMarkdown);
+          mathPromptDismissed = false;
+          maybePromptMathMode(importedMarkdown);
           if (mode !== "edit") renderPreview();
           showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
         })
@@ -4673,7 +4705,8 @@
     fwDocumentId = "";
     fwEnsureDocumentId();
     syncMathModeUI();
-    maybeNudgeMathMode(documentContent);
+    mathPromptDismissed = false;
+    maybePromptMathMode(documentContent);
     return {
       documentId: fwDocumentId,
       title: fwExtractTitle(documentContent),
