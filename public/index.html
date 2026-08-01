@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <!-- Base app styles -->
-  <link rel="stylesheet" href="styles.css?v=124" />
+  <link rel="stylesheet" href="styles.css?v=125" />
 
   <!-- WebMCP tool discovery — declarative manifest pointers so agents
        can enumerate this site's tools without executing webmcp.js. -->
@@ -56,10 +56,11 @@
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
+  <script src="math-render.js?v=2" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
   <script src="url-routing.js?v=1" defer></script>
-  <script src="app.js?v=129" defer></script>
+  <script src="app.js?v=130" defer></script>
 
 </head>
 <body>
@@ -236,6 +237,17 @@
                   <button class="md-btn md-btn-assist" id="btn-assist" type="button" aria-label="AI Assist — Coming Soon!" aria-expanded="false" aria-controls="assist-panel">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.8L20 12l-6.1 3.2L12 21l-1.9-5.8L4 12l6.1-3.2L12 3z"/></svg>
                   </button>
+                  <span class="md-toolbar-sep" aria-hidden="true"></span>
+                  <!-- Math Mode toggle: lazy-loads KaTeX only when enabled -->
+                  <button class="md-btn md-btn-toggle" id="btn-math" type="button" aria-label="Math Mode" aria-pressed="false" title="Toggle Math Mode" data-tip="Math Mode">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V4"/><path d="M4 12h8"/><path d="m16 7 4 5-4 5"/><path d="M14 20h6"/></svg>
+                  </button>
+                  <span class="md-toolbar-sep" aria-hidden="true"></span>
+                  <!-- Nudge suggestion for math detection (hidden by default) -->
+                  <span class="md-toolbar-nudge hidden" id="math-nudge" aria-live="polite">
+                    <button class="md-btn md-btn-nudge" type="button" data-cmd="nudge-enable" aria-label="Enable Math Mode">Enable Math Mode?</button>
+                    <button class="md-btn md-btn-nudge md-btn-nudge-dismiss" type="button" data-cmd="nudge-dismiss" aria-label="Dismiss suggestion">x</button>
+                  </span>
                   <span class="md-toolbar-sep" aria-hidden="true"></span>
                   <button class="md-btn md-btn-page-break" id="btn-page-break" aria-label="Insert PDF page break" data-md="pagebreak" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h6"/><path d="M14 7h6"/><path d="M4 17h6"/><path d="M14 17h6"/><path d="M12 3v18"/><path d="m9 12 3 3 3-3"/></svg>
