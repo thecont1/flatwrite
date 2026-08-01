@@ -127,7 +127,7 @@ var MATH_EXTENSIONS = [
     level: 'inline',
     start: function (src) { return src.indexOf('\\('); },
     tokenizer: function (src) {
-      var m = src.match(new RegExp("^\\\\\\(([\\\\s\\\\S]*?)\\\\\\)"));
+      var m = src.match(new RegExp("^\\\\\\(([\\s\\S]*?)\\\\\\)"));
       if (!m) return undefined;
       var text = m[0].slice(2, -2);
       return { type: 'fw-math-paren', raw: m[0], text: text };
@@ -142,12 +142,8 @@ var MATH_EXTENSIONS = [
     start: function (src) { return src.indexOf('\\['); },
     tokenizer: function (src) {
       var m = src.match(new RegExp("^\\\\\\[([\\s\\S]*?)\\\\\\]"));
-      if (!m) {
-      m = src.match(new RegExp("^\\\\\\[([\\s\\S]*?)\\\\\\]"));
-        if (!m) return undefined;
-        return { type: 'fw-math-bracket', block: false, raw: m[0], text: m[1] };
-      }
-      return { type: 'fw-math-bracket', block: true, raw: m[0], text: m[1] };
+      if (!m) return undefined;
+      return { type: 'fw-math-bracket', raw: m[0], text: m[1] };
     },
     renderer: function (token) {
       return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>';
