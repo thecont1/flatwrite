@@ -57,6 +57,11 @@ function fnBody(name) {
   return m[1];
 }
 
+function previewBody() {
+  /* renderPreview is a thin async gate; engine/HTML commit lives in _commitPreviewHtml. */
+  return fnBody("renderPreview") + "\n" + fnBody("_commitPreviewHtml");
+}
+
 describe("removed legacy identifiers are absent", () => {
   test("no FRAMEWORKS/COMPONENTS/FALLBACK_CSS/html2pdf references survive", () => {
     expect(SRC).not.toContain("var FRAMEWORKS");
@@ -127,7 +132,7 @@ describe("buildPageCSS page layout", () => {
 
 describe("paged preview lifecycle", () => {
   test("starts Paged.js deterministically before committing its staging frame", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).toContain('window.PagedConfig = { auto: false }');
     expect(body).toContain('PagedPolyfill.on("afterPreview", _commitPagedPreview)');
     expect(body).toContain("window.PagedPolyfill.preview().then(_commitPagedPreview)");
@@ -151,24 +156,24 @@ describe("paged preview lifecycle", () => {
   });
 
   test("does not mutate page geometry while Paged.js is still paginating", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).not.toContain("new MutationObserver");
     expect(body).not.toContain('if (document.querySelector(".pagedjs_page")) { _fitPage();');
   });
 
   test("does not rely on an early animation-frame race to commit Paged.js", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).not.toContain("requestAnimationFrame(_commitPagedPreview)");
   });
 
   test("does not use blind load/timeouts as successful pagination signals", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).not.toContain('window.addEventListener("load", function()');
     expect(body).not.toContain("setTimeout(_vivlNotify, 3000)");
   });
 
   test("preview scaling preserves page-flow geometry", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).toContain('pages.style.setProperty("transform", "scale(" + s + ")"');
     expect(body).not.toContain('document.body.style.transform = "scale(" + s + ")"');
   });
@@ -275,8 +280,8 @@ describe("FlatWrite PDF spacing tag", () => {
   test("plain/read output strips the proprietary tag without leaving text", () => {
     const body = fnBody("applyFlatWritePdfBreaks");
     expect(body).toContain('return isPaged ? replacement : ""');
-    expect(fnBody("renderPreview")).toContain("applyFlatWritePdfBreaks(");
-    expect(fnBody("renderPreview")).toContain("renderEngineKey");
+    expect(previewBody()).toContain("applyFlatWritePdfBreaks(");
+    expect(previewBody()).toContain("renderEngineKey");
   });
 
   test("applies the same tag transform in fresh HTML exports", () => {
@@ -292,13 +297,15 @@ describe("FlatWrite PDF spacing tag", () => {
     expect(README).toContain("Read");
   });
 
-  test("exposes AI Assist as the first toolbar button, page-break second", () => {
+  test("exposes AI Assist first, Math Mode next, page-break after", () => {
     const toolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
     expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
+    expect(toolbar).toContain('id="btn-math"');
     expect(toolbar).toContain('id="btn-page-break"');
     expect(toolbar).toContain('data-md="pagebreak"');
     expect(toolbar).toContain('aria-label="Insert PDF page break"');
-    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
+    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-math"'));
+    expect(toolbar.indexOf('id="btn-math"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
   });
 
   test("documents both toolbar controls' behavior", () => {
@@ -325,7 +332,7 @@ describe("FlatWrite PDF spacing tag", () => {
 
 describe("paged canvas extent", () => {
   test("both engines derive the scroll height from the scaled page flow", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).toContain("_setPagedCanvasExtent");
     expect(body).toContain("_setVivlCanvasExtent");
     expect(SRC).toContain("document.body.style.height = Math.ceil(flowH * s) + \"px\"");
@@ -333,7 +340,7 @@ describe("paged canvas extent", () => {
   });
 
   test("Vivliostyle page containers are not forced to pixel dimensions", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).not.toContain('pages[i].style.width = _pageW + "px";\n');
     expect(body).not.toContain('pages[i].style.height = _pageH + "px";\n');
     expect(body).toContain('if (pages[i].style.width === "" && pages[i].offsetWidth === 0)');
@@ -387,11 +394,12 @@ describe("Read mode logo position", () => {
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
     expect(INDEX).toContain('url-routing.js?v=1');
-    expect(INDEX).toContain('app.js?v=129');
+    expect(INDEX).toContain('app.js?v=130');
+    expect(INDEX).toContain('math-render.js?v=2');
   });
 
   test("loads the stylesheet revision", () => {
-    expect(INDEX).toContain('styles.css?v=124');
+    expect(INDEX).toContain('styles.css?v=125');
   });
 });
 
@@ -602,7 +610,7 @@ describe("footer DOM scoping", () => {
 
 describe("preview/export fidelity", () => {
   test("both preview engines wait for fonts and share document CSS", () => {
-    const body = fnBody("renderPreview");
+    const body = previewBody();
     expect(body).toContain("buildDocumentCSS(renderEngineKey)");
     expect(body).toContain("document.fonts.ready");
     expect(body).toContain("viewer.loadDocument(docUrl)");
@@ -907,3 +915,27 @@ describe("empty-page culling", () => {
     expect(body).toMatch(/pageBoxes.*forEach|\.forEach\(function \(box\)/);
   });
 });
+
+describe("Math Mode", () => {
+  test("persists math flag in share YAML and IDB docLayout", () => {
+    expect(fnBody("buildShareYaml")).toContain('"math: " + mathMode');
+    expect(fnBody("saveToIDB")).toContain("math: mathMode");
+    expect(fnBody("applyFrontmatter")).toContain("fm.math");
+    expect(SRC).toMatch(/var\s+mathMode\s*=\s*false/);
+  });
+
+  test("gates marked parse and pre-renders KaTeX before iframe commit", () => {
+    expect(fnBody("renderToFragment")).toContain("FlatWriteMath.parseMarkdown");
+    expect(fnBody("renderPreview")).toContain("finalizeMathHtml");
+    expect(fnBody("renderPreview")).toContain("_commitPreviewHtml");
+    expect(fnBody("_commitPreviewHtml")).toContain("mathHeadAssets()");
+  });
+
+  test("toolbar exposes Math Mode toggle and load/save nudge", () => {
+    expect(INDEX).toContain('id="btn-math"');
+    expect(INDEX).toContain('id="math-nudge"');
+    expect(SRC).toContain("maybeNudgeMathMode");
+    expect(SRC).toContain("hasMathHeuristic");
+  });
+});
+
