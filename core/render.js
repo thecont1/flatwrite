@@ -231,7 +231,7 @@ function classifyTaskListItems(html) {
 async function renderToDocument(markdown, frontmatter, options) {
   const { baseUrl } = options || {};
   const opts = resolveRenderOptions(frontmatter);
-  const rawHTML = classifyTaskListItems(fixTaskListNumberedItems(parseMarkdown(markdown, opts.math)));
+  const rawHTML = classifyTaskListItems(fixTaskListNumberedItems(parseMdWithMath(markdown, opts.math)));
   const body = sanitizeHTML(resolveRelativeUrls(rawHTML, baseUrl));
   const { css: fontCss, fontName } = await buildFontFaces(opts.font);
   const docCss = buildDocumentCss({
