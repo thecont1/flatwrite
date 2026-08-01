@@ -16,24 +16,21 @@
  *     the allow-lists) and never collide with code: marked tokenizes fenced
  *     code blocks and inline code spans BEFORE the inline tokenizer reaches our
  *     extension, so $ inside ``` or `code` is invisible to math.
+ *   - Fenced ```math / ```latex / ```tex blocks become display math via a
+ *     custom code renderer on the isolated Marked instance only.
  *   - The browser lazy-loads KaTeX only when Math Mode is ON and math
  *     placeholders are present. It then calls `katex.render(latex, el)`
  *     directly on each placeholder — synchronous, deterministic, no text-scanning.
  *     This is critical for Paged.js / Vivliostyle: math is rendered to static
  *     HTML/MathML BEFORE pagination runs, so pages never break mid-formula.
  *   - Server-side (core/render.js, Node, no DOM) emits the SAME placeholder
- *     spans and injects a KaTeX `<link>` + inline `<script>` that calls the
+ *     spans and injects a KaTeX <link> + inline <script> that calls the
  *     direct-render function on load — so /api/render (share previews, MCP,
  *     headless export) is math-aware without needing the katex npm package.
- *
- * The marked extension set + heuristic are pure functions: safe to import from
- * both Node (CommonJS `require`) and the browser (ES module `import`).
  */
 'use strict';
 
-/**
- * Escape a string for safe inclusion in an HTML attribute value.
- */
+/** Escape a string for safe inclusion in an HTML attribute value. */
 function escapeAttr(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -49,42 +46,37 @@ function escapeAttr(s) {
  * Returns true if any math-delimiter pattern appears outside of fenced
  * code blocks and inline code spans. The scan is deliberately cheap: a few
  * regex tests, no full marked parse.
- *
- * Signal: presence of $$, \( , \[ , or a $ followed by a letter/backslash
- * (not whitespace/digit, which would be currency or a stray). We do NOT
- * validate delimiter balance — the renderer does that — we only flag
- * "looks like it might be math" to nudge the user.
  */
 function hasMathHeuristic(body) {
   if (typeof body !== 'string' || !body) return false;
+
+  // Fenced math language is an explicit author signal — check before stripping.
+  if (/^```(?:math|latex|tex)\s*$/m.test(body)) return true;
 
   // Strip fenced code blocks so $ inside ```lang ... ``` won't false-positive.
   var withoutFences = body.replace(/```[\s\S]*?```/g, '');
 
   // Strip indented code blocks (4-space indent) — best-effort, cheap.
-  // We don't strip lazy continuation, but that's acceptable for a nudge.
-  var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, '');
+  var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, '$1');
 
   // Strip inline code spans so `$foo$` in `code` won't match.
-  var withoutInlineCode = withoutIndented.replace(/`[^`]*`/g, '');
+  var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, '');
 
   // Display-math indicators.
   if (/\$\$(?!\$)/.test(withoutInlineCode)) return true;
-  if (/\\\(/g.test(withoutInlineCode)) return true;
-  if (/\\\[/g.test(withoutInlineCode)) return true;
+  if (/\\\(/.test(withoutInlineCode)) return true;
+  if (/\\\[/.test(withoutInlineCode)) return true;
 
   // Inline math: a $ that is NOT escaped, NOT followed by whitespace/digit/$.
+  // Avoid bare currency like $100 and lone $$.
   if (/(?<!\\)\$(?![\s\d$])/.test(withoutInlineCode)) return true;
 
   return false;
 }
 
 /**
- * The marked extension set. Each extension has a `name` matching its token
- * `type`, and a distinct renderer that emits the neutral placeholder markup.
- * Order matters: the block `$$...$$` extension is listed before the inline
- * `$...$` extension so display math is consumed first (marked checks block
- * tokenizers top-to-bottom, then inline tokenizers within the paragraph).
+ * marked extension set. Order: block $$ before inline $; block \[ before
+ * paragraph text so display forms win.
  */
 var MATH_EXTENSIONS = [
   {
@@ -92,15 +84,33 @@ var MATH_EXTENSIONS = [
     level: 'block',
     start: function (src) { return src.indexOf('$$'); },
     tokenizer: function (src) {
-      // Display math: $$ ... $$ on one or more lines. KaTeX order: $$
-      // is checked before $ so display wins over inline.
-      var m = src.match(/^\$\$(?:\\\$|[^$]|\n)*?\$\$/);
+      // Display math: $$ ... $$ (single or multi-line).
+      var m = src.match(/^\$\$(?!\$)([\s\S]+?)\$\$(?!\$)/);
       if (!m) return undefined;
-      var inner = m[0].slice(2, -2).replace(/\\\$/g, '$');
+      var inner = m[1].replace(/^\n+|\n+$/g, '').replace(/\\\$/g, '$');
       return { type: 'fw-math-block', block: true, raw: m[0], text: inner };
     },
     renderer: function (token) {
-      return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>';
+      return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+    }
+  },
+  {
+    name: 'fw-math-bracket',
+    level: 'block',
+    start: function (src) { return src.indexOf('\\['); },
+    tokenizer: function (src) {
+      // Display: \[ ... \]
+      var m = src.match(/^\\\[([\s\S]*?)\\\]/);
+      if (!m) return undefined;
+      return {
+        type: 'fw-math-bracket',
+        block: true,
+        raw: m[0],
+        text: m[1].replace(/^\n+|\n+$/g, '')
+      };
+    },
+    renderer: function (token) {
+      return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
     }
   },
   {
@@ -108,12 +118,12 @@ var MATH_EXTENSIONS = [
     level: 'inline',
     start: function (src) { return src.indexOf('$'); },
     tokenizer: function (src) {
-      // Inline $...$ — KaTeX/GitHub compatible.
-      //   - $$ is NOT inline (display block handles it)
+      // Inline $...$ — GitHub/KaTeX compatible:
+      //   - $$ is display (handled by block tokenizer)
       //   - $ followed by whitespace or digit → currency, skip
       //   - closing $ preceded by whitespace → not math
       //   - escaped \$ allowed inside
-      var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^\$\\]|\n){1,500}?)\$(?!\$)(?<!\s)/);
+      var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
       if (!m) return undefined;
       var text = m[1].replace(/\\\$/g, '$');
       return { type: 'fw-math-inline', raw: m[0], text: text };
@@ -127,95 +137,114 @@ var MATH_EXTENSIONS = [
     level: 'inline',
     start: function (src) { return src.indexOf('\\('); },
     tokenizer: function (src) {
-      var m = src.match(new RegExp("^\\\\\\(([\\s\\S]*?)\\\\\\)"));
+      // Inline: \( ... \)
+      var m = src.match(/^\\\(([\s\S]*?)\\\)/);
       if (!m) return undefined;
-      var text = m[0].slice(2, -2);
-      return { type: 'fw-math-paren', raw: m[0], text: text };
+      return { type: 'fw-math-paren', raw: m[0], text: m[1] };
     },
     renderer: function (token) {
       return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
     }
-  },
-  {
-    name: 'fw-math-bracket',
-    level: 'block',
-    start: function (src) { return src.indexOf('\\['); },
-    tokenizer: function (src) {
-      var m = src.match(new RegExp("^\\\\\\[([\\s\\S]*?)\\\\\\]"));
-      if (!m) return undefined;
-      return { type: 'fw-math-bracket', raw: m[0], text: m[1] };
-    },
-    renderer: function (token) {
-      return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>';
-    }
   }
 ];
 
+/** Resolve the marked package / global in Node and browser. */
+function getMarkedApi() {
+  if (typeof require === 'function') {
+    try {
+      var mod = require('marked');
+      // marked v9+: { marked, Marked, ... }
+      if (mod && (mod.Marked || mod.marked)) {
+        return {
+          Marked: mod.Marked || (mod.marked && mod.marked.Marked),
+          parse: (mod.marked && mod.marked.parse)
+            ? mod.marked.parse.bind(mod.marked)
+            : (typeof mod.parse === 'function' ? mod.parse.bind(mod) : null)
+        };
+      }
+    } catch (e) { /* fall through */ }
+  }
+  if (typeof marked !== 'undefined') {
+    return {
+      Marked: marked.Marked || null,
+      parse: typeof marked.parse === 'function' ? marked.parse.bind(marked) : null
+    };
+  }
+  if (typeof window !== 'undefined' && window.marked) {
+    return {
+      Marked: window.marked.Marked || null,
+      parse: typeof window.marked.parse === 'function'
+        ? window.marked.parse.bind(window.marked)
+        : null
+    };
+  }
+  return { Marked: null, parse: null };
+}
+
 /**
- * Lazily create and cache a `marked` instance pre-configured with the math
- * extensions. We use a dedicated Marked instance (NOT marked.use on the
- * global singleton) so the OFF path remains a pure no-op — no extensions
- * registered, no per-token overhead, zero cost for math-free documents.
- *
- * Works in both Node (require) and the browser (window.marked global).
+ * Dedicated Marked instance with math extensions. Isolated from the global
+ * singleton so the OFF path remains a pure no-op.
  */
 var cachedMark = null;
-function getMarkedCtor() {
-  if (typeof require === 'function') return require('marked').Marked;
-  if (typeof window !== 'undefined' && window.marked && window.marked.Marked) {
-    return window.marked.Marked;
-  }
-  return null;
-}
 function createMarkedWithMath() {
   if (cachedMark) return cachedMark;
-  var MarkedCtor = getMarkedCtor();
-  if (!MarkedCtor) return null;
-  cachedMark = new MarkedCtor({ extensions: MATH_EXTENSIONS });
+  var api = getMarkedApi();
+  if (!api.Marked) return null;
+
+  cachedMark = new api.Marked();
+  cachedMark.use({
+    extensions: MATH_EXTENSIONS,
+    renderer: {
+      // Fenced ```math / ```latex / ```tex → display math (ON path only).
+      code: function (token) {
+        var lang = (token.lang || '').trim().toLowerCase();
+        if (lang === 'math' || lang === 'latex' || lang === 'tex') {
+          return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+        }
+        return false; // default fenced-code renderer
+      }
+    }
+  });
   return cachedMark;
 }
 
-/** Exposed for the browser-side app.js to create its own isolated instance. */
+/** Exposed for the browser-side app to create its own isolated instance. */
 function createMarkedInstance() {
-  var MarkedCtor = getMarkedCtor();
-  if (!MarkedCtor) return null;
-  return new MarkedCtor({ extensions: MATH_EXTENSIONS });
+  cachedMark = null;
+  var inst = createMarkedWithMath();
+  cachedMark = null; // don't pin the caller's instance as the module cache
+  return inst;
 }
 
 /**
- * Parse markdown to HTML. When `mathEnabled` is true, use a dedicated Marked
- * instance with math extensions (isolated — does NOT mutate the global).
- * When false, the global marked singleton is used unchanged (zero cost).
+ * Parse markdown to HTML.
+ * When mathEnabled: isolated Marked + math extensions.
+ * When false: default marked.parse with zero extension cost.
  */
 function parseMarkdown(markdown, mathEnabled) {
+  var src = markdown == null ? '' : String(markdown);
   if (mathEnabled) {
     var instance = createMarkedWithMath();
-    if (instance) return instance.parse(markdown);
-    // Fallback: use global marked with .use (browser CDN fallback)
+    if (instance) return instance.parse(src);
+    // Last-resort browser fallback: mutate global once.
     if (typeof marked !== 'undefined' && marked.use) {
       marked.use({ extensions: MATH_EXTENSIONS });
-      return marked.parse(markdown);
+      return marked.parse(src);
     }
-    return marked.parse(markdown);
   }
-  // Global marked (default, no extensions) — the OFF path.
-  return typeof marked !== 'undefined' ? marked.parse(markdown) : '';
+  var api = getMarkedApi();
+  if (api.parse) return api.parse(src);
+  return '';
 }
 
-/**
- * Install the math extensions into a marked instance. Gated by a boolean so
- * the OFF path is a pure no-op — no extension registration, no token cost.
- * Kept for backwards-compat / explicit-use callers (e.g. app.js).
- */
+/** Install math extensions into a marked instance (explicit-use callers). */
 function installMathExtensions(markedInstance, enabled) {
   if (!enabled) return;
-  if (typeof markedInstance.use !== 'function') return;
+  if (!markedInstance || typeof markedInstance.use !== 'function') return;
   markedInstance.use({ extensions: MATH_EXTENSIONS });
 }
 
-/**
- * KaTeX CDN base (same version for CSS, JS, and assets).
- */
+/** KaTeX CDN base (pin a single version for CSS + JS + fonts). */
 var KATEX_BASE = 'https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/';
 
 /**
@@ -225,15 +254,52 @@ var KATEX_BASE = 'https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/';
 function loadKatex(win) {
   win = win || (typeof window !== 'undefined' ? window : null);
   if (!win) return Promise.reject(new Error('[math] no window context'));
-  if (win.__flatwriteKatexLoaded) return Promise.resolve();
+  if (win.katex && typeof win.katex.render === 'function') {
+    win.__flatwriteKatexLoaded = true;
+    return Promise.resolve();
+  }
+  if (win.__flatwriteKatexLoaded && win.katex) return Promise.resolve();
   if (win.__flatwriteKatexLoading) return win.__flatwriteKatexLoading;
 
   win.__flatwriteKatexLoading = new Promise(function (resolve, reject) {
-    var link = win.document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = KATEX_BASE + 'katex.min.css';
-    link.onload = function () {
-      var script = win.document.createElement('script');
+    var doc = win.document;
+    if (!doc.head) {
+      win.__flatwriteKatexLoading = null;
+      reject(new Error('[math] no document head'));
+      return;
+    }
+
+    function injectCss() {
+      if (doc.getElementById('fw-katex-css')) return;
+      var link = doc.createElement('link');
+      link.id = 'fw-katex-css';
+      link.rel = 'stylesheet';
+      link.href = KATEX_BASE + 'katex.min.css';
+      doc.head.appendChild(link);
+    }
+
+    function injectJs() {
+      var existing = doc.getElementById('fw-katex-js');
+      if (existing) {
+        if (win.katex) {
+          win.__flatwriteKatexLoaded = true;
+          win.__flatwriteKatexLoading = null;
+          resolve();
+          return;
+        }
+        existing.addEventListener('load', function () {
+          win.__flatwriteKatexLoaded = true;
+          win.__flatwriteKatexLoading = null;
+          resolve();
+        });
+        existing.addEventListener('error', function () {
+          win.__flatwriteKatexLoading = null;
+          reject(new Error('[math] KaTeX JS failed to load'));
+        });
+        return;
+      }
+      var script = doc.createElement('script');
+      script.id = 'fw-katex-js';
       script.src = KATEX_BASE + 'katex.min.js';
       script.onload = function () {
         win.__flatwriteKatexLoaded = true;
@@ -244,24 +310,18 @@ function loadKatex(win) {
         win.__flatwriteKatexLoading = null;
         reject(new Error('[math] KaTeX JS failed to load'));
       };
-      win.document.head.appendChild(script);
-    };
-    link.onerror = function () {
-      win.__flatwriteKatexLoading = null;
-      reject(new Error('[math] KaTeX CSS failed to load'));
-    };
-    win.document.head.appendChild(link);
+      doc.head.appendChild(script);
+    }
+
+    injectCss();
+    injectJs();
   });
   return win.__flatwriteKatexLoading;
 }
 
 /**
- * Render all math placeholders inside `container` (or document) by calling
- * katex.render(latex, element) directly on each `<span class="fw-math-inline">`
- * / `<div class="fw-math-display">` placeholder that carries a data-latex
- * attribute. Synchronous after KaTeX loads. Non-blocking: KaTeX errors are
- * caught and logged, never thrown; on failure the original LaTeX text is
- * injected as fallback content so it stays visible.
+ * Render all math placeholders inside `container` by calling katex.render
+ * directly. Non-throwing: errors leave original LaTeX visible.
  */
 function renderMathInRoot(win, container) {
   win = win || (typeof window !== 'undefined' ? window : null);
@@ -277,7 +337,6 @@ function renderMathInRoot(win, container) {
       return;
     }
     roots.forEach(function (el) {
-      // Skip already-rendered elements (idempotent).
       if (el.querySelector('.katex')) return;
       var latex = el.getAttribute('data-latex') || '';
       var isDisplay = el.classList.contains('fw-math-display');
@@ -285,15 +344,15 @@ function renderMathInRoot(win, container) {
         katex.render(latex, el, {
           throwOnError: false,
           displayMode: isDisplay,
-          errorColor: '#a03340'
+          errorColor: '#a03340',
+          strict: 'ignore',
+          trust: false,
+          output: 'htmlAndMathml'
         });
       } catch (err) {
-        // Non-throwing render mode: leave original LaTeX visible as fallback.
         console.error('[math] katex render error for:', latex, err);
         el.textContent = latex;
-        if (el.getAttribute('data-latex-fallback') !== 'true') {
-          el.setAttribute('data-latex-fallback', 'true');
-        }
+        el.setAttribute('data-latex-fallback', 'true');
       }
     });
   }).catch(function (err) {
@@ -302,20 +361,33 @@ function renderMathInRoot(win, container) {
 }
 
 /**
- * Inject the KaTeX <link> + a self-executing inline script into an HTML
- * string (used by core/render.js for server-side /api/render output and
- * the HTML-export path). The script finds every .fw-math-* placeholder in
- * the loaded document and renders it with KaTeX on DOMContentLoaded.
+ * Inject KaTeX <link> + self-executing inline script into an HTML string
+ * (server-side /api/render and HTML-export path).
  */
 function katexInlineAssets() {
   return (
     '<link rel="stylesheet" href="' + KATEX_BASE + 'katex.min.css">'
-    + '<script src="' + KATEX_BASE + 'katex.min.js"><\/script>'
+    + '<script src="' + KATEX_BASE + 'katex.min.js"><\\/script>'
     + '<script>'
-    + 'window.addEventListener("DOMContentLoaded",function(){var k=window.katex;if(!k){var s=document.createElement("script");s.src="' + KATEX_BASE + 'katex.min.js";s.onload=function(){renderFwMath(document)};document.head.appendChild(s)}else{renderFwMath(document)}});'
-    + 'function renderFwMath(d){var e=d.querySelectorAll(".fw-math-inline,.fw-math-display");if(!e.length)return;k=window.katex||k;if(!k)return;e.forEach(function(el){if(el.querySelector(".katex"))return;var l=el.getAttribute("data-latex")||"";var disp=el.classList.contains("fw-math-display");try{k.render(l,el,{throwOnError:false,displayMode:disp})}catch(err){el.textContent=l}})}'
-    + '<\/script>'
+    + 'window.addEventListener("DOMContentLoaded",function(){'
+    + 'function renderFwMath(d){var k=window.katex;if(!k)return;'
+    + 'd.querySelectorAll(".fw-math-inline,.fw-math-display").forEach(function(el){'
+    + 'if(el.querySelector(".katex"))return;'
+    + 'var l=el.getAttribute("data-latex")||"";'
+    + 'var disp=el.classList.contains("fw-math-display");'
+    + 'try{k.render(l,el,{throwOnError:false,displayMode:disp,strict:"ignore",output:"htmlAndMathml"})}'
+    + 'catch(err){el.textContent=l}})}'
+    + 'if(window.katex){renderFwMath(document)}'
+    + 'else{var s=document.createElement("script");s.src="' + KATEX_BASE + 'katex.min.js";'
+    + 's.onload=function(){renderFwMath(document)};document.head.appendChild(s)}'
+    + '});'
+    + '<\\/script>'
   );
+}
+
+/** Link tag only — used when parent already pre-rendered math into static HTML. */
+function katexCssLink() {
+  return '<link rel="stylesheet" href="' + KATEX_BASE + 'katex.min.css">';
 }
 
 module.exports = {
@@ -327,5 +399,8 @@ module.exports = {
   parseMarkdown: parseMarkdown,
   loadKatex: loadKatex,
   renderMathInRoot: renderMathInRoot,
-  katexInlineAssets: katexInlineAssets
+  katexInlineAssets: katexInlineAssets,
+  katexCssLink: katexCssLink,
+  KATEX_BASE: KATEX_BASE,
+  escapeAttr: escapeAttr
 };

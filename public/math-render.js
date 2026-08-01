@@ -2,14 +2,10 @@
  * math-render.js — Browser-side Math Mode support for FlatWrite
  *
  * Loaded as a plain <script> (NOT a module). Attaches to window.FlatWriteMath.
- * The pure marked-extension set and heuristic mirror core/math.js (Node side)
- * but use the browser-global `marked` and `window` instead of require/module.
- *
- * Kept deliberately free of Nodeisms so it can be dropped into any <head>.
+ * Mirrors core/math.js (Node) without require/module so it can drop into <head>.
  */
 (function () {
   "use strict";
-
   if (typeof window === "undefined") return;
 
   var KATEX_BASE = "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/";
@@ -22,30 +18,16 @@
       .replace(/>/g, "&gt;");
   }
 
-  /**
-   * Cheap, one-shot heuristic: does this document body look like it contains
-   * math? Runs only on document load / explicit re-scan, NOT on every keystroke.
-   */
   function hasMathHeuristic(body) {
     if (typeof body !== "string" || !body) return false;
-
-    // Strip fenced code blocks so $ inside ```lang ... ``` won't false-positive.
+    if (/^```(?:math|latex|tex)\s*$/m.test(body)) return true;
     var withoutFences = body.replace(/```[\s\S]*?```/g, "");
-
-    // Strip indented code blocks (4-space indent) — best-effort, cheap.
-    var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, "");
-
-    // Strip inline code spans so `$foo$` in `code` won't match.
-    var withoutInlineCode = withoutIndented.replace(/`[^`]*`/g, "");
-
-    // Display-math indicators.
+    var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, "$1");
+    var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, "");
     if (/\$\$(?!\$)/.test(withoutInlineCode)) return true;
-    if (/\\\(/g.test(withoutInlineCode)) return true;
-    if (/\\\[/g.test(withoutInlineCode)) return true;
-
-    // Inline math: a $ that is NOT escaped, NOT followed by whitespace/digit/$.
+    if (/\\\(/.test(withoutInlineCode)) return true;
+    if (/\\\[/.test(withoutInlineCode)) return true;
     if (/(?<!\\)\$(?![\s\d$])/.test(withoutInlineCode)) return true;
-
     return false;
   }
 
@@ -55,13 +37,31 @@
       level: "block",
       start: function (src) { return src.indexOf("$$"); },
       tokenizer: function (src) {
-        var m = src.match(/^\$\$(?:\\\$|[^$]|\n)*?\$\$/);
+        var m = src.match(/^\$\$(?!\$)([\s\S]+?)\$\$(?!\$)/);
         if (!m) return undefined;
-        var inner = m[0].slice(2, -2).replace(/\\\$/g, "$");
+        var inner = m[1].replace(/^\n+|\n+$/g, "").replace(/\\\$/g, "$");
         return { type: "fw-math-block", block: true, raw: m[0], text: inner };
       },
       renderer: function (token) {
-        return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>';
+        return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+      }
+    },
+    {
+      name: "fw-math-bracket",
+      level: "block",
+      start: function (src) { return src.indexOf("\\["); },
+      tokenizer: function (src) {
+        var m = src.match(/^\\\[([\s\S]*?)\\\]/);
+        if (!m) return undefined;
+        return {
+          type: "fw-math-bracket",
+          block: true,
+          raw: m[0],
+          text: m[1].replace(/^\n+|\n+$/g, "")
+        };
+      },
+      renderer: function (token) {
+        return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
       }
     },
     {
@@ -69,10 +69,9 @@
       level: "inline",
       start: function (src) { return src.indexOf("$"); },
       tokenizer: function (src) {
-        var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^\$\\]|\n){1,500}?)\$(?!\$)(?<!\s)/);
+        var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
         if (!m) return undefined;
-        var text = m[1].replace(/\\\$/g, "$");
-        return { type: "fw-math-inline", raw: m[0], text: text };
+        return { type: "fw-math-inline", raw: m[0], text: m[1].replace(/\\\$/g, "$") };
       },
       renderer: function (token) {
         return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
@@ -83,123 +82,121 @@
       level: "inline",
       start: function (src) { return src.indexOf("\\("); },
       tokenizer: function (src) {
-        var m = src.match(/^\\\((\\\(|\\[^\)]*?)?\\\)/);
+        var m = src.match(/^\\\(([\s\S]*?)\\\)/);
         if (!m) return undefined;
-        // Actually use a simpler match: \( ... \)
-        m = src.match(/^\\\((?:\\\)|[^\)]*?)\\\)/);
-        if (!m) return undefined;
-        var text = m[0].slice(2, -2);
-        return { type: "fw-math-paren", raw: m[0], text: text };
+        return { type: "fw-math-paren", raw: m[0], text: m[1] };
       },
       renderer: function (token) {
         return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
       }
-    },
-    {
-      name: "fw-math-bracket",
-      level: "block",
-      start: function (src) { return src.indexOf("\\["); },
-      tokenizer: function (src) {
-        var m = src.match(/^\\\[\s*([\s\S]*?)\s*\\\]\n?\n/);
-        if (!m) {
-          m = src.match(/^\\\[\s*([\s\S]*?)\s*\\\]/);
-          if (!m) return undefined;
-          return { type: "fw-math-bracket", block: false, raw: m[0], text: m[1] };
-        }
-        return { type: "fw-math-bracket", block: true, raw: m[0], text: m[1] };
-      },
-      renderer: function (token) {
-        return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>';
-      }
     }
   ];
 
-  /**
-   * Create a dedicated marked.Marked instance with math extensions.
-   * Isolated from the global marked so the OFF path has zero cost.
-   */
   var cachedMark = null;
   function createMarkedWithMath() {
     if (cachedMark) return cachedMark;
-    if (typeof window !== "undefined" && window.marked && window.marked.Marked) {
-      cachedMark = new window.marked.Marked({ extensions: MATH_EXTENSIONS });
-      return cachedMark;
-    }
-    return null;
+    var MarkedCtor = window.marked && window.marked.Marked;
+    if (!MarkedCtor) return null;
+    cachedMark = new MarkedCtor();
+    cachedMark.use({
+      extensions: MATH_EXTENSIONS,
+      renderer: {
+        code: function (token) {
+          var lang = (token.lang || "").trim().toLowerCase();
+          if (lang === "math" || lang === "latex" || lang === "tex") {
+            return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+          }
+          return false;
+        }
+      }
+    });
+    return cachedMark;
   }
 
-  /**
-   * Parse markdown to HTML. When mathEnabled is true, use the isolated
-   * math-enabled instance; otherwise use the global marked (zero cost).
-   */
-  function parseMarkdown(markdown, mathEnabled) {
+  function parseMarkdown(md, mathEnabled) {
+    var src = md == null ? "" : String(md);
     if (mathEnabled) {
       var inst = createMarkedWithMath();
-      if (inst) return inst.parse(markdown);
-      // Fallback: register on global (acceptable one-time cost when no Marked ctor)
+      if (inst) return inst.parse(src);
       if (typeof marked !== "undefined" && marked.use) {
         marked.use({ extensions: MATH_EXTENSIONS });
-        return marked.parse(markdown);
+        return marked.parse(src);
       }
-      return marked.parse(markdown);
     }
-    return marked.parse(markdown);
+    return marked.parse(src);
   }
 
-  /**
-   * Lazily inject KaTeX CSS + JS into a window. Returns a promise.
-   */
   function loadKatex(win) {
     win = win || window;
-    if (win.__flatwriteKatexLoaded) return Promise.resolve();
+    if (win.katex && typeof win.katex.render === "function") {
+      win.__flatwriteKatexLoaded = true;
+      return Promise.resolve();
+    }
+    if (win.__flatwriteKatexLoaded && win.katex) return Promise.resolve();
     if (win.__flatwriteKatexLoading) return win.__flatwriteKatexLoading;
 
     win.__flatwriteKatexLoading = new Promise(function (resolve, reject) {
-      var link = win.document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = KATEX_BASE + "katex.min.css";
-      link.onload = function () {
-        var script = win.document.createElement("script");
-        script.src = KATEX_BASE + "katex.min.js";
-        script.onload = function () {
+      var doc = win.document;
+      if (!doc.head) {
+        win.__flatwriteKatexLoading = null;
+        reject(new Error("[math] no document head"));
+        return;
+      }
+      if (!doc.getElementById("fw-katex-css")) {
+        var link = doc.createElement("link");
+        link.id = "fw-katex-css";
+        link.rel = "stylesheet";
+        link.href = KATEX_BASE + "katex.min.css";
+        doc.head.appendChild(link);
+      }
+      var existing = doc.getElementById("fw-katex-js");
+      if (existing) {
+        existing.addEventListener("load", function () {
           win.__flatwriteKatexLoaded = true;
           win.__flatwriteKatexLoading = null;
           resolve();
-        };
-        script.onerror = function () {
+        });
+        existing.addEventListener("error", function () {
           win.__flatwriteKatexLoading = null;
           reject(new Error("[math] KaTeX JS failed to load"));
-        };
-        win.document.head.appendChild(script);
-      };
-      link.onerror = function () {
+        });
+        if (win.katex) {
+          win.__flatwriteKatexLoaded = true;
+          win.__flatwriteKatexLoading = null;
+          resolve();
+        }
+        return;
+      }
+      var script = doc.createElement("script");
+      script.id = "fw-katex-js";
+      script.src = KATEX_BASE + "katex.min.js";
+      script.onload = function () {
+        win.__flatwriteKatexLoaded = true;
         win.__flatwriteKatexLoading = null;
-        reject(new Error("[math] KaTeX CSS failed to load"));
+        resolve();
       };
-      win.document.head.appendChild(link);
+      script.onerror = function () {
+        win.__flatwriteKatexLoading = null;
+        reject(new Error("[math] KaTeX JS failed to load"));
+      };
+      doc.head.appendChild(script);
     });
     return win.__flatwriteKatexLoading;
   }
 
-  /**
-   * Render all math placeholders in a container by calling katex.render
-   * directly. Synchronous after KaTeX loads. Non-blocking on error.
-   */
   function renderMathInRoot(win, container) {
     win = win || window;
     if (!win) return Promise.resolve();
     container = container || win.document.body;
     var roots = container.querySelectorAll(".fw-math-inline, .fw-math-display");
     if (!roots.length) return Promise.resolve();
-
     return loadKatex(win).then(function () {
       var katex = win.katex;
       if (!katex) {
-        console.error("[math] katex not available after load");
+        console.error("[math] katex not available");
         return;
       }
       roots.forEach(function (el) {
-        // Skip already-rendered (idempotent).
         if (el.querySelector(".katex")) return;
         var latex = el.getAttribute("data-latex") || "";
         var isDisplay = el.classList.contains("fw-math-display");
@@ -207,16 +204,34 @@
           katex.render(latex, el, {
             throwOnError: false,
             displayMode: isDisplay,
-            errorColor: "#a03340"
+            errorColor: "#a03340",
+            strict: "ignore",
+            trust: false,
+            output: "htmlAndMathml"
           });
         } catch (err) {
-          console.error("[math] katex render error for:", latex, err);
+          console.error("[math] render error for:", latex, err);
           el.textContent = latex;
+          el.setAttribute("data-latex-fallback", "true");
         }
       });
     }).catch(function (err) {
       console.error("[math] load failed:", err);
     });
+  }
+
+  /** Pre-render placeholders in an HTML string to static KaTeX HTML. */
+  function renderMathInHtml(html) {
+    if (!html || html.indexOf("fw-math-") === -1) return Promise.resolve(html);
+    var holder = document.createElement("div");
+    holder.innerHTML = html;
+    return renderMathInRoot(window, holder).then(function () {
+      return holder.innerHTML;
+    });
+  }
+
+  function katexCssLink() {
+    return '<link rel="stylesheet" href="' + KATEX_BASE + 'katex.min.css">';
   }
 
   window.FlatWriteMath = {
@@ -226,6 +241,8 @@
     createMarkedWithMath: createMarkedWithMath,
     loadKatex: loadKatex,
     renderMathInRoot: renderMathInRoot,
-    KATEX_BASE: KATEX_BASE,
+    renderMathInHtml: renderMathInHtml,
+    katexCssLink: katexCssLink,
+    KATEX_BASE: KATEX_BASE
   };
 })();
