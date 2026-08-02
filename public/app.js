@@ -3977,7 +3977,8 @@
         + renderedHTML
         + '\n  </main>\n</body>\n</html>';
 
-      openInNewTab(html, "text/html;charset=utf-8");
+      var appWin = openInNewTab(html, "text/html;charset=utf-8");
+      if (!appWin) showToast("Popup blocked — allow popups to export HTML");
       });
       return;
     }
