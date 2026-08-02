@@ -180,10 +180,8 @@
       src = normalizeMathMarkdown(src);
       var inst = createMarkedWithMath();
       if (inst) return inst.parse(src);
-      if (typeof marked !== "undefined" && marked.use) {
-        marked.use({ extensions: MATH_EXTENSIONS });
-        return marked.parse(src);
-      }
+      // If isolated instance creation fails, fall through to default marked
+      // parse — do NOT mutate the shared singleton with math extensions.
     }
     return marked.parse(src);
   }

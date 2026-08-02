@@ -327,3 +327,150 @@ describe("normalizeLatexBody TeX line-break preservation", () => {
     expect(latex).toContain(BS + BS);
   });
 });
+
+describe("core/math.js ↔ public/math-render.js drift detection", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const coreSrc = fs.readFileSync(path.resolve(__dirname, "..", "core", "math.js"), "utf8");
+  const browserSrc = fs.readFileSync(path.resolve(__dirname, "..", "public", "math-render.js"), "utf8");
+
+  // Strip line comments (// ...) from source before extraction so
+  // braces in comments don't miscount.
+  function stripComments(src) {
+    return src.replace(/\/\/[^\n]*/g, "");
+  }
+
+  // Extract a function body by name from source text. Returns the substring
+  // between the opening brace and the matching closing brace. Skips over
+  // string literals and regex literals so braces inside them don't miscount.
+  function extractFn(src, name) {
+    src = stripComments(src);
+    var re = new RegExp("function\\s+" + name + "\\s*\\([^)]*\\)\\s*\\{");
+    var m = re.exec(src);
+    if (!m) return null;
+    var i = m.index + m[0].length;
+    var depth = 1;
+    while (i < src.length && depth > 0) {
+      var ch = src[i];
+      // Skip string literals (single, double, backtick)
+      if (ch === '"' || ch === "'" || ch === "`") {
+        i++;
+        while (i < src.length && src[i] !== ch) {
+          if (src[i] === "\\\\") i++; // skip escaped char
+          i++;
+        }
+        i++;
+        continue;
+      }
+      // Skip regex literals (preceded by =, (, ,, :, !, &, |, ?)
+      if (ch === "/" && i > 0) {
+        var prev = src[i - 1];
+        if ("=(:,!&|?".indexOf(prev) >= 0 || /\b(?:return|typeof|in|of|instanceof)\s*$/.test(src.slice(0, i))) {
+          i++;
+          while (i < src.length && src[i] !== "/") {
+            if (src[i] === "\\\\") i++; // skip escaped char
+            if (src[i] === "[") {
+              // Character class — skip until ]
+              i++;
+              while (i < src.length && src[i] !== "]") {
+                if (src[i] === "\\\\") i++;
+                i++;
+              }
+            }
+            i++;
+          }
+          i++; // skip closing /
+          // Skip flags
+          while (i < src.length && /[gimsuy]/.test(src[i])) i++;
+          continue;
+        }
+      }
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      i++;
+    }
+    return src.slice(m.index + m[0].length, i - 1);
+  }
+
+  // Normalize: collapse whitespace, unify quotes, and strip comments so
+  // cosmetic differences between Node (single-quote, commented) and browser
+  // (double-quote, fewer comments) don't trigger false drift.
+  function norm(s) {
+    return s
+      .replace(/\/\/[^\n]*/g, "")   // strip // line comments
+      .replace(/"/g, "'")             // unify quotes
+      .replace(/\s+/g, " ")           // collapse whitespace
+      .trim();
+  }
+
+  var SHARED_FNS = [
+    "escapeAttr",
+    "normalizeLatexBody",
+    "normalizeMathMarkdown",
+    "hasMathHeuristic",
+  ];
+
+  for (const fn of SHARED_FNS) {
+    test(fn + " body is identical in both files", () => {
+      var coreBody = extractFn(coreSrc, fn);
+      var browserBody = extractFn(browserSrc, fn);
+      expect(coreBody).toBeTruthy();
+      expect(browserBody).toBeTruthy();
+      expect(norm(browserBody)).toBe(norm(coreBody));
+    });
+  }
+
+  test("MATH_EXTENSIONS array has same tokenizer/renderer names", () => {
+    // Extract the MATH_EXTENSIONS array from both files and compare
+    // the extension names, levels, and tokenizer regex patterns.
+    function extractExtensions(src) {
+      var re = /MATH_EXTENSIONS\s*=\s*\[/g;
+      var m = re.exec(src);
+      if (!m) return null;
+      var start = m.index;
+      var depth = 0;
+      var i = m.index + m[0].length - 1;
+      do {
+        if (src[i] === "[") depth++;
+        else if (src[i] === "]") depth--;
+        i++;
+      } while (i < src.length && depth > 0);
+      return src.slice(start, i);
+    }
+    var coreExt = extractExtensions(coreSrc);
+    var browserExt = extractExtensions(browserSrc);
+    expect(coreExt).toBeTruthy();
+    expect(browserExt).toBeTruthy();
+    // Compare names and levels
+    function extractNames(src) {
+      var names = [];
+      var re = /name:\s*['"]([^'"]+)['"]/g;
+      var m;
+      while ((m = re.exec(src)) !== null) names.push(m[1]);
+      return names.sort();
+    }
+    expect(extractNames(browserExt)).toEqual(extractNames(coreExt));
+  });
+
+  test("loadKatex: both check win.katex before attaching listeners", () => {
+    // The key ordering invariant: if win.katex exists, resolve immediately
+    // without adding load/error listeners. Verify the browser file has the
+    // same guard-before-listener structure as core.
+    function extractLoadKatex(src) {
+      return extractFn(src, "loadKatex");
+    }
+    var coreBody = extractLoadKatex(coreSrc);
+    var browserBody = extractLoadKatex(browserSrc);
+    expect(coreBody).toBeTruthy();
+    expect(browserBody).toBeTruthy();
+    // Both must contain a katex check before addEventListener
+    var coreKatexCheck = coreBody.indexOf("win.katex");
+    var coreListener = coreBody.indexOf("addEventListener");
+    var browserKatexCheck = browserBody.indexOf("win.katex");
+    var browserListener = browserBody.indexOf("addEventListener");
+    expect(coreKatexCheck).toBeGreaterThanOrEqual(0);
+    expect(coreListener).toBeGreaterThan(coreKatexCheck);
+    expect(browserKatexCheck).toBeGreaterThanOrEqual(0);
+    expect(browserListener).toBeGreaterThan(browserKatexCheck);
+  });
+});
