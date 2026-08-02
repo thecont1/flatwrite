@@ -285,10 +285,11 @@ describe("normalizeLatexBody TeX line-break preservation", () => {
     expect(out).toBe(BS + "theta^2");
   });
 
-  test("collapses importer-doubled delimiters (\\\\( → \\()", () => {
+  test("preserves \\\\ followed by delimiters (\\(, \\[, \\), \\])", () => {
+    // \\( could be a TeX row separator followed by ( — must NOT collapse.
     var tex = BS + BS + "(a+b" + BS + BS + ")";
     var out = normalizeLatexBody(tex);
-    expect(out).toBe(BS + "(a+b" + BS + ")");
+    expect(out).toBe(tex);
   });
 
   test("un-doubles importer-quadrupled TeX newlines (\\\\\\\\ → \\\\)", () => {

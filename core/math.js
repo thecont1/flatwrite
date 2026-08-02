@@ -46,10 +46,12 @@ function escapeAttr(s) {
  *   2. Double every TeX backslash so \theta becomes \\theta and
  *      \( becomes \\(
  * KaTeX wants single-backslash TeX. Two passes recover author-written
- * math without damaging hand-authored single-backslash sources or
- * legitimate TeX line breaks (\\ in aligned/matrix/array):
+ * math without damaging legitimate TeX line breaks (\\ in
+ * aligned/matrix/array) or hand-authored \\ pairs:
  *   Pass 1: \\\\ → \\  (un-double importer-quadrupled TeX newlines)
- *   Pass 2: \\(?=[A-Za-z(\[]) → \  (un-double importer-escaped commands)
+ *   Pass 2: \\(?=[A-Za-z]) → \  (un-double importer-escaped commands)
+ * Only collapse \\ when followed by a letter — \\ followed by (, [, etc.
+ * may be a TeX row separator, so it is preserved.
  */
 function normalizeLatexBody(tex) {
   if (!tex) return '';
@@ -57,11 +59,11 @@ function normalizeLatexBody(tex) {
   // Combined single pass: match 4-backslash sequences BEFORE 2-backslash
   // sequences so that importer-doubled TeX newlines (\\\\ → \\) are
   // preserved and not subsequently collapsed by the command pattern.
-  //   \\\\       → \\   (un-double importer-quadrupled TeX newlines)
-  //   \\(?=cmd)  → \    (collapse importer-escaped commands/delimiters)
-  // A bare \\ (hand-authored TeX newline) is typically followed by
-  // whitespace/newline and is NOT matched by the second alternative.
-  s = s.replace(/\\\\\\\\|\\\\(?=[A-Za-z()\[\]])/g, function (m) {
+  //   \\\\          → \\   (un-double importer-quadrupled TeX newlines)
+  //   \\(?=[A-Za-z]) → \    (collapse importer-escaped commands only)
+  // A bare \\ (TeX newline) followed by whitespace, (, [, etc. is NOT
+  // matched by the second alternative and is preserved.
+  s = s.replace(/\\\\\\\\|\\\\(?=[A-Za-z])/g, function (m) {
     return m.length === 4 ? '\\\\' : '\\';
   });
   // Markdown underscore escapes that survived → real subscripts.
