@@ -1604,7 +1604,7 @@
     "btn-preview": "Preview the rendered document",
     "btn-read": "Read without editing controls",
     "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
-    "btn-math": "Toggle Math Mode — render $…$, $$…$$, \\(…\\), \\[…\\], and ```math with KaTeX",
+    "btn-math": "Math Mode On/Off. Click to enable/disable math formulas and notations.",
     "btn-assist": "AI Assist — Coming Soon!",
     "assist-close": "Close AI Assist",
     "assist-run": "Run the selected AI Assist operation",
@@ -2736,7 +2736,6 @@
       btn.classList.toggle("is-active", !!mathMode);
       btn.setAttribute("aria-pressed", String(!!mathMode));
       btn.dataset.state = mathMode ? "on" : "off";
-      btn.title = mathMode ? "Math Mode on — click to disable" : "Math Mode off — click to enable KaTeX";
     }
     if (mathMode) hideMathPrompt();
   }
