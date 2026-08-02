@@ -306,6 +306,13 @@ describe("FlatWrite PDF spacing tag", () => {
     const slides = INDEX.match(/class="toolbar-slides"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || "";
     expect(slides).toContain('id="btn-math"');
     expect(slides).toContain('aria-label="Math Mode"');
+    // btn-math is the LAST control in the typo-controls div — no button
+    // or input element should appear between btn-math and the closing </div>.
+    const afterBtnMath = slides.split('id="btn-math"')[1] || "";
+    const closingDiv = afterBtnMath.indexOf("</div>");
+    const between = afterBtnMath.slice(0, closingDiv);
+    expect(between).not.toMatch(/<button[\s\S]*?<\/button>/);
+    expect(between).not.toMatch(/<input[\s\S]*?>/);
     // Edit toolbar still has AI Assist first and page-break
     expect(mdToolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
     expect(mdToolbar).toContain('id="btn-page-break"');
