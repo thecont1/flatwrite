@@ -657,6 +657,7 @@
   var lastEditorScrollTop = 0;
   var previewLoaderTimer = null;
   var currentRenderId = 0;
+  var previewRequestId = 0;
 
   function showPreviewLoader() {
     if (!previewLoader) return;
@@ -2899,6 +2900,8 @@
   function renderPreview() {
     /* Compute sanitized fragment first, then (when Math Mode is ON) pre-render
        KaTeX to static HTML before any engine pagination / iframe commit. */
+    var reqId = ++previewRequestId;
+    var renderId = ++currentRenderId;
     var isApp = surfaceMode === "app";
     var renderEngineKey = isApp ? null : ((mode === "read") ? "none" : (currentDocEngine || "none"));
     var contentForRender = isApp
@@ -2907,11 +2910,12 @@
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     finalizeMathHtml(renderedHTML).then(function (finalHTML) {
-      _commitPreviewHtml(finalHTML, isApp, renderEngineKey);
+      if (reqId !== previewRequestId) return;
+      _commitPreviewHtml(finalHTML, isApp, renderEngineKey, renderId);
     });
   }
 
-  function _commitPreviewHtml(renderedHTML, isApp, renderEngineKey) {
+  function _commitPreviewHtml(renderedHTML, isApp, renderEngineKey, renderId) {
     /* === App Surface: Framework CSS preview === */
     if (isApp) {
       var fw = APP_FRAMEWORKS[currentAppFramework];
@@ -3035,7 +3039,6 @@
     var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     var scrollRatio = lastScrollRatio;
-    var renderId = ++currentRenderId;
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
