@@ -45,15 +45,25 @@ function escapeAttr(s) {
  *   1. Escape underscores as \_ (markdown-safe) inside math
  *   2. Double every TeX backslash so \theta becomes \\theta and
  *      \( becomes \\(
- * KaTeX wants single-backslash TeX. One collapse of \\\\ → \\ plus
- * \_ → _ recovers author-written math without damaging hand-authored
- * single-backslash sources (no \\ pairs to collapse).
+ * KaTeX wants single-backslash TeX. Two passes recover author-written
+ * math without damaging hand-authored single-backslash sources or
+ * legitimate TeX line breaks (\\ in aligned/matrix/array):
+ *   Pass 1: \\\\ → \\  (un-double importer-quadrupled TeX newlines)
+ *   Pass 2: \\(?=[A-Za-z(\[]) → \  (un-double importer-escaped commands)
  */
 function normalizeLatexBody(tex) {
   if (!tex) return '';
   var s = String(tex);
-  // Collapse doubled backslashes once (\\theta → \theta, \\\\ → \\).
-  s = s.replace(/\\\\/g, '\\');
+  // Combined single pass: match 4-backslash sequences BEFORE 2-backslash
+  // sequences so that importer-doubled TeX newlines (\\\\ → \\) are
+  // preserved and not subsequently collapsed by the command pattern.
+  //   \\\\       → \\   (un-double importer-quadrupled TeX newlines)
+  //   \\(?=cmd)  → \    (collapse importer-escaped commands/delimiters)
+  // A bare \\ (hand-authored TeX newline) is typically followed by
+  // whitespace/newline and is NOT matched by the second alternative.
+  s = s.replace(/\\\\\\\\|\\\\(?=[A-Za-z()\[\]])/g, function (m) {
+    return m.length === 4 ? '\\\\' : '\\';
+  });
   // Markdown underscore escapes that survived → real subscripts.
   s = s.replace(/\\_/g, '_');
   // Occasional markdown escapes of * and {} in importer output.

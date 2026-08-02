@@ -9,6 +9,7 @@ const {
   katexInlineAssets,
   katexCssLink,
   KATEX_BASE,
+  normalizeLatexBody,
 } = require("../core/math");
 const {
   renderToFragment,
@@ -220,5 +221,71 @@ describe("Andrew Ng–style fixture snippets", () => {
     // python fence preserved
     expect(html).toContain("language-python");
     expect(html).toMatch(/cost = \$theta/);
+  });
+});
+
+describe("normalizeLatexBody TeX line-break preservation", () => {
+  test("preserves \\\\ (TeX newline) followed by space in aligned environment", () => {
+    // Hand-authored: \begin{aligned}a&=b\\ c&=d\end{aligned}
+    // \\ followed by space is a TeX newline — must NOT be collapsed.
+    var tex = BS + "begin{aligned}a&=b" + BS + BS + " c&=d" + BS + "end{aligned}";
+    var out = normalizeLatexBody(tex);
+    expect(out).toContain("b" + BS + BS + " c");
+    expect(out).not.toContain("b" + BS + " c");
+  });
+
+  test("preserves \\\\ in matrix environment", () => {
+    // \begin{matrix}1 & 2 \\ 3 & 4\end{matrix}
+    var tex = BS + "begin{matrix}1 & 2 " + BS + BS + " 3 & 4" + BS + "end{matrix}";
+    var out = normalizeLatexBody(tex);
+    expect(out).toContain("2 " + BS + BS + " 3");
+  });
+
+  test("collapses importer-doubled commands (\\\\theta → \\theta)", () => {
+    // Importer output: \\theta → should become \theta
+    var tex = BS + BS + "theta^2";
+    var out = normalizeLatexBody(tex);
+    expect(out).toBe(BS + "theta^2");
+  });
+
+  test("collapses importer-doubled delimiters (\\\\( → \\()", () => {
+    var tex = BS + BS + "(a+b" + BS + BS + ")";
+    var out = normalizeLatexBody(tex);
+    expect(out).toBe(BS + "(a+b" + BS + ")");
+  });
+
+  test("un-doubles importer-quadrupled TeX newlines (\\\\\\\\ → \\\\)", () => {
+    // Importer doubled a real \\ → \\\\
+    var tex = BS + BS + BS + BS + "  next line";
+    var out = normalizeLatexBody(tex);
+    // Should be \\ (TeX newline) + "  next line"
+    expect(out).toBe(BS + BS + "  next line");
+  });
+
+  test("preserves hand-authored single-backslash commands", () => {
+    var tex = BS + "frac{1}{2}";
+    var out = normalizeLatexBody(tex);
+    expect(out).toBe(BS + "frac{1}{2}");
+  });
+
+  test("importer-doubled aligned block preserves \\\\ between rows", () => {
+    // Importer output: \\begin{aligned}a&=b\\\\c&=d\\end{aligned}
+    // \\begin → \begin, \\\\ → \\ (TeX newline), \\end → \end
+    var tex = BS + BS + "begin{aligned}a&=b" + BS + BS + BS + BS + "c&=d" + BS + BS + "end{aligned}";
+    var out = normalizeLatexBody(tex);
+    expect(out).toBe(BS + "begin{aligned}a&=b" + BS + BS + "c&=d" + BS + "end{aligned}");
+  });
+
+  test("full importer-doubled aligned block through parseMarkdown preserves \\\\", () => {
+    // $$\\begin{aligned}a&=b\\\\c&=d\\end{aligned}$$
+    var md = "$$" + BS + BS + "begin{aligned}a&=b" + BS + BS + BS + BS + "c&=d" + BS + BS + "end{aligned}$$";
+    var html = parseMarkdown(md, true);
+    expect(html).toContain("fw-math-display");
+    expect(html).toContain("aligned");
+    var match = html.match(/data-latex="([^"]*)"/);
+    expect(match).toBeTruthy();
+    var latex = match[1];
+    // The placeholder must keep \\ between rows
+    expect(latex).toContain(BS + BS);
   });
 });

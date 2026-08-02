@@ -20,13 +20,21 @@
 
   /**
    * Normalize LaTeX from HTML→Markdown importers (markdown.new):
-   * doubles every TeX backslash so \theta → \\theta. Collapse once and
-   * turn \_ into real subscripts. Safe for hand-authored single-backslash.
+   * doubles every TeX backslash so \theta → \\theta. Two passes recover
+   * author-written math without damaging hand-authored single-backslash
+   * sources or legitimate TeX line breaks (\\ in aligned/matrix/array):
+   *   Pass 1: \\\\ → \\  (un-double importer-quadrupled TeX newlines)
+   *   Pass 2: \\(?=[A-Za-z(\[]) → \  (un-double importer-escaped commands)
    */
   function normalizeLatexBody(tex) {
     if (!tex) return "";
     var s = String(tex);
-    s = s.replace(/\\\\/g, "\\");
+    // Combined single pass: match 4-backslash sequences BEFORE 2-backslash
+    // sequences so that importer-doubled TeX newlines (\\\\ → \\) are
+    // preserved and not subsequently collapsed by the command pattern.
+    s = s.replace(/\\\\\\\\|\\\\(?=[A-Za-z()\[\]])/g, function (m) {
+      return m.length === 4 ? "\\\\" : "\\";
+    });
     s = s.replace(/\\_/g, "_");
     s = s.replace(/\\([*{}])/g, "$1");
     // Importer-escaped brackets: \[ → [, \] → ] inside math bodies.
