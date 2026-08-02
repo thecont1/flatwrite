@@ -44,6 +44,12 @@ MAX_BYTES: int = 25 * 1024 * 1024
 
 @dataclass(frozen=True)
 class FileTypeInfo:
+    """Canonical type tokens for an allowed file extension.
+
+    `file_type` is the internal fileType used for rule dispatch (e.g.
+    "powerpoint"), and `extraction_type` is the human/API-facing label
+    (e.g. "powerpoint-notes").
+    """
     file_type: str        # canonical fileType token
     extraction_type: str  # canonical extractionType token
 

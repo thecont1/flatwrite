@@ -85,6 +85,12 @@ def _extract_pptx_notes(md: str) -> str:
 
 
 def powerpoint_notes(md: str) -> str:
+    """Extract speaker notes from MarkItDown's PPTX output.
+
+    Delegates to `_extract_pptx_notes` which splits on slide comments and
+    emits one `## Slide N` section per slide containing only the notes
+    (or the full body as a fallback when no notes block is found).
+    """
     return _extract_pptx_notes(md)
 
 
@@ -97,6 +103,13 @@ _HEADER_FOOTER_MIN_REPEATS = 4
 
 
 def pdf_strip_repeated_lines(md: str) -> str:
+    """Remove lines that appear 4+ times (page headers/footers) from PDF markdown.
+
+    MarkItDown emits one Markdown line per source PDF line, so a line
+    repeated on every page (e.g. a running header) shows up many times.
+    After removal, runs of more than 2 consecutive blank lines are
+    collapsed.
+    """
     if not md:
         return md
     lines = md.split("\n")
@@ -127,6 +140,11 @@ def pdf_strip_repeated_lines(md: str) -> str:
 # richer metadata (EXIF etc.) at the API layer if needed; in v1 we just
 # emit a stub so the user gets *something* to render.
 def image_metadata(md: str, filename: str = "", size_bytes: int = 0) -> str:
+    """Emit a metadata stub for image files (no OCR in v1).
+
+    Returns a Markdown section with the filename and byte size, noting
+    that MarkItDown's body text was not rendered.
+    """
     return (
         f"## Image metadata\n\n"
         f"- **Filename:** `{filename}`\n"
@@ -137,6 +155,11 @@ def image_metadata(md: str, filename: str = "", size_bytes: int = 0) -> str:
 
 
 def audio_metadata(md: str, filename: str = "", size_bytes: int = 0) -> str:
+    """Emit a metadata stub for audio files (no transcription in v1).
+
+    Returns a Markdown section with the filename and byte size, noting
+    that MarkItDown's body text was not rendered.
+    """
     return (
         f"## Audio metadata\n\n"
         f"- **Filename:** `{filename}`\n"

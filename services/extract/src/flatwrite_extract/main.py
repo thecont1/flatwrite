@@ -71,6 +71,13 @@ async def extract(
     request: Request,
     file: Annotated[UploadFile, File(...)],
 ) -> JSONResponse:
+    """Accept a multipart file upload, convert it to markdown, and return the result.
+
+    Verifies the HMAC signature (when configured), validates the filename
+    extension and file size, converts the in-memory bytes via MarkItDown,
+    applies the per-type post-processing rule, and returns a JSON response
+    with the extracted markdown and metadata.
+    """
     # ── Auth ───────────────────────────────────────────────────────────
     # The CF Worker proxy signs each upstream request with the shared
     # INTERNAL_EXTRACT_KEY. We verify here before reading the body so a
