@@ -18,6 +18,40 @@
       .replace(/>/g, "&gt;");
   }
 
+  /**
+   * Normalize LaTeX from HTML→Markdown importers (markdown.new):
+   * doubles every TeX backslash so \theta → \\theta. Collapse once and
+   * turn \_ into real subscripts. Safe for hand-authored single-backslash.
+   */
+  function normalizeLatexBody(tex) {
+    if (!tex) return "";
+    var s = String(tex);
+    s = s.replace(/\\\\/g, "\\");
+    s = s.replace(/\\_/g, "_");
+    s = s.replace(/\\([*{}])/g, "$1");
+    // Importer-escaped brackets: \[ → [, \] → ] inside math bodies.
+    s = s.replace(/\\([\[\]])/g, "$1");
+    return s;
+  }
+
+  /**
+   * Preprocess a full markdown document when Math Mode is ON:
+   * convert importer double-escaped TeX delimiters \\( \\) \\[ \\] to
+   * \( \) \[ \]. Leaves fenced code untouched (strip/restore).
+   */
+  function normalizeMathMarkdown(md) {
+    if (!md) return md;
+    var fences = [];
+    var withoutFences = String(md).replace(/```[\s\S]*?```/g, function (block) {
+      fences.push(block);
+      return "\0FWFENCE" + (fences.length - 1) + "\0";
+    });
+    withoutFences = withoutFences.replace(/\\\\([()[\]])/g, "\\$1");
+    return withoutFences.replace(/\0FWFENCE(\d+)\0/g, function (_m, i) {
+      return fences[Number(i)];
+    });
+  }
+
   function hasMathHeuristic(body) {
     if (typeof body !== "string" || !body) return false;
     if (/^```(?:math|latex|tex)\s*$/m.test(body)) return true;
@@ -25,8 +59,11 @@
     var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, "$1");
     var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, "");
     if (/\$\$(?!\$)/.test(withoutInlineCode)) return true;
-    if (/\\\(/.test(withoutInlineCode)) return true;
-    if (/\\\[/.test(withoutInlineCode)) return true;
+    if (/\\{1,2}\(/.test(withoutInlineCode)) return true;
+    if (/\\{1,2}\[/.test(withoutInlineCode)) return true;
+    if (/\\\\(?:sum|frac|theta|alpha|partial|nabla|left|right|begin|end)\b/.test(withoutInlineCode)) {
+      return true;
+    }
     if (/(?<!\\)\$(?![\s\d$])/.test(withoutInlineCode)) return true;
     return false;
   }
@@ -39,7 +76,7 @@
       tokenizer: function (src) {
         var m = src.match(/^\$\$(?!\$)([\s\S]+?)\$\$(?!\$)/);
         if (!m) return undefined;
-        var inner = m[1].replace(/^\n+|\n+$/g, "").replace(/\\\$/g, "$");
+        var inner = normalizeLatexBody(m[1].replace(/^\n+|\n+$/g, "").replace(/\\\$/g, "$"));
         return { type: "fw-math-block", block: true, raw: m[0], text: inner };
       },
       renderer: function (token) {
@@ -57,7 +94,7 @@
           type: "fw-math-bracket",
           block: true,
           raw: m[0],
-          text: m[1].replace(/^\n+|\n+$/g, "")
+          text: normalizeLatexBody(m[1].replace(/^\n+|\n+$/g, ""))
         };
       },
       renderer: function (token) {
@@ -71,7 +108,8 @@
       tokenizer: function (src) {
         var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
         if (!m) return undefined;
-        return { type: "fw-math-inline", raw: m[0], text: m[1].replace(/\\\$/g, "$") };
+        var text = normalizeLatexBody(m[1].replace(/\\\$/g, "$"));
+        return { type: "fw-math-inline", raw: m[0], text: text };
       },
       renderer: function (token) {
         return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
@@ -84,7 +122,7 @@
       tokenizer: function (src) {
         var m = src.match(/^\\\(([\s\S]*?)\\\)/);
         if (!m) return undefined;
-        return { type: "fw-math-paren", raw: m[0], text: m[1] };
+        return { type: "fw-math-paren", raw: m[0], text: normalizeLatexBody(m[1]) };
       },
       renderer: function (token) {
         return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
@@ -104,7 +142,7 @@
         code: function (token) {
           var lang = (token.lang || "").trim().toLowerCase();
           if (lang === "math" || lang === "latex" || lang === "tex") {
-            return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+            return '<div class="fw-math-display" data-latex="' + escapeAttr(normalizeLatexBody(token.text)) + '"></div>\n';
           }
           return false;
         }
@@ -116,6 +154,7 @@
   function parseMarkdown(md, mathEnabled) {
     var src = md == null ? "" : String(md);
     if (mathEnabled) {
+      src = normalizeMathMarkdown(src);
       var inst = createMarkedWithMath();
       if (inst) return inst.parse(src);
       if (typeof marked !== "undefined" && marked.use) {

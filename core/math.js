@@ -40,6 +40,51 @@ function escapeAttr(s) {
 }
 
 /**
+ * Normalize LaTeX body text produced by HTML→Markdown importers
+ * (notably Cloudflare markdown.new). Those pipelines typically:
+ *   1. Escape underscores as \_ (markdown-safe) inside math
+ *   2. Double every TeX backslash so \theta becomes \\theta and
+ *      \( becomes \\(
+ * KaTeX wants single-backslash TeX. One collapse of \\\\ → \\ plus
+ * \_ → _ recovers author-written math without damaging hand-authored
+ * single-backslash sources (no \\ pairs to collapse).
+ */
+function normalizeLatexBody(tex) {
+  if (!tex) return '';
+  var s = String(tex);
+  // Collapse doubled backslashes once (\\theta → \theta, \\\\ → \\).
+  s = s.replace(/\\\\/g, '\\');
+  // Markdown underscore escapes that survived → real subscripts.
+  s = s.replace(/\\_/g, '_');
+  // Occasional markdown escapes of * and {} in importer output.
+  s = s.replace(/\\([*{}])/g, '$1');
+  // Importer-escaped brackets: \[ → [, \] → ] inside math bodies.
+  // markdown.new escapes [ and ] even inside $$ blocks; KaTeX rejects
+  // \left\[ and E_i\[ as invalid delimiter types.
+  s = s.replace(/\\([\[\]])/g, '$1');
+  return s;
+}
+
+/**
+ * Preprocess a full markdown document when Math Mode is ON:
+ * convert importer double-escaped TeX delimiters \\( \\) \\[ \\] to \( \) \[ \].
+ * Does not touch fenced code (strip/restore).
+ */
+function normalizeMathMarkdown(md) {
+  if (!md) return md;
+  var fences = [];
+  var withoutFences = String(md).replace(/```[\s\S]*?```/g, function (block) {
+    fences.push(block);
+    return '\0FWFENCE' + (fences.length - 1) + '\0';
+  });
+  // \\( → \(, \\) → \), \\[ → \[, \\] → \]  (double-escaped delimiters)
+  withoutFences = withoutFences.replace(/\\\\([()[\]])/g, '\\$1');
+  return withoutFences.replace(/\0FWFENCE(\d+)\0/g, function (_m, i) {
+    return fences[Number(i)];
+  });
+}
+
+/**
  * Cheap, one-shot heuristic: does this document body look like it contains
  * math? Runs only on document load / explicit re-scan, NOT on every keystroke.
  *
@@ -62,10 +107,14 @@ function hasMathHeuristic(body) {
   // Strip inline code spans so `$foo$` in `code` won't match.
   var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, '');
 
-  // Display-math indicators.
+  // Display-math indicators (single- or double-escaped TeX delims from importers).
   if (/\$\$(?!\$)/.test(withoutInlineCode)) return true;
-  if (/\\\(/.test(withoutInlineCode)) return true;
-  if (/\\\[/.test(withoutInlineCode)) return true;
+  if (/\\{1,2}\(/.test(withoutInlineCode)) return true;
+  if (/\\{1,2}\[/.test(withoutInlineCode)) return true;
+  // Common doubled TeX commands from markdown.new without needing delimiters.
+  if (/\\\\(?:sum|frac|theta|alpha|partial|nabla|left|right|begin|end)\b/.test(withoutInlineCode)) {
+    return true;
+  }
 
   // Inline math: a $ that is NOT escaped, NOT followed by whitespace/digit/$.
   // Avoid bare currency like $100 and lone $$.
@@ -87,7 +136,7 @@ var MATH_EXTENSIONS = [
       // Display math: $$ ... $$ (single or multi-line).
       var m = src.match(/^\$\$(?!\$)([\s\S]+?)\$\$(?!\$)/);
       if (!m) return undefined;
-      var inner = m[1].replace(/^\n+|\n+$/g, '').replace(/\\\$/g, '$');
+      var inner = normalizeLatexBody(m[1].replace(/^\n+|\n+$/g, '').replace(/\\\$/g, '$'));
       return { type: 'fw-math-block', block: true, raw: m[0], text: inner };
     },
     renderer: function (token) {
@@ -106,7 +155,7 @@ var MATH_EXTENSIONS = [
         type: 'fw-math-bracket',
         block: true,
         raw: m[0],
-        text: m[1].replace(/^\n+|\n+$/g, '')
+        text: normalizeLatexBody(m[1].replace(/^\n+|\n+$/g, ''))
       };
     },
     renderer: function (token) {
@@ -125,7 +174,7 @@ var MATH_EXTENSIONS = [
       //   - escaped \$ allowed inside
       var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
       if (!m) return undefined;
-      var text = m[1].replace(/\\\$/g, '$');
+      var text = normalizeLatexBody(m[1].replace(/\\\$/g, '$'));
       return { type: 'fw-math-inline', raw: m[0], text: text };
     },
     renderer: function (token) {
@@ -140,7 +189,7 @@ var MATH_EXTENSIONS = [
       // Inline: \( ... \)
       var m = src.match(/^\\\(([\s\S]*?)\\\)/);
       if (!m) return undefined;
-      return { type: 'fw-math-paren', raw: m[0], text: m[1] };
+      return { type: 'fw-math-paren', raw: m[0], text: normalizeLatexBody(m[1]) };
     },
     renderer: function (token) {
       return '<span class="fw-math-inline" data-latex="' + escapeAttr(token.text) + '"></span>';
@@ -199,7 +248,7 @@ function createMarkedWithMath() {
       code: function (token) {
         var lang = (token.lang || '').trim().toLowerCase();
         if (lang === 'math' || lang === 'latex' || lang === 'tex') {
-          return '<div class="fw-math-display" data-latex="' + escapeAttr(token.text) + '"></div>\n';
+          return '<div class="fw-math-display" data-latex="' + escapeAttr(normalizeLatexBody(token.text)) + '"></div>\n';
         }
         return false; // default fenced-code renderer
       }
@@ -224,6 +273,7 @@ function createMarkedInstance() {
 function parseMarkdown(markdown, mathEnabled) {
   var src = markdown == null ? '' : String(markdown);
   if (mathEnabled) {
+    src = normalizeMathMarkdown(src);
     var instance = createMarkedWithMath();
     if (instance) return instance.parse(src);
     // Last-resort browser fallback: mutate global once.
@@ -402,5 +452,7 @@ module.exports = {
   katexInlineAssets: katexInlineAssets,
   katexCssLink: katexCssLink,
   KATEX_BASE: KATEX_BASE,
-  escapeAttr: escapeAttr
+  escapeAttr: escapeAttr,
+  normalizeLatexBody: normalizeLatexBody,
+  normalizeMathMarkdown: normalizeMathMarkdown
 };
