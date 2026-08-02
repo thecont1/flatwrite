@@ -1402,7 +1402,8 @@
           "data-md","data-component","data-tooltip","data-latex","data-latex-fallback",
           "target","rel","title",
           "open","align","valign","border","cellpadding","cellspacing",
-          "start","xmlns","encoding","displaystyle","scriptlevel"
+          "start","xmlns","encoding","displaystyle","scriptlevel",
+          "stretchy","fence","separator","lspace","rspace","notation"
         ],
         ALLOW_DATA_ATTR: false
       });
@@ -2744,12 +2745,19 @@
   function hideMathPrompt() {
     var overlay = document.getElementById("math-modal-overlay");
     if (overlay) overlay.classList.add("hidden");
+    if (mathPromptReturnFocus && typeof mathPromptReturnFocus.focus === "function") {
+      mathPromptReturnFocus.focus();
+      mathPromptReturnFocus = null;
+    }
   }
+
+  var mathPromptReturnFocus = null;
 
   function showMathPrompt() {
     if (mathMode || mathPromptDismissed) return;
     var overlay = document.getElementById("math-modal-overlay");
     if (!overlay) return;
+    mathPromptReturnFocus = document.activeElement;
     overlay.classList.remove("hidden");
     var enableBtn = document.getElementById("math-modal-enable");
     if (enableBtn) enableBtn.focus();
@@ -2799,6 +2807,28 @@
     if (closeBtn) closeBtn.addEventListener("click", dismiss);
     overlay.addEventListener("click", function (e) {
       if (e.target === overlay) dismiss();
+    });
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        dismiss();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      var focusable = overlay.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     });
   }
 
@@ -3875,8 +3905,9 @@
   function openInNewTab(content, mimeType) {
     var blob = new Blob([content], { type: mimeType });
     var url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    var win = window.open(url, "_blank");
     setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+    return win;
   }
 
   function exportMarkdown() {
@@ -3885,6 +3916,11 @@
 
   function exportHTML() {
     if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
+    /* Preload KaTeX when Math Mode is enabled so finalizeMathHtml doesn't
+       wait for CDN loading during the click gesture. */
+    if (mathMode && window.FlatWriteMath && FlatWriteMath.loadKatex) {
+      FlatWriteMath.loadKatex(window);
+    }
     /* === App Surface: Framework CSS export === */
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
@@ -3950,7 +3986,8 @@
        build synchronously below from current controls. */
     var srcdoc = previewFrame.getAttribute("srcdoc");
     if (srcdoc && (mode === "preview" || mode === "read") && isCurrentPreviewCommitted()) {
-      openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
+      var win = openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
+      if (!win) showToast("Popup blocked — allow popups to export HTML");
       return;
     }
 
@@ -3987,7 +4024,8 @@
       + '\n  </div></main>\n'
       + '</body>\n</html>';
 
-    openInNewTab(html, "text/html;charset=utf-8");
+    var exportWin = openInNewTab(html, "text/html;charset=utf-8");
+    if (!exportWin) showToast("Popup blocked — allow popups to export HTML");
     });
   }
 

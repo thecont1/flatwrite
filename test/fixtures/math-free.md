@@ -1,6 +1,6 @@
 # Math-free document
 
-This fixture must never trigger the Math Mode nudge.
+This fixture must never trigger the Math Mode prompt.
 
 - Price list: $5, $10, $100
 - Windows path-like text: C:\Users\home\file.txt

@@ -93,7 +93,7 @@ describe("parseMarkdown math ON", () => {
 
     const bracket = parseMarkdown(BS + "[" + BS + "sum x" + BS + "]", true);
     expect(bracket).toContain('class="fw-math-display"');
-    expect(bracket).toContain("sum x");
+    expect(bracket).toContain('data-latex="' + BS + 'sum x"');
   });
 
   test("renders fenced ```math as display", () => {
@@ -194,6 +194,12 @@ describe("katex asset helpers", () => {
     expect(katexCssLink()).toContain(KATEX_BASE);
     expect(katexInlineAssets()).toContain("katex.min.css");
     expect(katexInlineAssets()).toContain("renderFwMath");
+  });
+
+  test("katexInlineAssets emits valid </script> closing tags", () => {
+    var assets = katexInlineAssets();
+    expect(assets).toContain("</script>");
+    expect(assets).not.toContain("<\\/script>");
   });
 
   test("MATH_EXTENSIONS expose expected names", () => {

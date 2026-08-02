@@ -19,7 +19,7 @@ no extensions, no KaTeX network requests, no DOM placeholder scan.
 |---|---|---|
 | Share / export YAML frontmatter | `math:` | `true` / `false` (also accepts `on`/`off`) |
 | IndexedDB `docLayout` | `math` | boolean |
-| Toolbar | `#btn-math` `aria-pressed` (last button in Edit toolbar) | reflects live state |
+| Toolbar | `#btn-math` `aria-pressed` (last button in View-mode `typo-controls` slide) | reflects live state |
 
 `buildShareYaml()` writes `math:` next to `footer:`. `applyFrontmatter()`
 reads it with the same boolean/string contract as footer. Absent key ⇒ leave

@@ -9,8 +9,10 @@
 const { chromium } = require("playwright");
 const fs = require("fs");
 
-const BASE = "http://localhost:3000";
-const FIXTURE = "/tmp/ng-import.md";
+const path = require("path");
+
+const BASE = process.env.E2E_BASE || "http://localhost:3000";
+const FIXTURE = process.env.E2E_FIXTURE || path.resolve(__dirname, "..", "test", "fixtures", "math-andrew-ng-snippet.md");
 
 (async () => {
   const md = fs.readFileSync(FIXTURE, "utf8");

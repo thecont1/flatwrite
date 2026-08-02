@@ -302,11 +302,8 @@ function parseMarkdown(markdown, mathEnabled) {
     src = normalizeMathMarkdown(src);
     var instance = createMarkedWithMath();
     if (instance) return instance.parse(src);
-    // Last-resort browser fallback: mutate global once.
-    if (typeof marked !== 'undefined' && marked.use) {
-      marked.use({ extensions: MATH_EXTENSIONS });
-      return marked.parse(src);
-    }
+    // If isolated instance creation fails, fall through to default marked
+    // parse — do NOT mutate the shared singleton with math extensions.
   }
   var api = getMarkedApi();
   if (api.parse) return api.parse(src);
@@ -443,7 +440,7 @@ function renderMathInRoot(win, container) {
 function katexInlineAssets() {
   return (
     '<link rel="stylesheet" href="' + KATEX_BASE + 'katex.min.css">'
-    + '<script src="' + KATEX_BASE + 'katex.min.js"><\\/script>'
+    + '<script src="' + KATEX_BASE + 'katex.min.js"></script>'
     + '<script>'
     + 'window.addEventListener("DOMContentLoaded",function(){'
     + 'function renderFwMath(d){var k=window.katex;if(!k)return;'
@@ -457,7 +454,7 @@ function katexInlineAssets() {
     + 'else{var s=document.createElement("script");s.src="' + KATEX_BASE + 'katex.min.js";'
     + 's.onload=function(){renderFwMath(document)};document.head.appendChild(s)}'
     + '});'
-    + '<\\/script>'
+    + '</script>'
   );
 }
 

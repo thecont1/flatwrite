@@ -207,6 +207,12 @@
       }
       var existing = doc.getElementById("fw-katex-js");
       if (existing) {
+        if (win.katex) {
+          win.__flatwriteKatexLoaded = true;
+          win.__flatwriteKatexLoading = null;
+          resolve();
+          return;
+        }
         existing.addEventListener("load", function () {
           win.__flatwriteKatexLoaded = true;
           win.__flatwriteKatexLoading = null;
@@ -216,11 +222,6 @@
           win.__flatwriteKatexLoading = null;
           reject(new Error("[math] KaTeX JS failed to load"));
         });
-        if (win.katex) {
-          win.__flatwriteKatexLoaded = true;
-          win.__flatwriteKatexLoading = null;
-          resolve();
-        }
         return;
       }
       var script = doc.createElement("script");
