@@ -95,7 +95,7 @@
       surfaceMode: surfaceMode,
       appFramework: currentAppFramework,
       docLayout:  { pageSize: pageSize, orientation: orientation, marginsLR: pageMarginsLR, marginsTB: pageMarginsTB, columns: pageColumns,
-                    footer: showFooter },
+                    footer: showFooter, math: mathMode },
       typography: { family: comfortFont, sizeStep: sizeStep, weightStep: weightStep, lineStep: lineStep },
       layout:     { contentWidth: contentWidth, zoomStep: zoomStep },
       updated:    new Date().toISOString()
@@ -132,6 +132,7 @@
       "marginsTB: " + pageMarginsTB,
       "columns: " + pageColumns,
       "footer: " + showFooter,
+      "math: " + mathMode,
       "font: " + comfortFont,
       "size: " + sizeStep,
       "weight: " + weightStep,
@@ -246,6 +247,18 @@
         var fv = v.trim().toLowerCase();
         if (fv === "true" || fv === "on") showFooter = true;
         else if (fv === "false" || fv === "off") showFooter = false;
+      }
+    }
+    /* Math Mode: same boolean/string contract as footer. Default remains
+       OFF when the key is absent so pre-math documents stay zero-cost. */
+    if (fm.math !== undefined) {
+      v = fm.math;
+      if (typeof v === "boolean") {
+        mathMode = v;
+      } else if (typeof v === "string") {
+        var mv = v.trim().toLowerCase();
+        if (mv === "true" || mv === "on") mathMode = true;
+        else if (mv === "false" || mv === "off") mathMode = false;
       }
     }
     if (typeof (v = fm.font) === "string" && (v = v.trim()) &&
@@ -644,6 +657,7 @@
   var lastEditorScrollTop = 0;
   var previewLoaderTimer = null;
   var currentRenderId = 0;
+  var previewRequestId = 0;
 
   function showPreviewLoader() {
     if (!previewLoader) return;
@@ -716,6 +730,13 @@
   var pageMarginsTB = "normal";
   var pageColumns  = 1;
   var showFooter   = false;
+  /* Math Mode: OFF by default per document. When OFF, dollar signs and
+     backslash-parens are plain text and KaTeX is never loaded. Persist via
+     frontmatter `math:` and IDB docLayout.math (same path as footer). */
+  var mathMode = false;
+  /* One-shot load dialog: once dismissed (or accepted) for the current
+     document session, do not re-prompt until a new document is loaded. */
+  var mathPromptDismissed = false;
   /* ==========================================================================
      DOM references
      ========================================================================== */
@@ -961,6 +982,8 @@
       // this, dropping a .md in View or Read mode leaves a blank
       // preview pane (the textarea is hidden, so the new content
       // isn't visible until something else triggers a render).
+      mathPromptDismissed = false;
+      maybePromptMathMode(reader.result);
       if (mode !== "edit") renderPreview();
     };
     reader.readAsText(file);
@@ -1099,6 +1122,8 @@
       setEditorContent(data.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
+      mathPromptDismissed = false;
+      maybePromptMathMode(data.markdown);
       if (mode !== "edit") renderPreview();
       var meta = data.metadata || {};
       showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
@@ -1326,6 +1351,9 @@
         /* paginated engines (pagedjs/vivliostyle) need preview mode;
            read mode forces engine to "none" at render time */
         setMode(currentDocEngine === "none" ? "read" : "preview");
+        /* Fresh document load — allow one Math Mode prompt for this body. */
+        mathPromptDismissed = false;
+        maybePromptMathMode(parsed.body);
         /* Strip ?s= from URL so refresh doesn't re-fetch the shared doc */
         history.replaceState(null, "", window.location.pathname);
       })
@@ -1360,15 +1388,22 @@
           "label","select","option","textarea","button","form","details",
           "summary","main","section","article","aside","header","footer",
           "nav","figure","figcaption","dl","dt","dd","sub","sup","small",
-          "mark","abbr","cite","q","pre","kbd","sup"
+          "mark","abbr","cite","q","pre","kbd","sup",
+          /* KaTeX / MathML (only present after Math Mode pre-render) */
+          "math","semantics","mrow","mi","mo","mn","msup","msub","msubsup",
+          "mfrac","msqrt","mroot","mtable","mtr","mtd","mstyle","mspace",
+          "mtext","annotation","mover","munder","munderover","menclose",
+          "mpadded","mphantom"
         ],
         ALLOWED_ATTR: [
           "href","src","alt","width","height","class","id","type","name",
           "value","placeholder","checked","disabled","for","role",
-          "aria-label","aria-hidden","tabindex","colspan","rowspan","style",
-          "data-md","data-component","data-tooltip","target","rel","title",
+          "aria-label","aria-hidden","aria-live","tabindex","colspan","rowspan","style",
+          "data-md","data-component","data-tooltip","data-latex","data-latex-fallback",
+          "target","rel","title",
           "open","align","valign","border","cellpadding","cellspacing",
-          "start"
+          "start","xmlns","encoding","displaystyle","scriptlevel",
+          "stretchy","fence","separator","lspace","rspace","notation"
         ],
         ALLOW_DATA_ATTR: false
       });
@@ -1398,7 +1433,52 @@
   }
 
   function renderToFragment(markdown) {
-    return classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
+    var raw;
+    /* Math Mode ON: isolated Marked instance via FlatWriteMath (zero cost
+       when OFF — falls through to the global marked singleton). */
+    if (mathMode && window.FlatWriteMath && typeof FlatWriteMath.parseMarkdown === "function") {
+      raw = FlatWriteMath.parseMarkdown(markdown, true);
+    } else {
+      raw = marked.parse(markdown);
+    }
+    return classifyTaskListItems(fixTaskListNumberedItems(raw));
+  }
+
+  /**
+   * When Math Mode is ON and placeholders are present, lazy-load KaTeX and
+   * replace .fw-math-* nodes with static KaTeX HTML/MathML. Must finish
+   * BEFORE Paged.js/Vivliostyle pagination (especially Vivliostyle blob docs
+   * which run with allowScripts:false). Returns a Promise<string>.
+   */
+  function finalizeMathHtml(html) {
+    if (!mathMode) return Promise.resolve(html);
+    if (!html || html.indexOf("fw-math-") === -1) return Promise.resolve(html);
+    if (!window.FlatWriteMath || typeof FlatWriteMath.renderMathInHtml !== "function") {
+      return Promise.resolve(html);
+    }
+    return FlatWriteMath.renderMathInHtml(html).catch(function (err) {
+      console.error("[math] pre-render failed:", err);
+      return html;
+    });
+  }
+
+  /** KaTeX stylesheet link for iframe/export heads when Math Mode is ON. */
+  function mathHeadAssets() {
+    if (!mathMode) return "";
+    if (window.FlatWriteMath && typeof FlatWriteMath.katexCssLink === "function") {
+      return FlatWriteMath.katexCssLink();
+    }
+    return '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">';
+  }
+
+  /** Lightweight display-math spacing (only meaningful when math HTML present). */
+  function mathBodyCss() {
+    if (!mathMode) return "";
+    return ".fw-math-display{margin:0.85em 0;overflow-x:auto;text-align:center;}"
+      + ".fw-math-inline{white-space:normal;}"
+      + ".katex-display{margin:0.5em 0;}"
+      + ".katex{font-size:1.05em;}"
+      + ".katex,.katex *{font-family:KaTeX_Main,KaTeX_Math,KaTeX_AMS,serif !important;}";
   }
 
   /* FlatWrite PDF-only vertical spacing.
@@ -1493,6 +1573,9 @@
         legacy.marginsTB = dl.margins;
       }
       applyFrontmatter(legacy);
+      /* IDB restore is a document load — prompt once if math looks present. */
+      mathPromptDismissed = false;
+      maybePromptMathMode(editor && editor.value);
     }).catch(function (err) {
       console.error("IDB restore failed:", err);
     });
@@ -1524,6 +1607,7 @@
     "btn-preview": "Preview the rendered document",
     "btn-read": "Read without editing controls",
     "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
+    "btn-math": "Math Mode On/Off. Click to enable/disable math formulas and notations.",
     "btn-assist": "AI Assist — Coming Soon!",
     "assist-close": "Close AI Assist",
     "assist-run": "Run the selected AI Assist operation",
@@ -1808,7 +1892,10 @@
         contentWidth = 780;
         applyContentWidth();
         showFooter = false;
+        mathMode = false;
+        mathPromptDismissed = false;
         syncDocControlsUI();
+        hideMathPrompt();
         suppressAutosave = false;
         mode = "edit";
         setMode("edit");
@@ -2038,6 +2125,17 @@
         if (mode === "preview" || mode === "read") renderPreview();
       });
     }
+
+    /* Math Mode toolbar toggle + one-shot load dialog */
+    var btnMath = document.getElementById("btn-math");
+    if (btnMath) {
+      btnMath.addEventListener("click", function () {
+        setMathMode(!mathMode);
+      });
+    }
+    bindMathPromptDialog();
+    syncMathModeUI();
+
     /* Orientation toggle */
     var orientBtn = document.getElementById("toggle-orient");
     if (orientBtn) {
@@ -2178,6 +2276,13 @@
            close a dialog AND change editor mode on one keypress. */
         var loadOverlay = document.getElementById("load-modal-overlay");
         var compOverlay = document.getElementById("comp-modal-overlay");
+        var mathOverlay = document.getElementById("math-modal-overlay");
+        if (mathOverlay && !mathOverlay.classList.contains("hidden")) {
+          e.preventDefault();
+          mathPromptDismissed = true;
+          hideMathPrompt();
+          return;
+        }
         if ((loadOverlay && !loadOverlay.classList.contains("hidden"))
             || (compOverlay && !compOverlay.classList.contains("hidden"))
             || appShell.classList.contains("drawer-open")) {
@@ -2625,6 +2730,124 @@
       toggleFooterBtn.textContent = showFooter ? "On" : "Off";
       toggleFooterBtn.setAttribute("aria-pressed", String(showFooter));
     }
+    syncMathModeUI();
+  }
+
+  function syncMathModeUI() {
+    var btn = document.getElementById("btn-math");
+    if (btn) {
+      btn.classList.toggle("is-active", !!mathMode);
+      btn.setAttribute("aria-pressed", String(!!mathMode));
+      btn.dataset.state = mathMode ? "on" : "off";
+    }
+    if (mathMode) hideMathPrompt();
+  }
+
+  function hideMathPrompt() {
+    var overlay = document.getElementById("math-modal-overlay");
+    if (overlay) overlay.classList.add("hidden");
+    if (mathPromptReturnFocus && typeof mathPromptReturnFocus.focus === "function") {
+      mathPromptReturnFocus.focus();
+      mathPromptReturnFocus = null;
+    }
+  }
+
+  var mathPromptReturnFocus = null;
+
+  function showMathPrompt() {
+    if (mathMode || mathPromptDismissed) return;
+    var overlay = document.getElementById("math-modal-overlay");
+    if (!overlay) return;
+    mathPromptReturnFocus = document.activeElement;
+    overlay.classList.remove("hidden");
+    var enableBtn = document.getElementById("math-modal-enable");
+    if (enableBtn) enableBtn.focus();
+  }
+
+  /**
+   * One-shot Math Mode prompt when a *new document is loaded* (share, IDB
+   * restore, URL import, file drop). Never on keystroke or autosave.
+   * Cheap delimiter heuristic only — no full marked parse.
+   */
+  function maybePromptMathMode(body) {
+    if (mathMode || mathPromptDismissed) {
+      hideMathPrompt();
+      return;
+    }
+    var src = body != null ? body : (editor && editor.value) || "";
+    src = stripYamlFrontMatter(src);
+    var hit = false;
+    if (window.FlatWriteMath && typeof FlatWriteMath.hasMathHeuristic === "function") {
+      hit = FlatWriteMath.hasMathHeuristic(src);
+    }
+    if (hit) showMathPrompt();
+    else hideMathPrompt();
+  }
+
+  function bindMathPromptDialog() {
+    var overlay = document.getElementById("math-modal-overlay");
+    if (!overlay || overlay.dataset.bound === "1") return;
+    overlay.dataset.bound = "1";
+
+    function dismiss() {
+      mathPromptDismissed = true;
+      hideMathPrompt();
+    }
+
+    var enableBtn = document.getElementById("math-modal-enable");
+    var dismissBtn = document.getElementById("math-modal-dismiss");
+    var closeBtn = document.getElementById("math-modal-close");
+    if (enableBtn) {
+      enableBtn.addEventListener("click", function () {
+        mathPromptDismissed = true;
+        hideMathPrompt();
+        setMathMode(true);
+      });
+    }
+    if (dismissBtn) dismissBtn.addEventListener("click", dismiss);
+    if (closeBtn) closeBtn.addEventListener("click", dismiss);
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) dismiss();
+    });
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        dismiss();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      var focusable = overlay.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
+  function setMathMode(on, opts) {
+    opts = opts || {};
+    var next = !!on;
+    if (mathMode === next && !opts.force) {
+      syncMathModeUI();
+      return;
+    }
+    mathMode = next;
+    if (mathMode) {
+      mathPromptDismissed = true;
+      hideMathPrompt();
+    }
+    syncMathModeUI();
+    if (!opts.skipSave) scheduleAutosave();
+    if (!opts.skipRender && (mode === "preview" || mode === "read")) renderPreview();
   }
 
   function positionWidthHandles() {
@@ -2706,12 +2929,27 @@
   }
 
   function renderPreview() {
+    /* Compute sanitized fragment first, then (when Math Mode is ON) pre-render
+       KaTeX to static HTML before any engine pagination / iframe commit. */
+    var reqId = ++previewRequestId;
+    var renderId = ++currentRenderId;
+    var isApp = surfaceMode === "app";
+    var renderEngineKey = isApp ? null : ((mode === "read") ? "none" : (currentDocEngine || "none"));
+    var contentForRender = isApp
+      ? stripYamlFrontMatter(editor.value || "")
+      : applyFlatWritePdfBreaks(stripYamlFrontMatter(editor.value || ""), renderEngineKey);
+    var rawHTML = renderToFragment(contentForRender);
+    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    finalizeMathHtml(renderedHTML).then(function (finalHTML) {
+      if (reqId !== previewRequestId) return;
+      _commitPreviewHtml(finalHTML, isApp, renderEngineKey, renderId);
+    });
+  }
+
+  function _commitPreviewHtml(renderedHTML, isApp, renderEngineKey, renderId) {
     /* === App Surface: Framework CSS preview === */
-    if (surfaceMode === "app") {
+    if (isApp) {
       var fw = APP_FRAMEWORKS[currentAppFramework];
-      var contentForRender = stripYamlFrontMatter(editor.value || "");
-      var rawHTML = renderToFragment(contentForRender);
-      var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
       var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -2740,8 +2978,10 @@
         + '<base target="_blank" rel="noopener noreferrer">'
         + fwCssLinks
         + fwJsTag
+        + mathHeadAssets()
         + '<style>'
         + fwStyle
+        + mathBodyCss()
         + '*, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }'
         + 'body { font-size: ' + (15 * scale) + 'px !important;'
         + ' font-weight: ' + weight + ' !important;'
@@ -2825,19 +3065,11 @@
 
     /* === Doc Surface: Paged.js preview === */
     /* Read mode always renders as Plain — WYSIWYG, no pagination engine */
-    var renderEngineKey = (mode === "read") ? "none" : (currentDocEngine || "none");
     var engine = DOC_ENGINES[renderEngineKey] || DOC_ENGINES.none;
-    var contentForRender = applyFlatWritePdfBreaks(
-      stripYamlFrontMatter(editor.value || ""),
-      renderEngineKey
-    );
-    var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
     var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
     var scrollRatio = lastScrollRatio;
-    var renderId = ++currentRenderId;
 
     /* Engine script tag — injects Paged.js (or Vivliostyle) when selected */
     var engineScript = (engine && engine.script && !engine.module)
@@ -2857,7 +3089,8 @@
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
         + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
-        + '<style>' + docCss + '</style>'
+        + mathHeadAssets()
+        + '<style>' + docCss + mathBodyCss() + '</style>'
         + '</head><body><main><div class="fw-column-flow">' + renderedHTML + '</div></main></body></html>';
       html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
@@ -3036,9 +3269,11 @@
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         + '<base target="_blank" rel="noopener noreferrer">'
         + '<link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">'
+        + mathHeadAssets()
         + engineScript
         + '<style>'
         + docCss
+        + mathBodyCss()
         + 'html::-webkit-scrollbar { display: none; }'
         + 'html { scrollbar-width: none; -ms-overflow-style: none; }'
         /* --- Page-boundary dashed borders on all four sides --- */
@@ -3671,8 +3906,9 @@
   function openInNewTab(content, mimeType) {
     var blob = new Blob([content], { type: mimeType });
     var url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    var win = window.open(url, "_blank");
     setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+    return win;
   }
 
   function exportMarkdown() {
@@ -3681,12 +3917,18 @@
 
   function exportHTML() {
     if (surfaceMode === "doc" && !syncDocumentSettingsFromControls()) return;
+    /* Preload KaTeX when Math Mode is enabled so finalizeMathHtml doesn't
+       wait for CDN loading during the click gesture. */
+    if (mathMode && window.FlatWriteMath && FlatWriteMath.loadKatex) {
+      FlatWriteMath.loadKatex(window);
+    }
     /* === App Surface: Framework CSS export === */
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
       var contentForRender = stripYamlFrontMatter(editor.value || "");
       var rawHTML = renderToFragment(contentForRender);
-      var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+      var renderedHTML0 = sanitizeHTML(resolveRelativeUrls(rawHTML));
+      finalizeMathHtml(renderedHTML0).then(function (renderedHTML) {
       var scale = SIZE_SCALE[String(sizeStep)] || 1;
       var weight = WEIGHT_MAP[String(weightStep)] || 400;
       var lineHeight = LINE_SCALE[String(lineStep)] || 1.75;
@@ -3713,8 +3955,9 @@
         + '  <title>FlatWrite Export</title>\n'
         + '  <base target="_blank" rel="noopener noreferrer">\n'
         + fwCssLinks + fwJsTag
+        + mathHeadAssets()
         + '  <style>\n'
-        + '    ' + fwStyle + '\n'
+        + '    ' + fwStyle + mathBodyCss() + '\n'
         + '    *, *::before, *::after { font-family: ' + fontStack + ' !important; box-sizing: border-box; }\n'
         + '    body { font-size: ' + (15 * scale) + 'px !important;\n'
         + '      font-weight: ' + weight + ' !important; line-height: ' + lineHeight + ' !important;\n'
@@ -3735,7 +3978,9 @@
         + renderedHTML
         + '\n  </main>\n</body>\n</html>';
 
-      openInNewTab(html, "text/html;charset=utf-8");
+      var appWin = openInNewTab(html, "text/html;charset=utf-8");
+      if (!appWin) showToast("Popup blocked — allow popups to export HTML");
+      });
       return;
     }
 
@@ -3743,7 +3988,8 @@
        build synchronously below from current controls. */
     var srcdoc = previewFrame.getAttribute("srcdoc");
     if (srcdoc && (mode === "preview" || mode === "read") && isCurrentPreviewCommitted()) {
-      openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
+      var win = openInNewTab(srcdoc.replace(/<style id="_fw_stripe">[\s\S]*?<\/style>/i, ""), "text/html;charset=utf-8");
+      if (!win) showToast("Popup blocked — allow popups to export HTML");
       return;
     }
 
@@ -3754,7 +4000,8 @@
       currentDocEngine
     );
     var rawHTML = renderToFragment(contentForRender);
-    var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    var renderedHTML0 = sanitizeHTML(resolveRelativeUrls(rawHTML));
+    finalizeMathHtml(renderedHTML0).then(function (renderedHTML) {
     var chapterMatch = renderedHTML.match(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
     var chapterTitle = chapterMatch ? chapterMatch[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : "";
 
@@ -3769,16 +4016,19 @@
       + '  <title>FlatWrite Export</title>\n'
       + '  <base target="_blank" rel="noopener noreferrer">\n'
       + '  <link href="' + FONT_STYLESHEET_URL + '" rel="stylesheet">\n'
+      + mathHeadAssets()
       + engineScript
       + '  <style>\n'
-      + '    ' + buildDocumentCSS(currentDocEngine) + buildFooterCSS(currentDocEngine, chapterTitle) + '\n'
+      + '    ' + buildDocumentCSS(currentDocEngine) + buildFooterCSS(currentDocEngine, chapterTitle) + mathBodyCss() + '\n'
       + '  </style>\n'
       + '</head>\n<body>\n  <main><div class="fw-column-flow">\n'
       + renderedHTML
       + '\n  </div></main>\n'
       + '</body>\n</html>';
 
-    openInNewTab(html, "text/html;charset=utf-8");
+    var exportWin = openInNewTab(html, "text/html;charset=utf-8");
+    if (!exportWin) showToast("Popup blocked — allow popups to export HTML");
+    });
   }
 
   function buildEnginePrintSnapshot(sourceDocument, engineKey) {
@@ -4254,6 +4504,8 @@
           // so these paths get prefixed with the source page's origin
           // instead of resolving against flatwrite.md and 404ing.
           setMarkdownUrl(doc.sourceUrl);
+          mathPromptDismissed = false;
+          maybePromptMathMode(importedMarkdown);
           if (mode !== "edit") renderPreview();
           showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
         })
@@ -4494,6 +4746,9 @@
     setEditorContent(documentContent);
     fwDocumentId = "";
     fwEnsureDocumentId();
+    syncMathModeUI();
+    mathPromptDismissed = false;
+    maybePromptMathMode(documentContent);
     return {
       documentId: fwDocumentId,
       title: fwExtractTitle(documentContent),

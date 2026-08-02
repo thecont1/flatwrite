@@ -1552,6 +1552,14 @@ body {
   flex-shrink: 0;
 }
 
+/* Math Mode toggle — pressed state */
+.md-btn.md-btn-toggle.is-active,
+.md-btn.md-btn-toggle[aria-pressed="true"] {
+  color: var(--text-primary);
+  background: rgba(120, 90, 180, 0.12);
+  border-color: rgba(120, 90, 180, 0.28);
+}
+
 /* ==========================================================================
    SIDEBAR ZOOM SELECTOR
    ========================================================================== */

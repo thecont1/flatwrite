@@ -31,6 +31,12 @@ REPLAY_WINDOW_SECONDS = 5 * 60
 
 @dataclass(frozen=True)
 class AuthResult:
+    """Outcome of an HMAC verification check.
+
+    On success, `ok` is True and `code`/`reason` are None. On failure,
+    `code` is a machine-readable string the caller maps to an HTTP status
+    and `reason` is a human-readable explanation suitable for logging.
+    """
     ok: bool
     code: str | None = None   # machine-readable error code (None on success)
     reason: str | None = None # human-readable detail

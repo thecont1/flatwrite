@@ -26,6 +26,7 @@ const {
 const { DOC_ENGINES } = require('./doc-engines');
 const { buildDocumentCss, sanitizeFontName } = require('./document-css');
 const { buildFontFaces } = require('./font-loader');
+const { MATH_EXTENSIONS, katexInlineAssets, parseMarkdown: parseMdWithMath } = require('./math');
 
 /* Allowed tags/attrs match the browser-side DOMPurify config in public/app.js */
 const SANITIZE_OPTS = {
@@ -38,7 +39,7 @@ const SANITIZE_OPTS = {
     "sub","sup","small","mark","abbr","cite","q","kbd","input",
   ],
   allowedAttributes: {
-    "*": ["class","id","role","aria-label","aria-hidden","tabindex","style","start","type"],
+    "*": ["class","id","role","aria-label","aria-hidden","tabindex","style","start","type","data-latex","data-latex-fallback"],
     "a": ["href","target","rel","title"],
     "img": ["src","alt","width","height","title"],
     "td": ["colspan","rowspan","align","valign"],
@@ -165,6 +166,7 @@ function resolveRenderOptions(fm) {
     marginsLR: String(f.marginsLR || 'normal'),
     marginsTB: String(f.marginsTB || 'normal'),
     footer: f.footer === true || f.footer === 'true' || f.footer === 'on',
+    math: f.math === true || f.math === 'true' || f.math === 'on',
     contentWidth: safeNumber(f.width, 1100, 400, 1400),
     // Theme is a free-form identifier that the document CSS
     // interprets (e.g. via [data-theme="dark"]). We don't validate
@@ -211,6 +213,15 @@ function classifyTaskListItems(html) {
 }
 
 /**
+ * Parse markdown to HTML. When `math` is true (from frontmatter), the
+ * dedicated math-enabled Marked instance is used (isolated — does NOT mutate
+ * the global). When false, the global marked singleton is used (zero cost).
+ *
+ * `parseMarkdown` is imported from ./math to keep the math extension logic
+ * in one place.
+ */
+
+/**
  * Returns a structured document fragment with separate head and body strings.
  * The head contains inlined style/font declarations (and an optional engine script).
  * The body has the rendered markdown wrapped in <main> and class="fw-render".
@@ -220,7 +231,7 @@ function classifyTaskListItems(html) {
 async function renderToDocument(markdown, frontmatter, options) {
   const { baseUrl } = options || {};
   const opts = resolveRenderOptions(frontmatter);
-  const rawHTML = classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown)));
+  const rawHTML = classifyTaskListItems(fixTaskListNumberedItems(parseMdWithMath(markdown, opts.math)));
   const body = sanitizeHTML(resolveRelativeUrls(rawHTML, baseUrl));
   const { css: fontCss, fontName } = await buildFontFaces(opts.font);
   const docCss = buildDocumentCss({
@@ -234,6 +245,8 @@ async function renderToDocument(markdown, frontmatter, options) {
     marginsLR: opts.marginsLR,
     marginsTB: opts.marginsTB,
     contentWidth: opts.contentWidth,
+    // Surface the math flag so CSS can scope .fw-math-display spacing.
+    math: opts.math,
   });
 
   const engine = DOC_ENGINES[opts.docEngine] || DOC_ENGINES.none;
@@ -241,12 +254,18 @@ async function renderToDocument(markdown, frontmatter, options) {
     ? `<script src="${engine.script}" defer></script>`
     : '';
 
+  // When Math Mode is on, inject KaTeX CSS + a self-executing render script
+  // so the emitted HTML self-renders on load (used by share previews, MCP,
+  // and standalone HTML/PDF export). Zero cost when OFF.
+  const mathAssets = opts.math ? katexInlineAssets() : '';
+
   const head = `<head>
   <style>
 ${fontCss}
 ${docCss}
   </style>
 ${engineScript}
+${mathAssets}
 </head>`;
 
   // Theme is exposed as a data-theme attribute on the body element so
@@ -264,10 +283,15 @@ ${engineScript}
 /**
  * Returns only the inner HTML fragment (no document shell).
  * Used by the browser preview — caller applies DOMPurify after injection.
+ * When options.math is true, math extensions are applied via the isolated
+ * parseMarkdown (no global mutation, zero cost when off).
  */
 function renderToFragment(markdown, options) {
-  const { baseUrl } = options || {};
-  return resolveRelativeUrls(classifyTaskListItems(fixTaskListNumberedItems(marked.parse(markdown))), baseUrl);
+  const { baseUrl, math } = options || {};
+  return resolveRelativeUrls(
+    classifyTaskListItems(fixTaskListNumberedItems(parseMdWithMath(markdown, math))),
+    baseUrl
+  );
 }
 
 module.exports = {
