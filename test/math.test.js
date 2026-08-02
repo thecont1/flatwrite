@@ -100,6 +100,17 @@ describe("parseMarkdown math ON", () => {
     expect(html).not.toContain("fw-math-");
   });
 
+  test("heuristic ignores escaped \\$ but detects real $...$", () => {
+    expect(hasMathHeuristic("price is \\$5 today")).toBe(false);
+    expect(hasMathHeuristic("see $x^2$ here")).toBe(true);
+  });
+
+  test("tokenizer rejects $...$  with trailing space before closing $", () => {
+    const html = parseMarkdown("text $x $ done", true);
+    expect(html).not.toContain("fw-math-");
+    expect(html).toContain("$x $");
+  });
+
   test("escapes attribute content", () => {
     const html = parseMarkdown('$"onmouseover=alert(1)"$', true);
     // either not matched as math, or attribute-escaped

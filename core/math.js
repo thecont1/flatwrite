@@ -139,7 +139,8 @@ function hasMathHeuristic(body) {
 
   // Inline math: a $ that is NOT escaped, NOT followed by whitespace/digit/$.
   // Avoid bare currency like $100 and lone $$.
-  if (/(?<!\\)\$(?![\s\d$])/.test(withoutInlineCode)) return true;
+  // Use a capture group instead of lookbehind for broad browser/webview support.
+  if (/(?:^|[^\\])\$(?![\s\d$])/.test(withoutInlineCode)) return true;
 
   return false;
 }
@@ -193,8 +194,11 @@ var MATH_EXTENSIONS = [
       //   - $ followed by whitespace or digit → currency, skip
       //   - closing $ preceded by whitespace → not math
       //   - escaped \$ allowed inside
-      var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
+      // Post-check instead of lookbehind (?<!\s) for broad browser/webview support.
+      var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)\$(?!\$)/);
       if (!m) return undefined;
+      // Closing $ must not be preceded by whitespace (replaces (?<!\s) lookbehind).
+      if (/\s$/.test(m[1])) return undefined;
       var text = normalizeLatexBody(m[1].replace(/\\\$/g, '$'));
       return { type: 'fw-math-inline', raw: m[0], text: text };
     },

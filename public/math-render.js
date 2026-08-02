@@ -80,7 +80,7 @@
     if (/\\\\(?:sum|frac|theta|alpha|partial|nabla|left|right|begin|end)\b/.test(withoutInlineCode)) {
       return true;
     }
-    if (/(?<!\\)\$(?![\s\d$])/.test(withoutInlineCode)) return true;
+    if (/(?:^|[^\\])\$(?![\s\d$])/.test(withoutInlineCode)) return true;
     return false;
   }
 
@@ -122,9 +122,10 @@
       level: "inline",
       start: function (src) { return src.indexOf("$"); },
       tokenizer: function (src) {
-        var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\\$|[^$\n\\]|\\.){1,500}?)(?<!\s)\$(?!\$)/);
+        var m = src.match(/^\$(?!\$)(?![\s\d])((?:\\$|[^$\n\\]|\\.){1,500}?)\$(?!\$)/);
         if (!m) return undefined;
-        var text = normalizeLatexBody(m[1].replace(/\\\$/g, "$"));
+        if (/\s$/.test(m[1])) return undefined;
+        var text = normalizeLatexBody(m[1].replace(/\\$/g, "$"));
         return { type: "fw-math-inline", raw: m[0], text: text };
       },
       renderer: function (token) {
