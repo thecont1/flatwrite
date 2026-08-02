@@ -62,6 +62,17 @@ function normalizeLatexBody(tex) {
   // markdown.new escapes [ and ] even inside $$ blocks; KaTeX rejects
   // \left\[ and E_i\[ as invalid delimiter types.
   s = s.replace(/\\([\[\]])/g, '$1');
+  // Fix \left{ and \right} — source uses unescaped braces after \left/\right.
+  // KaTeX requires \left\{ ... \right\}. Only match when brace is not already
+  // preceded by a backslash (avoid double-escaping \left\{).
+  s = s.replace(/\\left\{/g, '\\left\\{');
+  s = s.replace(/\\right\}/g, '\\right\\}');
+  // Fix bare # inside \text{...} — KaTeX rejects # in text mode.
+  // Convert # to \# only within \text{} arguments.
+  s = s.replace(/(\\text\{[^}]*?)#/g, '$1\\#');
+  // Fix trailing \. (not a valid LaTeX command; source uses it as a period).
+  s = s.replace(/\\\.(?=\s*$|\\\s*$)/g, '.');
+  s = s.replace(/\\\.(?=\s*\\end)/g, '.');
   return s;
 }
 

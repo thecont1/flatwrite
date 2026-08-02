@@ -297,15 +297,20 @@ describe("FlatWrite PDF spacing tag", () => {
     expect(README).toContain("Read");
   });
 
-  test("exposes AI Assist first, page-break, then Math Mode last in the toolbar", () => {
-    const toolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
-    expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
-    expect(toolbar).toContain('id="btn-math"');
-    expect(toolbar).toContain('id="btn-page-break"');
-    expect(toolbar).toContain('data-md="pagebreak"');
-    expect(toolbar).toContain('aria-label="Insert PDF page break"');
-    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
-    expect(toolbar.indexOf('id="btn-page-break"')).toBeLessThan(toolbar.indexOf('id="btn-math"'));
+  test("Math Mode toggle lives in the View-mode (typo-controls) toolbar, last", () => {
+    // btn-math is NOT in the Edit-mode (md-toolbar) anymore
+    const mdToolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
+    expect(mdToolbar).not.toContain('id="btn-math"');
+    // btn-math IS in the View-mode (typo-controls) toolbar, after spacing controls
+    // Use the full toolbar-slides block to capture nested divs
+    const slides = INDEX.match(/class="toolbar-slides"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || "";
+    expect(slides).toContain('id="btn-math"');
+    expect(slides).toContain('aria-label="Math Mode"');
+    // Edit toolbar still has AI Assist first and page-break
+    expect(mdToolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
+    expect(mdToolbar).toContain('id="btn-page-break"');
+    expect(mdToolbar).toContain('data-md="pagebreak"');
+    expect(mdToolbar).toContain('aria-label="Insert PDF page break"');
   });
 
   test("documents both toolbar controls' behavior", () => {
@@ -394,8 +399,8 @@ describe("Read mode logo position", () => {
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
     expect(INDEX).toContain('url-routing.js?v=1');
-    expect(INDEX).toContain('app.js?v=133');
-    expect(INDEX).toContain('math-render.js?v=4');
+    expect(INDEX).toContain('app.js?v=134');
+    expect(INDEX).toContain('math-render.js?v=5');
   });
 
   test("loads the stylesheet revision", () => {

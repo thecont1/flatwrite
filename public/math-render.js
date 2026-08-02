@@ -31,6 +31,14 @@
     s = s.replace(/\\([*{}])/g, "$1");
     // Importer-escaped brackets: \[ → [, \] → ] inside math bodies.
     s = s.replace(/\\([\[\]])/g, "$1");
+    // Fix \left{ → \left\{ and \right} → \right\} (source uses unescaped braces).
+    s = s.replace(/\\left\{/g, "\\left\\{");
+    s = s.replace(/\\right\}/g, "\\right\\}");
+    // Fix bare # inside \text{...} — KaTeX rejects # in text mode.
+    s = s.replace(/(\\text\{[^}]*?)#/g, "$1\\#");
+    // Fix trailing \. (not a valid LaTeX command; source uses it as a period).
+    s = s.replace(/\\\.(?=\s*$|\\\s*$)/g, ".");
+    s = s.replace(/\\\.(?=\s*\\end)/g, ".");
     return s;
   }
 

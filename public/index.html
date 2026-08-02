@@ -56,11 +56,11 @@
   <!-- App logic + deferred libs (non-render-blocking) -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
-  <script src="math-render.js?v=4" defer></script>
+  <script src="math-render.js?v=5" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=1" defer></script>
   <script src="url-routing.js?v=1" defer></script>
-  <script src="app.js?v=133" defer></script>
+  <script src="app.js?v=134" defer></script>
 
 </head>
 <body>
@@ -262,11 +262,6 @@
                   <button class="md-btn" aria-label="Insert link" data-md="link" type="button" data-tip="Link">🔗</button>
                   <button class="md-btn" aria-label="Insert image" data-md="image" type="button" data-tip="Image">🖼️</button>
                   <button class="md-btn" aria-label="Horizontal rule" data-md="hr" type="button" data-tip="Rule">—</button>
-                  <span class="md-toolbar-sep" aria-hidden="true"></span>
-                  <!-- Math Mode toggle: lazy-loads KaTeX only when enabled -->
-                  <button class="md-btn md-btn-toggle" id="btn-math" type="button" aria-label="Math Mode" aria-pressed="false" title="Toggle Math Mode" data-tip="Math Mode">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19a2 2 0 0 0 2 2c2 0 2 -4 3 -9s1 -9 3 -9a2 2 0 0 1 2 2"/><path d="M11 19a2 2 0 0 0 2 2c2 0 2 -4 3 -9s1 -9 3 -9a2 2 0 0 1 2 2"/></svg>
-                  </button>
                 </div>
                 <!-- Typography controls (View mode) -->
                 <div class="toolbar-slide typo-controls">
@@ -288,6 +283,11 @@
                   <span class="typo-label">Spacing</span>
                   <button class="typo-btn" id="line-down" type="button" title="Tighter lines">−</button>
                   <button class="typo-btn" id="line-up" type="button" title="Looser lines">+</button>
+                  <span class="typo-sep"></span>
+                  <!-- Math Mode toggle: lazy-loads KaTeX only when enabled -->
+                  <button class="md-btn md-btn-toggle" id="btn-math" type="button" aria-label="Math Mode" aria-pressed="false" title="Toggle Math Mode" data-tip="Math Mode">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19a2 2 0 0 0 2 2c2 0 2 -4 3 -9s1 -9 3 -9a2 2 0 0 1 2 2"/><path d="M11 19a2 2 0 0 0 2 2c2 0 2 -4 3 -9s1 -9 3 -9a2 2 0 0 1 2 2"/></svg>
+                  </button>
                 </div>
               </div>
             </div>
