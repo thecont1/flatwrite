@@ -72,7 +72,7 @@
     if (typeof body !== "string" || !body) return false;
     if (/^```(?:math|latex|tex)\s*$/m.test(body)) return true;
     var withoutFences = body.replace(/```[\s\S]*?```/g, "");
-    var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, "$1");
+    var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)[^\n]*(?:\n(?: {4,}|\t)[^\n]*)*/g, "$1");
     var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, "");
     if (/\$\$(?!\$)/.test(withoutInlineCode)) return true;
     if (/\\{1,2}\(/.test(withoutInlineCode)) return true;

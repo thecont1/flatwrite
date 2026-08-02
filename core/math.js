@@ -123,7 +123,8 @@ function hasMathHeuristic(body) {
   var withoutFences = body.replace(/```[\s\S]*?```/g, '');
 
   // Strip indented code blocks (4-space indent) — best-effort, cheap.
-  var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)(?:.*\n?)+/g, '$1');
+  // Only remove contiguous indented lines; stop at the first unindented line.
+  var withoutIndented = withoutFences.replace(/(^|\n)(?: {4,}|\t)[^\n]*(?:\n(?: {4,}|\t)[^\n]*)*/g, '$1');
 
   // Strip inline code spans so `$foo$` in `code` won't match.
   var withoutInlineCode = withoutIndented.replace(/`[^`\n]+`/g, '');

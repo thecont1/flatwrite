@@ -37,6 +37,26 @@ describe("hasMathHeuristic", () => {
     expect(hasMathHeuristic("# Hello\n\nNo math here.")).toBe(false);
     expect(hasMathHeuristic("path\\to\\file")).toBe(false);
   });
+
+  test("detects math after indented code block (does not strip prose)", () => {
+    var body = [
+      "Some text",
+      "",
+      "    const x = $1$",  // indented code line
+      "    const y = $2$",  // indented code line
+      "",
+      "Now math: $x^2$",   // unindented prose with inline math
+    ].join("\n");
+    expect(hasMathHeuristic(body)).toBe(true);
+  });
+
+  test("does not false-positive on indented code with $ only", () => {
+    var body = [
+      "    const x = $1$",
+      "    const y = $2$",
+    ].join("\n");
+    expect(hasMathHeuristic(body)).toBe(false);
+  });
 });
 
 describe("parseMarkdown math OFF", () => {
