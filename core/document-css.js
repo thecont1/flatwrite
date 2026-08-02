@@ -132,7 +132,8 @@ function buildDocumentCss(opts) {
 
   const mathCss = math
     ? `.fw-render .fw-math-display { margin: 0.85em 0; overflow-x: auto; text-align: center; }
-       .fw-render .fw-math-inline { white-space: normal; }`
+       .fw-render .fw-math-inline { white-space: normal; }
+       .fw-render .katex, .fw-render .katex * { font-family: KaTeX_Main, KaTeX_Math, KaTeX_AMS, serif !important; }`
     : '';
 
   return `${pageCss}\n${resetCss}\n${engineCss}\n${mathCss}`.trim();

@@ -1477,7 +1477,8 @@
     return ".fw-math-display{margin:0.85em 0;overflow-x:auto;text-align:center;}"
       + ".fw-math-inline{white-space:normal;}"
       + ".katex-display{margin:0.5em 0;}"
-      + ".katex{font-size:1.05em;}";
+      + ".katex{font-size:1.05em;}"
+      + ".katex,.katex *{font-family:KaTeX_Main,KaTeX_Math,KaTeX_AMS,serif !important;}";
   }
 
   /* FlatWrite PDF-only vertical spacing.
