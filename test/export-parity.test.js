@@ -297,15 +297,15 @@ describe("FlatWrite PDF spacing tag", () => {
     expect(README).toContain("Read");
   });
 
-  test("exposes AI Assist first, Math Mode next, page-break after", () => {
+  test("exposes AI Assist first, page-break, then Math Mode last in the toolbar", () => {
     const toolbar = INDEX.match(/id="md-toolbar"[\s\S]*?<\/div>/)?.[0] || "";
     expect(toolbar).toMatch(/id="md-toolbar"[^>]*>\s*<button[^>]+id="btn-assist"/);
     expect(toolbar).toContain('id="btn-math"');
     expect(toolbar).toContain('id="btn-page-break"');
     expect(toolbar).toContain('data-md="pagebreak"');
     expect(toolbar).toContain('aria-label="Insert PDF page break"');
-    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-math"'));
-    expect(toolbar.indexOf('id="btn-math"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
+    expect(toolbar.indexOf('id="btn-assist"')).toBeLessThan(toolbar.indexOf('id="btn-page-break"'));
+    expect(toolbar.indexOf('id="btn-page-break"')).toBeLessThan(toolbar.indexOf('id="btn-math"'));
   });
 
   test("documents both toolbar controls' behavior", () => {
@@ -394,12 +394,12 @@ describe("Read mode logo position", () => {
 describe("asset cache keys", () => {
   test("loads the page-break toolbar JavaScript revision", () => {
     expect(INDEX).toContain('url-routing.js?v=1');
-    expect(INDEX).toContain('app.js?v=131');
-    expect(INDEX).toContain('math-render.js?v=3');
+    expect(INDEX).toContain('app.js?v=133');
+    expect(INDEX).toContain('math-render.js?v=4');
   });
 
   test("loads the stylesheet revision", () => {
-    expect(INDEX).toContain('styles.css?v=126');
+    expect(INDEX).toContain('styles.css?v=127');
   });
 });
 

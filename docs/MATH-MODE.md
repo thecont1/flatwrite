@@ -19,7 +19,7 @@ no extensions, no KaTeX network requests, no DOM placeholder scan.
 |---|---|---|
 | Share / export YAML frontmatter | `math:` | `true` / `false` (also accepts `on`/`off`) |
 | IndexedDB `docLayout` | `math` | boolean |
-| Toolbar | `#btn-math` `aria-pressed` | reflects live state |
+| Toolbar | `#btn-math` `aria-pressed` (last button in Edit toolbar) | reflects live state |
 
 `buildShareYaml()` writes `math:` next to `footer:`. `applyFrontmatter()`
 reads it with the same boolean/string contract as footer. Absent key ⇒ leave
@@ -96,7 +96,18 @@ without a `katex` npm dependency on the worker.
 | MarkItDown (PDF/DOCX/…) | often loses equations or emits images/OMML poorly; sometimes `$...$` survives | heuristic if delimiters present |
 | markdown.new (`/api/import-url`) | preserves page LaTeX-ish `$` / `$$` on math-heavy sites (e.g. Andrew Ng notes) | on import |
 
-Users importing math-heavy pages get a one-shot “Enable Math Mode?” pill;
+markdown.new double-escapes LaTeX delimiters and brackets: `\\(` becomes
+`\\\\(`, `\\theta` becomes `\\\\theta`, `\[` becomes `\\\[`. The shared
+`normalizeLatexBody()` function un-escapes these before KaTeX sees them:
+doubled backslashes collapse, `\_` becomes `_`, `\{`/`\}`/`\*` unescape,
+and `\[`/`\]` inside math bodies convert to plain `[`/`]` (KaTeX rejects
+`\left\[` and `E_i\[` as invalid delimiter types). This brought Andrew Ng
+notes from 22 KaTeX errors to 7 — the remaining 7 are genuine source LaTeX
+syntax errors (`#` in `\text{}`, orphaned `\right`, unescaped `\left{`)
+that KaTeX correctly renders as red fallback text per the non-throwing
+contract.
+
+Users importing math-heavy pages get a one-shot "Enable Math Mode?" dialog;
 nothing is forced.
 
 ## Error handling
