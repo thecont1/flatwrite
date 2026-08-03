@@ -1510,17 +1510,27 @@
   }
 
   /* FlatWrite inline highlight.
-     Syntax: <fw-hl colour="#A7E8C8">highlighted text</fw-hl>
-     Supports both "colour" (British) and "color" (American) attribute names.
+     Syntax: <fw-hl colour="mint">highlighted text</fw-hl>
+     Supported colour names: mint, blush, yellow, peach, turquoise.
+     Hex codes are still accepted for backward compatibility.
      Converted to <mark> before marked parses so the inner text still gets
      markdown formatting (bold, italic, etc.) and DOMPurify allows <mark>. */
+  var HIGHLIGHT_COLOURS = {
+    mint: "#A7E8C8",
+    blush: "#F7C2D6",
+    yellow: "#FDFFB4",
+    peach: "#F8B6A8",
+    turquoise: "#C3EFFC"
+  };
+
   function applyFlatWriteHighlights(markdown) {
     return String(markdown || "").replace(
       /<fw-hl\b([^>]*)>([\s\S]*?)<\/fw-hl\s*>/gi,
       function (_match, attrs, inner) {
         var colourMatch = String(attrs || "").match(/\b(?:colour|color)\s*=\s*["']([^"']*)["']/i);
         var colour = colourMatch ? colourMatch[1] : "";
-        var styleAttr = colour ? ' style="background-color:' + colour + '"' : "";
+        var resolvedColour = HIGHLIGHT_COLOURS[colour.toLowerCase()] || colour;
+        var styleAttr = resolvedColour ? ' style="background-color:' + resolvedColour + '"' : "";
         return '<mark' + styleAttr + '>' + inner + '</mark>';
       }
     );
@@ -2376,7 +2386,7 @@
     });
 
     /* Highlighter dropdown — clicking a swatch wraps the selection (or
-       inserts a placeholder) with <fw-hl colour="...">…</fw-hl>. The menu
+       inserts a placeholder) with <fw-hl colour="name">…</fw-hl>. The menu
        is moved to document.body so it lives in the viewport coordinate system,
        escaping both .toolbar-center's overflow-y:hidden and the backdrop-filter
        containing block created by .main-inner. */
