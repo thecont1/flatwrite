@@ -2376,15 +2376,21 @@
     });
 
     /* Highlighter dropdown — clicking a swatch wraps the selection (or
-       inserts a placeholder) with <fw-hl colour="...">…</fw-hl>. The
-       dropdown is hover-driven via CSS, but because .toolbar-center has
-       overflow-y:hidden, the menu is switched to position:fixed and placed
-       by JS on hover so it escapes the clipping container. */
+       inserts a placeholder) with <fw-hl colour="...">…</fw-hl>. The menu
+       is moved to document.body so it lives in the viewport coordinate system,
+       escaping both .toolbar-center's overflow-y:hidden and the backdrop-filter
+       containing block created by .main-inner. */
     (function () {
       var hlDropdown = document.getElementById("hl-dropdown");
       var hlMenu     = document.getElementById("hl-menu");
       var hlBtn      = hlDropdown ? hlDropdown.querySelector(".hl-btn") : null;
       if (!hlDropdown || !hlMenu || !hlBtn) return;
+
+      /* Move the menu to body so position:fixed is relative to the viewport,
+         not to a backdrop-filter/transformed ancestor. */
+      if (hlMenu.parentElement !== document.body) {
+        document.body.appendChild(hlMenu);
+      }
 
       var closeTimeout = null;
 
@@ -2407,13 +2413,13 @@
           closeTimeout = null;
         }
         hlBtn.setAttribute("aria-expanded", "true");
-        hlDropdown.classList.add("is-open");
+        hlMenu.classList.add("is-open");
         requestAnimationFrame(positionMenu);
       }
 
       function closeMenu() {
         hlBtn.setAttribute("aria-expanded", "false");
-        hlDropdown.classList.remove("is-open");
+        hlMenu.classList.remove("is-open");
       }
 
       function scheduleClose() {
@@ -2436,10 +2442,10 @@
 
       /* Reposition on resize/scroll while open. */
       window.addEventListener("resize", function () {
-        if (hlDropdown.classList.contains("is-open")) positionMenu();
+        if (hlMenu.classList.contains("is-open")) positionMenu();
       });
       window.addEventListener("scroll", function () {
-        if (hlDropdown.classList.contains("is-open")) positionMenu();
+        if (hlMenu.classList.contains("is-open")) positionMenu();
       }, true);
 
       /* Swatch click → insert highlight syntax */

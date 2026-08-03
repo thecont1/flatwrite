@@ -1573,9 +1573,9 @@ body {
 }
 
 .hl-menu {
-  /* position:fixed set inline by JS so the menu escapes .toolbar-center's
-     overflow-y:hidden. A CSS fallback of absolute keeps it roughly placed
-     before JS runs. */
+  /* The menu is moved to document.body by JS so it sits in the viewport
+     coordinate system and is not clipped by .toolbar-center's overflow.
+     A CSS fallback of absolute keeps it roughly placed before JS runs. */
   position: absolute;
   top: calc(100% + 6px);
   left: 50%;
@@ -1625,9 +1625,8 @@ body {
   color: var(--text-primary);
 }
 
-/* Show on hover (desktop) or when forced open */
-.hl-dropdown:hover .hl-menu,
-.hl-dropdown.is-open .hl-menu {
+/* Show when the JS has moved the menu to body and toggled .is-open. */
+.hl-menu.is-open {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
