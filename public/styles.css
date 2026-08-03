@@ -19,6 +19,20 @@
   --font-display: "Unbounded", system-ui, sans-serif;
   --font-body: "Lato", system-ui, sans-serif;
 
+  /* Body background gradient (Disney Castle-inspired dreamy gradient).
+     Exposed as a token so other elements (e.g. the word-counter numerals)
+     can sample the same gradient via background-clip:text to mimic a
+     transparent fill that matches the page behind them. */
+  --bg-gradient: linear-gradient(
+    135deg,
+    #eab8e4 0%,
+    #f5c2da 20%,
+    #f7e9a1 40%,
+    #a2d8c2 65%,
+    #7eb8d4 82%,
+    #5d7a8e 100%
+  );
+
   /* Shell layout tokens */
   --shell-max: 1600px;
   --shell-pad-x: 12px;
@@ -86,15 +100,7 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   /* Disney Castle-inspired dreamy gradient */
-  background: linear-gradient(
-    135deg,
-    #eab8e4 0%,
-    #f5c2da 20%,
-    #f7e9a1 40%,
-    #a2d8c2 65%,
-    #7eb8d4 82%,
-    #5d7a8e 100%
-  );
+  background: var(--bg-gradient);
   background-attachment: fixed;
   height: 100vh;
 }
@@ -1998,6 +2004,123 @@ body {
 }
 
 /* ==========================================================================
+   SELECTION WORD COUNTER
+   Floats in the space directly below the sidebar. Kept outside .sidebar so
+   the sidebar's own height never changes when the counter appears/disappears.
+   No box — the numeral floats in space with a thin, hard 2px drop shadow.
+   ========================================================================== */
+
+/* Wrapper that holds the sidebar + the floating counter, so the counter
+   sits beneath the rail without disturbing the flex row layout. */
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: stretch;
+  min-width: var(--rail-w);
+  width: var(--rail-w);
+}
+
+.word-counter {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  margin: var(--space-6) 0 0;
+  padding: 0 var(--space-3);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  /* No box — floats in space */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* Active state — text is selected in the editor */
+.word-counter.is-active {
+  display: flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.word-counter-number {
+  position: relative;
+  display: inline-block;
+  font-family: var(--font-display, var(--font-body));
+  /* Sized so 5 digits + comma ("99,999") fits within the 264px sidebar width.
+     At 900 weight with tabular-nums, 6 glyphs ≈ 3.2em; 3rem keeps that ~154px. */
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  /* Transparent interior: clip the page gradient to the glyph so the fill
+     matches the background behind it. Combined with the solid ::before
+     shadow sitting behind, the gradient-filled interior occludes the
+     shadow where it overlaps, so the shadow only peeks out 2px at the
+     bottom-right — a true hard drop shadow, not a fill. */
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  /* 1px solid border around each glyph */
+  -webkit-text-stroke: 1px #333333;
+  /* No text-shadow — it would render behind and show through the fill.
+     The shadow is cast by ::below. */
+  text-shadow: none;
+}
+
+/* Solid #333 silhouette of the number, offset 2px right + 2px down, sitting
+   behind the gradient-filled glyph. The opaque gradient fill on top hides
+   the overlap, so only the 2px bottom-right sliver of the shadow is visible. */
+.word-counter-number::before {
+  content: attr(data-count);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  font-variant-numeric: inherit;
+  color: #333333;
+  -webkit-text-fill-color: #333333;
+  -webkit-text-stroke: 0;
+  background: none;
+  transform: translate(2px, 2px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.word-counter-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* In focus mode, keep the counter usable (it is selection-driven, not chrome) */
+.app-shell.focus-mode .word-counter {
+  opacity: 0;
+}
+.app-shell.focus-mode .word-counter.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ==========================================================================
    MOBILE HAMBURGER + LOGO (fixed position, sidebar slides from behind)
    Hidden by default, shown only on narrow screens.
    ========================================================================== */
@@ -2222,6 +2345,19 @@ body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+  }
+
+  /* The rail wrapper collapses — the sidebar is positioned absolutely as a
+     modal drawer, so the rail must not reserve any horizontal space. */
+  .sidebar-rail {
+    min-width: 0 !important;
+    width: 0 !important;
+  }
+
+  /* The floating counter is a desktop affordance; on mobile the sidebar is a
+     modal drawer so there is no "below the sidebar" space to float in. */
+  .word-counter {
+    display: none !important;
   }
 
   .app-shell.drawer-open .sidebar {

@@ -1772,6 +1772,94 @@
   }
 
   /* ==========================================================================
+     Selection word counter
+     Counts words in the editor's current selection *as if rendered* — markdown
+     syntax (headings, rules, emphasis, code fences, links, list markers, HTML
+     tags) is stripped so only visible prose words are tallied. The counter
+     lives at the foot of the sidebar and is shown only while a non-empty
+     selection exists.
+     ========================================================================== */
+
+  var wordCounterEl       = document.getElementById("word-counter");
+  var wordCounterNumberEl = document.getElementById("word-counter-number");
+  var wordCounterLabelEl  = document.getElementById("word-counter-label");
+
+  /* Decode the handful of HTML entities marked is known to emit, so they
+     don't inflate or distort the word count. */
+  function decodeHtmlEntities(s) {
+    if (!s) return "";
+    if (typeof document !== "undefined" && document.createElement) {
+      var el = document.createElement("textarea");
+      el.innerHTML = s;
+      return el.value;
+    }
+    return s
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, " ");
+  }
+
+  /* Strip markdown syntax from a snippet and return the rendered prose words.
+     Falls back to a regex-based strip if marked is unavailable or throws. */
+  function countRenderedWords(markdown) {
+    if (!markdown) return 0;
+    var html = "";
+    try {
+      if (typeof marked !== "undefined" && marked.parse) {
+        html = marked.parse(markdown, { async: false });
+      } else {
+        html = markdown;
+      }
+    } catch (_) {
+      html = markdown;
+    }
+    /* Drop script/style/code content entirely — it is not rendered prose.
+       Keep inline code text (marked wraps it in <code>, which we strip to
+       its inner text below). */
+    var text = String(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      /* Remove HTML tags but keep their inner text */
+      .replace(/<\/?(?!br\b|p\b|div\b)[^>]*>/gi, " ")
+      /* Block-level breaks become word boundaries */
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/(p|div|h[1-6]|li|tr|td|th|blockquote|pre)\s*>/gi, " ");
+    /* Strip any remaining tags */
+    text = text.replace(/<[^>]+>/g, " ");
+    text = decodeHtmlEntities(text);
+    /* Collapse whitespace and count non-empty tokens */
+    var words = text.trim().split(/\s+/).filter(Boolean);
+    return words.length;
+  }
+
+  function updateWordCounter() {
+    if (!wordCounterEl || !wordCounterNumberEl || !wordCounterLabelEl) return;
+    var start = editor.selectionStart;
+    var end = editor.selectionEnd;
+    var selected = start !== end ? editor.value.slice(start, end) : "";
+    var count = countRenderedWords(selected);
+    if (count > 0) {
+      var formatted = count.toLocaleString();
+      wordCounterNumberEl.textContent = formatted;
+      /* Mirror the value for the ::before shadow pseudo-element. */
+      wordCounterNumberEl.dataset.count = formatted;
+      wordCounterLabelEl.textContent = count === 1 ? "word" : "words";
+      wordCounterEl.classList.toggle("is-single", count === 1);
+      wordCounterEl.classList.add("is-active");
+    } else {
+      wordCounterEl.classList.remove("is-active");
+      wordCounterEl.classList.remove("is-single");
+      wordCounterNumberEl.textContent = "0";
+      wordCounterNumberEl.dataset.count = "0";
+      wordCounterLabelEl.textContent = "words";
+    }
+  }
+
+  /* ==========================================================================
      Share via serverless API (Hastebin proxy)
      ========================================================================== */
 
@@ -2380,6 +2468,18 @@
     });
 
     bindAssistUi();
+
+    /* Selection word counter — recompute on any selection change within the
+       editor, plus keyup/mouseup to catch drag-select and keyboard shifts. */
+    editor.addEventListener("select", updateWordCounter);
+    editor.addEventListener("keyup", updateWordCounter);
+    editor.addEventListener("mouseup", updateWordCounter);
+    editor.addEventListener("input", updateWordCounter);
+    /* Hide the counter when focus leaves the editor with no active selection */
+    editor.addEventListener("blur", function () {
+      setTimeout(updateWordCounter, 0);
+    });
+    updateWordCounter();
   }
 
   /* ==========================================================================

@@ -87,6 +87,7 @@
     </div>
 
     <!-- ===== SIDEBAR (Left Utility Rail) ===== -->
+    <div class="sidebar-rail" id="sidebar-rail">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-inner">
         <!-- App title -->
@@ -221,6 +222,16 @@
         <p class="sidebar-copy">&copy; 2026 <a href="https://thecontrarian.in" target="_blank" rel="noopener">Mahesh Shantaram</a></p>
       </div>
     </aside>
+
+    <!-- Selection word counter — floats below the sidebar, only visible while
+         text is selected in the editor. Kept outside .sidebar so the sidebar's
+         height never changes when the counter appears. -->
+    <div class="word-counter" id="word-counter" aria-live="polite" aria-atomic="true">
+      <span class="word-counter-number" id="word-counter-number" data-count="0">0</span>
+      <span class="word-counter-label" id="word-counter-label">words</span>
+    </div>
+    </div>
+    <!-- /.sidebar-rail -->
 
     <!-- ===== MAIN CONTENT ===== -->
     <main class="main-panel">
