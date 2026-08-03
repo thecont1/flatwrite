@@ -1509,6 +1509,23 @@
     );
   }
 
+  /* FlatWrite inline highlight.
+     Syntax: <fw-hl colour="#A7E8C8">highlighted text</fw-hl>
+     Supports both "colour" (British) and "color" (American) attribute names.
+     Converted to <mark> before marked parses so the inner text still gets
+     markdown formatting (bold, italic, etc.) and DOMPurify allows <mark>. */
+  function applyFlatWriteHighlights(markdown) {
+    return String(markdown || "").replace(
+      /<fw-hl\b([^>]*)>([\s\S]*?)<\/fw-hl\s*>/gi,
+      function (_match, attrs, inner) {
+        var colourMatch = String(attrs || "").match(/\b(?:colour|color)\s*=\s*["']([^"']*)["']/i);
+        var colour = colourMatch ? colourMatch[1] : "";
+        var styleAttr = colour ? ' style="background-color:' + colour + '"' : "";
+        return '<mark' + styleAttr + '>' + inner + '</mark>';
+      }
+    );
+  }
+
   /* ==========================================================================
      IDB persistence — restore from IndexedDB (Mode A default)
      ========================================================================== */
@@ -2357,6 +2374,93 @@
       if (btn) applyMarkdownFormat(btn.dataset.md);
     });
 
+    /* Highlighter dropdown — clicking a swatch wraps the selection (or
+       inserts a placeholder) with <fw-hl colour="...">…</fw-hl>. The
+       dropdown is hover-driven via CSS, but because .toolbar-center has
+       overflow-y:hidden, the menu is switched to position:fixed and placed
+       by JS on hover so it escapes the clipping container. */
+    (function () {
+      var hlDropdown = document.getElementById("hl-dropdown");
+      var hlMenu     = document.getElementById("hl-menu");
+      var hlBtn      = hlDropdown ? hlDropdown.querySelector(".hl-btn") : null;
+      if (!hlDropdown || !hlMenu || !hlBtn) return;
+
+      var closeTimeout = null;
+
+      function positionMenu() {
+        var rect = hlBtn.getBoundingClientRect();
+        hlMenu.style.position = "fixed";
+        /* Measure menu width while visible so we can center exactly on the
+           button. The menu is already visible (is-open is set) before this
+           runs via requestAnimationFrame. */
+        var mw = hlMenu.offsetWidth;
+        var left = rect.left + (rect.width - mw) / 2;
+        hlMenu.style.left = Math.round(left) + "px";
+        hlMenu.style.transform = "none";
+        var top = rect.bottom + 4;
+        hlMenu.style.top = Math.round(top) + "px";
+      }
+
+      function openMenu() {
+        if (closeTimeout) {
+          clearTimeout(closeTimeout);
+          closeTimeout = null;
+        }
+        hlBtn.setAttribute("aria-expanded", "true");
+        hlDropdown.classList.add("is-open");
+        requestAnimationFrame(positionMenu);
+      }
+
+      function closeMenu() {
+        hlBtn.setAttribute("aria-expanded", "false");
+        hlDropdown.classList.remove("is-open");
+      }
+
+      function scheduleClose() {
+        closeTimeout = setTimeout(function () {
+          closeMenu();
+          closeTimeout = null;
+        }, 150);
+      }
+
+      hlDropdown.addEventListener("mouseenter", openMenu);
+      hlDropdown.addEventListener("mouseleave", scheduleClose);
+      /* Keep menu open when hovering it (position:fixed takes it out of flow). */
+      hlMenu.addEventListener("mouseenter", function () {
+        if (closeTimeout) {
+          clearTimeout(closeTimeout);
+          closeTimeout = null;
+        }
+      });
+      hlMenu.addEventListener("mouseleave", scheduleClose);
+
+      /* Reposition on resize/scroll while open. */
+      window.addEventListener("resize", function () {
+        if (hlDropdown.classList.contains("is-open")) positionMenu();
+      });
+      window.addEventListener("scroll", function () {
+        if (hlDropdown.classList.contains("is-open")) positionMenu();
+      }, true);
+
+      /* Swatch click → insert highlight syntax */
+      hlMenu.addEventListener("click", function (e) {
+        var swatch = e.target.closest("[data-hl-colour]");
+        if (!swatch) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var colour = swatch.getAttribute("data-hl-colour");
+        applyHighlight(colour);
+        closeMenu();
+      });
+
+      function applyHighlight(colour) {
+        if (mode !== "edit") setMode("edit");
+        var openTag  = '<fw-hl colour="' + colour + '">';
+        var closeTag = '</fw-hl>';
+        editorInsert(openTag, "highlighted text", closeTag);
+      }
+    })();
+
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
         /* A modal's own handler owns Escape while it is open — the load
@@ -2770,7 +2874,8 @@
       + 'input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }'
       + 'ul { list-style-type: disc; } ul ul { list-style-type: circle; } ul ul ul { list-style-type: disc; } ul ul ul ul { list-style-type: circle; }'
       + 'p { margin: 0.4em 0; } br { margin: 0.3em 0; }'
-      + '.fw-pdf-break { display: block; height: calc(var(--fw-break-lines, 1) * 1lh); break-inside: avoid; }';
+      + '.fw-pdf-break { display: block; height: calc(var(--fw-break-lines, 1) * 1lh); break-inside: avoid; }'
+      + 'mark { padding: 0.05em 0.2em; border-radius: 3px; }';
   }
 
   /**
@@ -3036,8 +3141,8 @@
     var isApp = surfaceMode === "app";
     var renderEngineKey = isApp ? null : ((mode === "read") ? "none" : (currentDocEngine || "none"));
     var contentForRender = isApp
-      ? stripYamlFrontMatter(editor.value || "")
-      : applyFlatWritePdfBreaks(stripYamlFrontMatter(editor.value || ""), renderEngineKey);
+      ? applyFlatWriteHighlights(stripYamlFrontMatter(editor.value || ""))
+      : applyFlatWriteHighlights(applyFlatWritePdfBreaks(stripYamlFrontMatter(editor.value || ""), renderEngineKey));
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML = sanitizeHTML(resolveRelativeUrls(rawHTML));
     finalizeMathHtml(renderedHTML).then(function (finalHTML) {
@@ -4025,7 +4130,7 @@
     /* === App Surface: Framework CSS export === */
     if (surfaceMode === "app") {
       var fw = APP_FRAMEWORKS[currentAppFramework];
-      var contentForRender = stripYamlFrontMatter(editor.value || "");
+      var contentForRender = applyFlatWriteHighlights(stripYamlFrontMatter(editor.value || ""));
       var rawHTML = renderToFragment(contentForRender);
       var renderedHTML0 = sanitizeHTML(resolveRelativeUrls(rawHTML));
       finalizeMathHtml(renderedHTML0).then(function (renderedHTML) {
@@ -4095,10 +4200,10 @@
 
     /* === Doc Surface: build from the current committed controls === */
     var engine = DOC_ENGINES[currentDocEngine] || DOC_ENGINES.none;
-    var contentForRender = applyFlatWritePdfBreaks(
+    var contentForRender = applyFlatWriteHighlights(applyFlatWritePdfBreaks(
       stripYamlFrontMatter(editor.value || ""),
       currentDocEngine
-    );
+    ));
     var rawHTML = renderToFragment(contentForRender);
     var renderedHTML0 = sanitizeHTML(resolveRelativeUrls(rawHTML));
     finalizeMathHtml(renderedHTML0).then(function (renderedHTML) {
