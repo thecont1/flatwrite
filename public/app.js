@@ -1645,7 +1645,8 @@
   function getButtonTooltip(button) {
     if (!button) return "";
     if (BUTTON_TOOLTIP_COPY[button.id]) return BUTTON_TOOLTIP_COPY[button.id];
-    if (button.dataset.tooltip) return button.dataset.tooltip;
+    /* Allow a button to opt out of tooltips by setting data-tooltip="". */
+    if (button.hasAttribute("data-tooltip")) return button.getAttribute("data-tooltip");
     var dataTip = button.getAttribute("data-tip");
     if (dataTip) return dataTip;
     var title = button.getAttribute("title");
@@ -2389,16 +2390,15 @@
 
       function positionMenu() {
         var rect = hlBtn.getBoundingClientRect();
+        /* Force a layout flush so offsetWidth is accurate before we compute
+           the exact center position. */
         hlMenu.style.position = "fixed";
-        /* Measure menu width while visible so we can center exactly on the
-           button. The menu is already visible (is-open is set) before this
-           runs via requestAnimationFrame. */
+        hlMenu.style.transform = "none";
+        void hlMenu.offsetWidth;
         var mw = hlMenu.offsetWidth;
         var left = rect.left + (rect.width - mw) / 2;
         hlMenu.style.left = Math.round(left) + "px";
-        hlMenu.style.transform = "none";
-        var top = rect.bottom + 4;
-        hlMenu.style.top = Math.round(top) + "px";
+        hlMenu.style.top = Math.round(rect.bottom + 4) + "px";
       }
 
       function openMenu() {
