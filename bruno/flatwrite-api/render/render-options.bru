@@ -1,0 +1,39 @@
+meta {
+  name: Render CORS preflight (OPTIONS /render)
+  type: http
+  seq: 2
+  tags: [render, cors]
+}
+
+options {
+  url: {{renderBaseUrl}}/render
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: {{browserOrigin}}
+  Access-Control-Request-Method: POST
+  Access-Control-Request-Headers: Content-Type, X-Mcp-Token
+}
+
+tests {
+  test("status is 204", function() {
+    expect(res.getStatus()).to.equal(204);
+    expect(res.getHeader('access-control-allow-origin')).to.equal(bru.getEnvVar('browserOrigin'));
+
+    const methods = String(res.getHeader('access-control-allow-methods') || '')
+      .split(',').map((value) => value.trim().toUpperCase());
+    expect(methods).to.include('POST');
+
+    const headers = String(res.getHeader('access-control-allow-headers') || '')
+      .split(',').map((value) => value.trim().toLowerCase());
+    expect(headers).to.include('content-type');
+    expect(headers).to.include('x-mcp-token');
+    expect(headers).not.to.include('x-api-key');
+  });
+}
+
+docs {
+  Browser preflight. The Worker intentionally does not advertise X-Api-Key.
+}

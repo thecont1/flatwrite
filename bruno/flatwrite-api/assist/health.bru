@@ -1,0 +1,22 @@
+meta {
+  name: Assist health (GET /health)
+  type: http
+  seq: 3
+  tags: [assist, health]
+}
+
+get {
+  url: {{assistBaseUrl}}/health
+  body: none
+  auth: none
+}
+
+tests {
+  test("service is healthy", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.ok).to.equal(true);
+    expect(body.service).to.equal('flatwrite-assist');
+    expect(body.morphConfigured).to.be.a('boolean');
+  });
+}

@@ -1,0 +1,27 @@
+meta {
+  name: WebMCP create_share_link (browser side effect) (browser only)
+  type: http
+  seq: 18
+  tags: [webmcp, browser-only, webmcp-side-effect]
+  webmcp-type: webmcp-side-effect
+}
+
+post {
+  url: webmcp://document.modelContext/create-share-link-stub
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  bru.runner.skipRequest();
+}
+
+docs {
+  Browser-only WebMCP contract. This tool manipulates the FlatWrite editor via
+  document.modelContext and has no HTTP surface. Bruno CLI skips this request.
+  Callers must first call get_document_state and verify that canShare is true
+  before attempting create_share_link; otherwise the share operation is unauthorized.
+
+  Input: {}
+  Output: { ok, documentId, shareUrl, expiresAt? }
+}

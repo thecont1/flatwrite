@@ -1,0 +1,78 @@
+meta {
+  name: FlatWrite API
+}
+
+auth {
+  mode: none
+}
+
+vars:pre-request {
+  rateLimitRemaining: 0
+  retryAfter: 0
+  retryAfterSetAt: 0
+}
+
+script:pre-request {
+  // Browser-token requests opt in by declaring an X-Mcp-Token header. Tokens
+  // are host-specific: Assist signs scope `assist`; Render/Extract sign `mcp`.
+  const tokenHeader = req.getHeader('X-Mcp-Token');
+  if (tokenHeader != null) {
+    const requestUrl = req.getUrl();
+    const isAssist = requestUrl.includes('/assist');
+    const isExtract = requestUrl.includes('/extract');
+    const prefix = isAssist ? 'assist' : isExtract ? 'extract' : 'render';
+    const issuerBaseUrl = bru.getEnvVar(prefix + 'BaseUrl');
+    const tokenVar = prefix + 'McpToken';
+    const expVar = tokenVar + 'Exp';
+    const cached = bru.getVar(tokenVar);
+    const expSeconds = Number(bru.getVar(expVar) || 0);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+  
+    if (!cached || nowSeconds >= expSeconds - 10) {
+      const tokenRes = await bru.sendRequest({
+        url: issuerBaseUrl + '/mcp-token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: bru.getEnvVar('browserOrigin')
+        }
+      });
+      if (tokenRes.status !== 200) {
+        throw new Error('Failed to mint ' + prefix + ' X-Mcp-Token: ' + tokenRes.status);
+      }
+      const body = typeof tokenRes.data === 'string' ? JSON.parse(tokenRes.data) : tokenRes.data;
+      if (!body || typeof body.token !== 'string' || !body.token || !Number.isFinite(Number(body.expiresAt))) {
+        throw new Error('Invalid ' + prefix + ' X-Mcp-Token response');
+      }
+      bru.setVar(tokenVar, body.token);
+      bru.setVar(expVar, String(body.expiresAt));
+      req.setHeader('X-Mcp-Token', body.token);
+    } else {
+      req.setHeader('X-Mcp-Token', cached);
+    }
+  }
+  
+  const retryAfterValue = bru.getVar('retryAfter') || 0;
+  const retryAfter = Number(retryAfterValue);
+  const setAt = Number(bru.getVar('retryAfterSetAt') || 0);
+  const isDelaySeconds = Number.isFinite(retryAfter) && retryAfter > 0;
+  const retryAt = isDelaySeconds
+    ? (setAt > 0 ? setAt + retryAfter * 1000 : NaN)
+    : Date.parse(retryAfterValue);
+  if (Number.isFinite(retryAt)) {
+    const remainingMs = retryAt - Date.now();
+    if (remainingMs > 0) {
+      await bru.sleep(remainingMs);
+    } else {
+      bru.setVar('retryAfter', '0');
+      bru.setVar('retryAfterSetAt', '0');
+    }
+  }
+}
+
+docs {
+  FlatWrite's HTTP surface. Server-to-server requests use X-Api-Key.
+  Browser-auth examples mint host-specific short-lived X-Mcp-Token values
+  in the collection-level pre-request script because Assist tokens use scope
+  `assist`, while Render and Extract tokens use scope `mcp`.
+}

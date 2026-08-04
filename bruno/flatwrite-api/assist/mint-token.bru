@@ -1,0 +1,38 @@
+meta {
+  name: Mint Assist browser token (POST /mcp-token)
+  type: http
+  seq: 2
+  tags: [assist, auth]
+}
+
+post {
+  url: {{assistBaseUrl}}/mcp-token
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: {{browserOrigin}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+    bru.setVar('assistMcpToken', body.token);
+    bru.setVar('assistMcpTokenExp', String(body.expiresAt));
+  }
+}
+
+tests {
+  test("token minted", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.token).to.be.a('string').and.not.empty;
+    expect(body.expiresAt).to.be.a('number');
+    expect(body.scope).to.equal('assist');
+  });
+}
+
+docs {
+  Requires an allowed Origin. expiresAt is Unix epoch seconds.
+}

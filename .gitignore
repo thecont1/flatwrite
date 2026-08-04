@@ -30,3 +30,9 @@ preview/
 
 # wrangler files
 .wrangler
+
+# Bruno local credentials and disposable OpenAPI importer output
+bruno/*/environments/Local.bru
+bruno/.openapi-import/
+bruno/results/
+bruno/*/results.xml

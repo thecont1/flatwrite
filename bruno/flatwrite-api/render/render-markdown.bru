@@ -1,0 +1,54 @@
+meta {
+  name: Render markdown (POST /render)
+  type: http
+  seq: 1
+  tags: [render]
+}
+
+post {
+  url: {{renderBaseUrl}}/render
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Api-Key: {{apiKey}}
+}
+
+body:json {
+  {
+    "markdown": "# Hello\n\nWorld",
+    "framework": "spectre"
+  }
+}
+
+script:post-response {
+  const remaining = res.getHeader('x-ratelimit-remaining');
+  if (remaining != null) bru.setVar('rateLimitRemaining', String(remaining));
+  if (res.getStatus() === 429) {
+    const retryAfter = res.getHeader('retry-after');
+    if (retryAfter != null) {
+      bru.setVar('retryAfter', String(retryAfter));
+      bru.setVar('retryAfterSetAt', String(Date.now()));
+    }
+  }
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("response has HTML fragments", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('head').that.is.a('string');
+    expect(body).to.have.property('body').that.is.a('string');
+    expect(body.head.length).to.be.greaterThan(0);
+    expect(body.body.length).to.be.greaterThan(0);
+  });
+}
+
+docs {
+  Renders raw markdown or an allowlisted markdownUrl into head/body HTML.
+  Server-to-server authentication uses X-Api-Key, never Bearer auth.
+}

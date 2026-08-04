@@ -1,0 +1,24 @@
+meta {
+  name: Extract CORS preflight (OPTIONS /extract)
+  type: http
+  seq: 2
+  tags: [extract, cors]
+}
+
+options {
+  url: {{extractBaseUrl}}/extract
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: {{browserOrigin}}
+  Access-Control-Request-Method: POST
+  Access-Control-Request-Headers: Content-Type, X-Mcp-Token
+}
+
+tests {
+  test("status is 204", function() {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

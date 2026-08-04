@@ -1,0 +1,77 @@
+meta {
+  name: WebMCP assist_document (API key)
+  type: http
+  seq: 3
+  tags: [webmcp, http-backed, assist]
+}
+
+post {
+  url: {{assistBaseUrl}}/assist
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Api-Key: {{apiKey}}
+}
+
+body:json {
+  {
+    "markdown": "# Draft\n\nTeh quick brown fox.",
+    "mode": "fix_grammar"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 429) {
+    const retryAfter = res.getHeader('retry-after');
+    if (retryAfter != null) {
+      bru.setVar('retryAfter', String(retryAfter));
+      bru.setVar('retryAfterSetAt', String(Date.now()));
+    }
+  }
+}
+
+tests {
+  test("response matches assist_document output schema", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    const allowedRootKeys = [
+      'ok', 'markdown', 'piece', 'scope', 'explanation', 'model', 'routing',
+      'compacted', 'usage', 'reflex', 'selection', 'nextSuggestedTool'
+    ];
+    expect(Object.keys(body).filter((key) => !allowedRootKeys.includes(key))).to.deep.equal([]);
+    expect(body.ok).to.equal(true);
+    expect(body.markdown).to.be.a('string');
+    expect(body.piece).to.be.a('string');
+    expect(['selection', 'document']).to.include(body.scope);
+    if (body.explanation != null) expect(body.explanation).to.be.a('string');
+    if (body.model != null) expect(body.model).to.be.a('string');
+    if (body.compacted != null) expect(body.compacted).to.be.a('boolean');
+    if (body.nextSuggestedTool != null) expect(body.nextSuggestedTool).to.be.a('string');
+    if (body.routing != null) {
+      expect(body.routing).to.be.an('object').and.not.an('array');
+      const allowedRoutingKeys = ['tier', 'difficulty', 'confidence', 'domain'];
+      expect(Object.keys(body.routing).filter((key) => !allowedRoutingKeys.includes(key))).to.deep.equal([]);
+      if (body.routing.tier != null) expect(body.routing.tier).to.be.a('string');
+      if (body.routing.difficulty != null) expect(body.routing.difficulty).to.be.a('string');
+      if (body.routing.confidence != null) expect(body.routing.confidence).to.be.a('number');
+      if (body.routing.domain != null) expect(body.routing.domain).to.be.a('string');
+    }
+    if (body.usage !== undefined) {
+      expect(body.usage === null || (typeof body.usage === 'object' && body.usage !== null && !Array.isArray(body.usage))).to.equal(true);
+    }
+    if (body.reflex !== undefined) {
+      expect(typeof body.reflex === 'object' && body.reflex !== null && !Array.isArray(body.reflex)).to.equal(true);
+    }
+    if (body.selection !== undefined) {
+      expect(body.selection === null || (typeof body.selection === 'object' && body.selection !== null && !Array.isArray(body.selection))).to.equal(true);
+      if (body.selection !== null) {
+        expect(Object.keys(body.selection).filter((key) => !['start', 'end'].includes(key))).to.deep.equal([]);
+        if (body.selection.start != null) expect(body.selection.start).to.be.a('number');
+        if (body.selection.end != null) expect(body.selection.end).to.be.a('number');
+      }
+    }
+  });
+}

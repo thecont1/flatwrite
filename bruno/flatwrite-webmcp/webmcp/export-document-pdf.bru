@@ -1,0 +1,25 @@
+meta {
+  name: WebMCP export_document_pdf (browser only)
+  type: http
+  seq: 17
+  tags: [webmcp, browser-only, webmcp-side-effect]
+  webmcp-type: webmcp-side-effect
+}
+
+post {
+  url: webmcp://document.modelContext/export-document-pdf
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  bru.runner.skipRequest();
+}
+
+docs {
+  Browser-only WebMCP contract. This tool manipulates the FlatWrite editor via
+  document.modelContext and has no HTTP surface. Bruno CLI skips this request.
+
+  Input: {}
+  Output: { ok, documentId, format: "pdf", pageCount?, warnings? }
+}
