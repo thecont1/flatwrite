@@ -165,5 +165,5 @@ Not installed in workflows:
 - name: Run Bruno API collection
   env:
     FW_API_KEY: ${{ secrets.FW_API_KEY }}
-  run: cd bruno/flatwrite-api && bru run --env Render -r --reporter-junit results.xml
+  run: cd bruno/flatwrite-api && npx --no-install bru run --env Render -r --reporter-junit results.xml
 ```

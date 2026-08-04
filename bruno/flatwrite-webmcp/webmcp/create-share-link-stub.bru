@@ -19,6 +19,8 @@ script:pre-request {
 docs {
   Browser-only WebMCP contract. This tool manipulates the FlatWrite editor via
   document.modelContext and has no HTTP surface. Bruno CLI skips this request.
+  Callers must first call get_document_state and verify that canShare is true
+  before attempting create_share_link; otherwise the share operation is unauthorized.
 
   Input: {}
   Output: { ok, documentId, shareUrl, expiresAt? }

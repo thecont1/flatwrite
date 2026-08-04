@@ -20,6 +20,17 @@ headers {
 tests {
   test("status is 204", function() {
     expect(res.getStatus()).to.equal(204);
+    expect(res.getHeader('access-control-allow-origin')).to.equal(bru.getEnvVar('browserOrigin'));
+
+    const methods = String(res.getHeader('access-control-allow-methods') || '')
+      .split(',').map((value) => value.trim().toUpperCase());
+    expect(methods).to.include('POST');
+
+    const headers = String(res.getHeader('access-control-allow-headers') || '')
+      .split(',').map((value) => value.trim().toLowerCase());
+    expect(headers).to.include('content-type');
+    expect(headers).to.include('x-mcp-token');
+    expect(headers).not.to.include('x-api-key');
   });
 }
 

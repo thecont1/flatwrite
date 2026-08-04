@@ -22,6 +22,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.0",
     "@usebruno/cli": "^4.0.0",
+    "@usebruno/lang": "^0.38.0",
     "bun-types": "^1.3.14",
     "js-yaml": "^4.1.0",
     "wrangler": "^4.104.0"
