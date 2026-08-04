@@ -3,12 +3,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
 const require = createRequire(import.meta.url);
 const { bruToJsonV2, bruToEnvJsonV2, collectionBruToJson } = require('@usebruno/lang');
 
-const root = path.resolve(import.meta.dirname, '..', '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const apiRoot = path.join(root, 'bruno', 'flatwrite-api');
 const webRoot = path.join(root, 'bruno', 'flatwrite-webmcp');
 const errors = [];
