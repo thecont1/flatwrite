@@ -1,0 +1,52 @@
+meta {
+  name: WebMCP render_markdown
+  type: http
+  seq: 1
+  tags: [webmcp, http-backed, render]
+}
+
+post {
+  url: {{renderBaseUrl}}/render
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Api-Key: {{apiKey}}
+}
+
+body:json {
+  {
+    "markdown": "# WebMCP render\n\nRendered through FlatWrite.",
+    "font": "Inter",
+    "appFramework": "spectre",
+    "surfaceMode": "app"
+  }
+}
+
+script:post-response {
+  const remaining = res.getHeader('x-ratelimit-remaining');
+  if (remaining != null) bru.setVar('rateLimitRemaining', String(remaining));
+  if (res.getStatus() === 429) {
+    const retryAfter = res.getHeader('retry-after');
+    if (retryAfter != null) {
+      bru.setVar('retryAfter', String(retryAfter));
+      bru.setVar('retryAfterSetAt', String(Date.now()));
+    }
+  }
+}
+
+tests {
+  test("HTTP adapter returns rendered artifacts", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.head).to.be.a('string').and.not.empty;
+    expect(body.body).to.be.a('string').and.not.empty;
+  });
+}
+
+docs {
+  HTTP counterpart of render_markdown. The WebMCP bridge wraps these head/body
+  fields as { ok, kind: "html", artifacts }; the HTTP API returns head/body.
+}

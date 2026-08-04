@@ -1,0 +1,36 @@
+meta {
+  name: WebMCP create_share_link (HTTP adapter)
+  type: http
+  seq: 5
+  tags: [webmcp, http-backed, share]
+}
+
+post {
+  url: {{shareBaseUrl}}/api/share
+  body: text
+  auth: none
+}
+
+headers {
+  Content-Type: text/markdown
+}
+
+body:text {
+  # Shared from Bruno
+
+  This paste expires after 30 days.
+}
+
+tests {
+  test("share endpoint returns a paste key", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.key).to.be.a('string').and.not.empty;
+  });
+}
+
+docs {
+  api/share.js returns { key }. The browser WebMCP bridge converts that key to
+  its richer { ok, documentId, shareUrl, expiresAt? } output envelope and
+  copies the URL to the clipboard.
+}

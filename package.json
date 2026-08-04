@@ -13,11 +13,17 @@
     "test:py": "cd services/extract && uv run --project . pytest ../../test/extract",
     "test:all": "bun test ./test/*.test.js && cd services/extract && uv run --project . pytest ../../test/extract",
     "deploy": "wrangler deploy",
-    "preview": "wrangler dev"
+    "preview": "wrangler dev",
+    "bruno:import": "rm -rf bruno/.openapi-import && mkdir -p bruno && bru import openapi --source openapi.yaml --output bruno/.openapi-import --collection-name \"FlatWrite API\" --collection-format bru --group-by tags",
+    "bruno:run:api": "cd bruno/flatwrite-api && bru run --env ${BRUNO_ENV:-Render} -r",
+    "bruno:run:webmcp": "cd bruno/flatwrite-webmcp && bru run --env ${BRUNO_ENV:-Production} -r",
+    "bruno:lint": "node bruno/scripts/validate-collections.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
+    "@usebruno/cli": "^4.0.0",
     "bun-types": "^1.3.14",
+    "js-yaml": "^4.1.0",
     "wrangler": "^4.104.0"
   },
   "dependencies": {

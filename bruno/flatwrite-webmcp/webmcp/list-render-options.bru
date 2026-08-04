@@ -1,0 +1,45 @@
+meta {
+  name: WebMCP list_render_options (no HTTP endpoint)
+  type: http
+  seq: 2
+  tags: [webmcp, discovery, unsupported-http]
+}
+
+post {
+  url: {{renderBaseUrl}}/render
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Api-Key: {{apiKey}}
+}
+
+body:json {
+  {
+    "optionsOnly": true
+  }
+}
+
+script:pre-request {
+  // Verified against renderClient.ts and both render handlers: FlatWrite has
+  // no HTTP options endpoint and /render rejects optionsOnly without content.
+  bru.runner.skipRequest();
+}
+
+tests {
+  test("documented output contract is complete", function() {
+    // This test is intentionally not executed because the request is skipped.
+    expect(true).to.equal(true);
+  });
+}
+
+docs {
+  Documentation placeholder for list_render_options. The browser WebMCP bridge
+  returns this data locally; it is not HTTP-backed. This file deliberately
+  skips instead of sending a request known to return MISSING_CONTENT.
+
+  Output contract: { ok, options: { fonts, frameworks, docEngines, pageSizes,
+  orientations, margins, surfaceModes }, defaults? }.
+}

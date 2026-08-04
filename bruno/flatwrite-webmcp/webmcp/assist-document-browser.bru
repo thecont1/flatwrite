@@ -1,0 +1,55 @@
+meta {
+  name: WebMCP assist_document (browser token)
+  type: http
+  seq: 4
+  tags: [webmcp, http-backed, assist, browser-auth]
+}
+
+post {
+  url: {{assistBaseUrl}}/assist
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Mcp-Token: {{assistMcpToken}}
+}
+
+body:json {
+  {
+    "markdown": "# Browser draft\n\nTeh sentence needs fixing.",
+    "mode": "fix_grammar"
+  }
+}
+
+script:pre-request {
+  // Token minting is collection-level; this request only opts in by declaring
+  // X-Mcp-Token. The collection script writes the current token to the header.
+}
+
+script:post-response {
+  if (res.getStatus() === 429) {
+    const retryAfter = res.getHeader('retry-after');
+    if (retryAfter != null) {
+      bru.setVar('retryAfter', String(retryAfter));
+      bru.setVar('retryAfterSetAt', String(Date.now()));
+    }
+  }
+}
+
+tests {
+  test("browser-auth response matches assist_document schema", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.ok).to.equal(true);
+    expect(body.markdown).to.be.a('string');
+    expect(body.piece).to.be.a('string');
+    expect(['selection', 'document']).to.include(body.scope);
+  });
+}
+
+docs {
+  Assist tokens use scope `assist`, require an allowed Origin to mint, expire
+  after 60 seconds, and report expiresAt in Unix epoch seconds.
+}

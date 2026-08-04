@@ -1,0 +1,28 @@
+meta {
+  name: Render CORS preflight (OPTIONS /render)
+  type: http
+  seq: 2
+  tags: [render, cors]
+}
+
+options {
+  url: {{renderBaseUrl}}/render
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: {{browserOrigin}}
+  Access-Control-Request-Method: POST
+  Access-Control-Request-Headers: Content-Type, X-Mcp-Token
+}
+
+tests {
+  test("status is 204", function() {
+    expect(res.getStatus()).to.equal(204);
+  });
+}
+
+docs {
+  Browser preflight. The Worker intentionally does not advertise X-Api-Key.
+}

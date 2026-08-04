@@ -1,0 +1,71 @@
+meta {
+  name: FlatWrite WebMCP
+}
+
+auth {
+  mode: none
+}
+
+vars:pre-request {
+  rateLimitRemaining: 0
+  retryAfter: 0
+  retryAfterSetAt: 0
+}
+
+script:pre-request {
+  // Mint host-specific browser tokens only for requests that declare the
+  // X-Mcp-Token header. Assist uses scope `assist`; Render/Extract use `mcp`.
+  const tokenHeader = req.getHeader('X-Mcp-Token');
+  if (tokenHeader != null) {
+    const requestUrl = req.getUrl();
+    const isAssist = requestUrl.includes('/assist');
+    const isExtract = requestUrl.includes('/extract');
+    const prefix = isAssist ? 'assist' : isExtract ? 'extract' : 'render';
+    const issuerBaseUrl = bru.getEnvVar(prefix + 'BaseUrl');
+    const tokenVar = prefix + 'McpToken';
+    const expVar = tokenVar + 'Exp';
+    const cached = bru.getVar(tokenVar);
+    const expSeconds = Number(bru.getVar(expVar) || 0);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+  
+    if (!cached || nowSeconds >= expSeconds - 10) {
+      const tokenRes = await bru.sendRequest({
+        url: issuerBaseUrl + '/mcp-token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: bru.getEnvVar('browserOrigin')
+        }
+      });
+      if (tokenRes.status !== 200) {
+        throw new Error('Failed to mint ' + prefix + ' X-Mcp-Token: ' + tokenRes.status);
+      }
+      const body = typeof tokenRes.data === 'string' ? JSON.parse(tokenRes.data) : tokenRes.data;
+      if (!body || typeof body.token !== 'string' || !body.token || !Number.isFinite(Number(body.expiresAt))) {
+        throw new Error('Invalid ' + prefix + ' X-Mcp-Token response');
+      }
+      bru.setVar(tokenVar, body.token);
+      bru.setVar(expVar, String(body.expiresAt));
+      req.setHeader('X-Mcp-Token', body.token);
+    } else {
+      req.setHeader('X-Mcp-Token', cached);
+    }
+  }
+  
+  const retryAfter = Number(bru.getVar('retryAfter') || 0);
+  const setAt = Number(bru.getVar('retryAfterSetAt') || 0);
+  if (retryAfter > 0 && setAt > 0) {
+    const remainingMs = retryAfter * 1000 - (Date.now() - setAt);
+    if (remainingMs > 0) {
+      await bru.sleep(remainingMs);
+    } else {
+      bru.setVar('retryAfter', '0');
+      bru.setVar('retryAfterSetAt', '0');
+    }
+  }
+}
+
+docs {
+  HTTP-backed requests are executable. Files tagged `browser-only` document
+  document.modelContext side effects and skip themselves in Bruno CLI runs.
+}
