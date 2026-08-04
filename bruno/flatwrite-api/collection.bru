@@ -52,10 +52,15 @@ script:pre-request {
     }
   }
   
-  const retryAfter = Number(bru.getVar('retryAfter') || 0);
+  const retryAfterValue = bru.getVar('retryAfter') || 0;
+  const retryAfter = Number(retryAfterValue);
   const setAt = Number(bru.getVar('retryAfterSetAt') || 0);
-  if (retryAfter > 0 && setAt > 0) {
-    const remainingMs = retryAfter * 1000 - (Date.now() - setAt);
+  const isDelaySeconds = Number.isFinite(retryAfter) && retryAfter > 0;
+  const retryAt = isDelaySeconds
+    ? (setAt > 0 ? setAt + retryAfter * 1000 : NaN)
+    : Date.parse(retryAfterValue);
+  if (Number.isFinite(retryAt)) {
+    const remainingMs = retryAt - Date.now();
     if (remainingMs > 0) {
       await bru.sleep(remainingMs);
     } else {
