@@ -35,3 +35,4 @@ preview/
 bruno/*/environments/Local.bru
 bruno/.openapi-import/
 bruno/results/
+bruno/*/results.xml
