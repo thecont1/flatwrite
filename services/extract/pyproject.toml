@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
     "pdf-inspector>=0.2.6",
+    "rapidocr-onnxruntime>=1.3.0",
 ]
 
 [project.optional-dependencies]
