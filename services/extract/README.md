@@ -8,7 +8,8 @@ Accepts a multipart upload (PDF, DOC/DOCX/DOCM, PPT/PPTX/PPTM/PPS/PPSX/PPSM,
 XLS/XLSX/XLSM/XLSB, ODT/ODS/ODP, RTF, CSV, EPUB, PNG/JPG/GIF/WEBP/TIFF,
 MP3/WAV/M4A/OGG/FLAC) and returns deterministic Markdown. No LLM calls, no
 disk writes, no URL-based conversion, no third-party cloud service — all work
-happens in-memory in a single `BytesIO` using `firecrawl-anydoc`.
+happens in-memory using `firecrawl-anydoc` (documents), `pdf-inspector`
+(PDFs), and `rapidocr-onnxruntime` (images).
 
 ## API
 
@@ -27,7 +28,7 @@ Success:
 {
   "markdown": "...",
   "metadata": {
-    "extractionType": "powerpoint-notes | word-body | pdf-body | excel-tables | structured-data | epub-body | image-metadata | audio-metadata | raw",
+    "extractionType": "powerpoint-notes | word-body | pdf-body | excel-tables | structured-data | epub-body | image-ocr | audio-metadata | raw",
     "filename": "deck.pptx",
     "fileType": "powerpoint",
     "sizeBytes": 12345
@@ -49,7 +50,7 @@ Liveness probe for Fly.io / Docker. Returns `{ ok: true, service, maxBytes }`.
 | `excel`     | Passthrough.                                                   |
 | `csv`       | Passthrough (extractionType: `structured-data`).               |
 | `epub`      | Passthrough.                                                   |
-| `image`     | Metadata stub only — no OCR (v1).                              |
+| `image`     | Local OCR via RapidOCR (CPU-only, no network). Headings, bullets, and paragraphs inferred from text position and font size. Falls back to metadata stub when no text is detected. |
 | `audio`     | Metadata stub only — no transcription (v1).                    |
 
 ## Local dev
