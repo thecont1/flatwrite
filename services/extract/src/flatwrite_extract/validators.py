@@ -38,15 +38,15 @@ ALLOWED_EXTENSIONS: dict[str, tuple[str, str]] = {
     ".csv":  ("csv",        "structured-data"),
     # Other document formats
     ".epub": ("epub",       "epub-body"),
-    # Image and audio types get metadata-only treatment (no OCR / no
-    # transcription in v1 — we keep the no-LLM-calls constraint).
-    ".png":  ("image",      "image-metadata"),
-    ".jpg":  ("image",      "image-metadata"),
-    ".jpeg": ("image",      "image-metadata"),
-    ".gif":  ("image",      "image-metadata"),
-    ".webp": ("image",      "image-metadata"),
-    ".tiff": ("image",      "image-metadata"),
-    ".tif":  ("image",      "image-metadata"),
+    # Image types are converted via local OCR (RapidOCR). When OCR finds
+    # no text, rules.py emits a metadata-only stub.
+    ".png":  ("image",      "image-ocr"),
+    ".jpg":  ("image",      "image-ocr"),
+    ".jpeg": ("image",      "image-ocr"),
+    ".gif":  ("image",      "image-ocr"),
+    ".webp": ("image",      "image-ocr"),
+    ".tiff": ("image",      "image-ocr"),
+    ".tif":  ("image",      "image-ocr"),
     ".mp3":  ("audio",      "audio-metadata"),
     ".wav":  ("audio",      "audio-metadata"),
     ".m4a":  ("audio",      "audio-metadata"),

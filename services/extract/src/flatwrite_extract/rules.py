@@ -2,9 +2,10 @@
 flatwrite_extract.rules — deterministic per-type post-processing.
 
 Zero model calls. AnyDoc already returns clean, well-structured
-GitHub-Flavored Markdown, so the only special-casing left is for binary
-media (images and audio), where we emit a metadata-only stub because
-AnyDoc does not support those formats.
+GitHub-Flavored Markdown. Images are converted via local OCR (RapidOCR);
+when OCR finds text, it is passed through. When OCR finds no text (e.g. a
+photograph), a metadata-only stub is emitted. Audio files always get a
+metadata stub (no transcription in v1).
 """
 from __future__ import annotations
 
@@ -19,16 +20,19 @@ def passthrough(md: str) -> str:
 
 
 def image_metadata(md: str, filename: str = "", size_bytes: int = 0) -> str:
-    """Emit a metadata stub for image files (no OCR in v1).
+    """Pass through OCR text for images, or emit a metadata stub.
 
-    Returns a Markdown section with the filename and byte size, noting
-    that the body text was not rendered.
+    If `md` is non-empty, it contains OCR-extracted markdown from RapidOCR
+    and is returned as-is. If `md` is empty (no text detected, or OCR
+    failed), a metadata-only stub is emitted noting that no text was found.
     """
+    if md and md.strip():
+        return md
     return (
         f"## Image metadata\n\n"
         f"- **Filename:** `{filename}`\n"
         f"- **Size:** {size_bytes} bytes\n"
-        f"\n_AnyDoc does not extract text from images (OCR is not enabled in v1)._\n"
+        f"\n_No text was detected in this image (OCR found no readable text)._\n"
     )
 
 
