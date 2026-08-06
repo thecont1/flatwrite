@@ -1,11 +1,8 @@
 FROM python:3.12-slim
 
-# System packages MarkItDown's optional extras need on Linux.
-#   - poppler-utils  → pdfminer via MarkItDown[pdf] (uses pdfminer.six, no system dep actually,
-#                     but pdf2image/pdfminer backends are common; keep lightweight, do not add).
-#   - libxml2/libxslt → for python-docx's underlying lxml.
-# We deliberately keep this minimal — the slim base + uv is enough for the
-# `markitdown[pptx,docx,pdf,xlsx,xls,epub]` extras the plan calls for.
+# System packages for the AnyDoc-backed extract service.
+# firecrawl-anydoc ships platform wheels with bundled native libraries,
+# so only ca-certificates and curl (for uv install) are needed.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \

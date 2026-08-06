@@ -16,6 +16,7 @@ import hmac
 import io
 import os
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -99,7 +100,7 @@ def test_extract_rejects_empty_body(client: TestClient):
 
 def test_extract_rejects_oversize(client: TestClient):
     big = b"x" * (25 * 1024 * 1024 + 1)
-    files = {"file": ("big.json", io.BytesIO(big), "application/json")}
+    files = {"file": ("big.csv", io.BytesIO(big), "text/csv")}
     r = client.post("/extract", files=files)
     assert r.status_code == 413
     assert r.json()["detail"]["code"] == "PAYLOAD_TOO_LARGE"
@@ -114,37 +115,36 @@ def test_extract_csv_passthrough(client: TestClient):
     assert j["metadata"]["fileType"] == "csv"
     assert j["metadata"]["extractionType"] == "structured-data"
     assert j["metadata"]["sizeBytes"] == len(body)
-    # MarkItDown emits a markdown table — the column names should still
+    # AnyDoc emits a Markdown table — the column names should still
     # be present in the rendered output.
     assert "col1" in j["markdown"] and "col2" in j["markdown"]
 
 
-def test_extract_json_passthrough(client: TestClient):
-    body = b'{"hello":"world","n":1}\n'
-    files = {"file": ("data.json", io.BytesIO(body), "application/json")}
+def test_extract_rejects_unsupported_types(client: TestClient):
+    # AnyDoc does not support HTML, JSON, XML, or ZIP; these should be 415.
+    for name, content_type in (
+        ("data.json", "application/json"),
+        ("data.xml", "application/xml"),
+        ("page.html", "text/html"),
+        ("data.zip", "application/zip"),
+    ):
+        files = {"file": (name, io.BytesIO(b"x"), content_type)}
+        r = client.post("/extract", files=files)
+        assert r.status_code == 415, f"{name} should be rejected"
+        assert r.json()["detail"]["code"] == "UNSUPPORTED_FILE_TYPE"
+
+
+def test_extract_pptx_fixture(client: TestClient):
+    fixture = Path(__file__).resolve().parent / "fixtures" / "sample.pptx"
+    if not fixture.exists():
+        pytest.skip(f"fixture {fixture} missing")
+    files = {"file": ("sample.pptx", io.BytesIO(fixture.read_bytes()), "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
     r = client.post("/extract", files=files)
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     j = r.json()
-    assert j["metadata"]["fileType"] == "json"
-    assert "hello" in j["markdown"]
-
-
-def test_extract_xml_passthrough(client: TestClient):
-    body = b"<root><item>1</item></root>\n"
-    files = {"file": ("data.xml", io.BytesIO(body), "application/xml")}
-    r = client.post("/extract", files=files)
-    assert r.status_code == 200
-    j = r.json()
-    assert j["metadata"]["fileType"] == "xml"
-
-
-def test_extract_html_passthrough(client: TestClient):
-    body = b"<html><body><h1>Hi</h1></body></html>\n"
-    files = {"file": ("page.html", io.BytesIO(body), "text/html")}
-    r = client.post("/extract", files=files)
-    assert r.status_code == 200
-    j = r.json()
-    assert j["metadata"]["fileType"] == "html"
+    assert j["metadata"]["fileType"] == "powerpoint"
+    assert "## Welcome" in j["markdown"]
+    assert "greet the audience" in j["markdown"]
 
 
 def test_extract_image_returns_metadata_stub(client: TestClient):
@@ -168,7 +168,7 @@ def test_extract_500_does_not_leak_internal_paths(client: TestClient, monkeypatc
     contain absolute paths, library versions, etc.) into the response
     body. The full detail is still available server-side via log.exception.
     """
-    def _boom(content, source_name):
+    def _boom(content, source_name, *, file_type):
         raise RuntimeError("file:///srv/secrets/db.sqlite not found")
 
     monkeypatch.setattr("flatwrite_extract.main.convert_bytes", _boom)
@@ -187,8 +187,8 @@ def test_extract_500_does_not_leak_internal_paths(client: TestClient, monkeypatc
 
 def test_extract_audio_returns_metadata_stub(client: TestClient):
     # Minimal valid WAV file: RIFF header + fmt chunk + a single zero
-    # data sample. MarkItDown's audio converter should accept this and
-    # fall through to the metadata-only stub (no transcription in v1).
+    # data sample. AnyDoc does not support audio, so the API falls through
+    # to the metadata-only stub (no transcription in v1).
     # This is a real, well-formed WAV — the test pins a strict 200
     # contract rather than accepting a silent 500 regression.
     wav = (

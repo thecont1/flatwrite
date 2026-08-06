@@ -9,33 +9,49 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # extension (lowercase, including the leading dot) -> (fileType, extractionType)
+# Keep this in sync with the AnyDoc-supported formats listed at
+# https://github.com/firecrawl/anydoc and `public/index.html`.
 ALLOWED_EXTENSIONS: dict[str, tuple[str, str]] = {
-    ".pdf":  ("pdf",     "pdf-body"),
+    # PDF
+    ".pdf":  ("pdf",        "pdf-body"),
+    # Word / Word-like
+    ".doc":  ("word",       "word-body"),
+    ".docx": ("word",       "word-body"),
+    ".docm": ("word",       "word-body"),
+    ".odt":  ("word",       "word-body"),
+    ".rtf":  ("word",       "word-body"),
+    # PowerPoint / presentation-like
+    ".ppt":  ("powerpoint", "powerpoint-notes"),
+    ".pps":  ("powerpoint", "powerpoint-notes"),
+    ".pot":  ("powerpoint", "powerpoint-notes"),
     ".pptx": ("powerpoint", "powerpoint-notes"),
-    ".docx": ("word",    "word-body"),
-    ".xlsx": ("excel",   "excel-tables"),
-    ".xls":  ("excel",   "excel-tables"),
-    ".csv":  ("csv",     "structured-data"),
-    ".json": ("json",    "structured-data"),
-    ".xml":  ("xml",     "structured-data"),
-    ".zip":  ("zip",     "zip-contents"),
-    ".epub": ("epub",    "epub-body"),
-    ".html": ("html",    "html-body"),
-    ".htm":  ("html",    "html-body"),
-    # Image and audio types get metadata-only treatment (no OCR / no transcription
-    # in v1 — we honor the no-LLM-calls constraint from the plan).
-    ".png":  ("image",   "image-metadata"),
-    ".jpg":  ("image",   "image-metadata"),
-    ".jpeg": ("image",   "image-metadata"),
-    ".gif":  ("image",   "image-metadata"),
-    ".webp": ("image",   "image-metadata"),
-    ".tiff": ("image",   "image-metadata"),
-    ".tif":  ("image",   "image-metadata"),
-    ".mp3":  ("audio",   "audio-metadata"),
-    ".wav":  ("audio",   "audio-metadata"),
-    ".m4a":  ("audio",   "audio-metadata"),
-    ".ogg":  ("audio",   "audio-metadata"),
-    ".flac": ("audio",   "audio-metadata"),
+    ".pptm": ("powerpoint", "powerpoint-notes"),
+    ".ppsx": ("powerpoint", "powerpoint-notes"),
+    ".ppsm": ("powerpoint", "powerpoint-notes"),
+    ".odp":  ("powerpoint", "powerpoint-notes"),
+    # Excel / spreadsheet-like
+    ".xls":  ("excel",      "excel-tables"),
+    ".xlsx": ("excel",      "excel-tables"),
+    ".xlsm": ("excel",      "excel-tables"),
+    ".xlsb": ("excel",      "excel-tables"),
+    ".ods":  ("excel",      "excel-tables"),
+    ".csv":  ("csv",        "structured-data"),
+    # Other document formats
+    ".epub": ("epub",       "epub-body"),
+    # Image and audio types get metadata-only treatment (no OCR / no
+    # transcription in v1 — we keep the no-LLM-calls constraint).
+    ".png":  ("image",      "image-metadata"),
+    ".jpg":  ("image",      "image-metadata"),
+    ".jpeg": ("image",      "image-metadata"),
+    ".gif":  ("image",      "image-metadata"),
+    ".webp": ("image",      "image-metadata"),
+    ".tiff": ("image",      "image-metadata"),
+    ".tif":  ("image",      "image-metadata"),
+    ".mp3":  ("audio",      "audio-metadata"),
+    ".wav":  ("audio",      "audio-metadata"),
+    ".m4a":  ("audio",      "audio-metadata"),
+    ".ogg":  ("audio",      "audio-metadata"),
+    ".flac": ("audio",      "audio-metadata"),
 }
 
 # Max upload size — 25 MB per the plan.

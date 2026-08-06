@@ -4,7 +4,7 @@ End-to-end browser smoke for the drop-and-extract flow.
 Verifies the full chain: a File is dropped onto the editor at
 flatwrite.md, the JS mints a token from extract.flatwrite.md, the
 multipart body POSTs to extract.flatwrite.md/extract, the Worker
-forwards to Fly, MarkItDown converts, and the markdown lands in
+forwards to Fly, AnyDoc converts locally, and the markdown lands in
 the editor.
 
 This is the only test that actually exercises the browser-side
@@ -119,8 +119,8 @@ def test_drop_pptx_extracts_notes_into_editor(browser):
         after = page.locator("#editor").input_value()
         assert after != before, "editor content did not change after drop"
         assert "greet the audience warmly" in after
-        assert "## Slide 1" in after
-        # The notes-only slide (slide 3) should also be present.
+        assert "## Welcome" in after
+        # AnyDoc includes slide notes as blockquotes and preserves slide headings.
         assert "call to action" in after or "thank-yous" in after
     finally:
         page.close()

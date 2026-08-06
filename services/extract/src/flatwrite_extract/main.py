@@ -10,7 +10,7 @@ The /extract endpoint:
   - accepts multipart/form-data with field "file"
   - validates the file is under 25 MB (413), non-empty (400), and has an
     allowed extension (415)
-  - converts in-memory (never writes to disk) via MarkItDown
+  - converts in-memory (never writes to disk) via AnyDoc
   - applies the per-type post-processing rule
   - returns { markdown, metadata: { extractionType, filename, fileType, sizeBytes } }
   - logs only the filename and size — never the content
@@ -34,7 +34,7 @@ log = logging.getLogger("flatwrite-extract")
 app = FastAPI(
     title="flatwrite-extract",
     version="0.1.0",
-    description="MarkItDown-backed file extraction for FlatWrite. "
+    description="AnyDoc-backed file extraction for FlatWrite. "
                 "No LLM calls, no disk writes, no URL-based conversion.",
 )
 
@@ -74,7 +74,7 @@ async def extract(
     """Accept a multipart file upload, convert it to markdown, and return the result.
 
     Verifies the HMAC signature (when configured), validates the filename
-    extension and file size, converts the in-memory bytes via MarkItDown,
+    extension and file size, converts the in-memory bytes via AnyDoc,
     applies the per-type post-processing rule, and returns a JSON response
     with the extracted markdown and metadata.
     """
@@ -131,8 +131,8 @@ async def extract(
         )
 
     try:
-        raw_md = convert_bytes(content, source_name=filename)
-    except Exception:  # noqa: BLE001 — MarkItDown raises varied exception types
+        raw_md = convert_bytes(content, source_name=filename, file_type=type_info.file_type)
+    except Exception:  # noqa: BLE001 — AnyDoc raises varied exception types
         # Log the full exception (paths, library internals) server-side only.
         # The response body must never leak that detail to the caller.
         log.exception("convert failed for filename=%s size=%d", filename, len(content))
