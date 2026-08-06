@@ -148,7 +148,7 @@ def test_extract_pptx_fixture(client: TestClient):
 
 
 def test_extract_image_returns_metadata_stub(client: TestClient):
-    # 1x1 transparent PNG, minimal bytes
+    # 1x1 transparent PNG, minimal bytes — no text for OCR to find
     body = bytes.fromhex(
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
         "890000000d4944415478da63000100000005000159ce5e8e0000000049454e44"
@@ -159,7 +159,8 @@ def test_extract_image_returns_metadata_stub(client: TestClient):
     assert r.status_code == 200
     j = r.json()
     assert j["metadata"]["fileType"] == "image"
-    assert j["metadata"]["extractionType"] == "image-metadata"
+    assert j["metadata"]["extractionType"] == "image-ocr"
+    # OCR finds no text in a 1x1 PNG → metadata stub
     assert "Image metadata" in j["markdown"]
 
 

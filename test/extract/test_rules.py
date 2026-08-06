@@ -103,7 +103,11 @@ class TestImageMetadata:
 
     def test_notes_no_ocr(self):
         out = image_metadata("", filename="pic.png", size_bytes=42)
-        assert "AnyDoc does not extract text from images" in out
+        assert "No text was detected in this image" in out
+
+    def test_passes_through_ocr_text(self):
+        out = image_metadata("# Hello\n\nWorld", filename="pic.png", size_bytes=42)
+        assert out == "# Hello\n\nWorld"
 
 
 class TestAudioMetadata:
