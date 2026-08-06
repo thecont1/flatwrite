@@ -1020,7 +1020,7 @@
      ==========================================================================
      Routes any dropped file that isn't a plain-text file (`.md`, `.txt`,
      `.markdown`) through the new /extract endpoint, which converts it to
-     Markdown via the MarkItDown service behind extract.flatwrite.md.
+     Markdown via the AnyDoc service behind extract.flatwrite.md.
 
      Plain-text files still go through handleFileUpload() — no need to
      round-trip to the server for a raw text read.
@@ -4660,15 +4660,16 @@
     }
 
     /**
-     * POST a webpage URL to /api/import-url (which proxies markdown.new)
-     * and load the returned markdown into the editor. Reuses the same
-     * dirty-check + setEditorContent + renderPreview flow as every other
-     * load path so there is no parallel document model.
+     * POST a document URL to /api/import-url. The backend fetches the
+     * document and converts it locally with AnyDoc, then loads the
+     * returned markdown into the editor. Reuses the same dirty-check +
+     * setEditorContent + renderPreview flow as every other load path so
+     * there is no parallel document model.
      *
-     * No method/retain-images pickers are exposed in the UI — markdown.new
-     * already knows how to pick the right conversion strategy for a given
-     * page. We ask once for "auto" with images retained; markdown.new owns
-     * the internal escalation chain for JS-heavy sites.
+     * Only document files (PDF, DOCX, PPTX, XLSX, CSV, etc.) are
+     * supported; web pages (HTML) are rejected because AnyDoc does not
+     * convert them. The method/retain-images pickers are kept for API
+     * compatibility but are ignored by AnyDoc.
      */
     function addBrowserRetry(url) {
       var retry = document.createElement("button");
@@ -4718,8 +4719,8 @@
             importedMarkdown = window.FlatwriteUrlRouting.ensureMarkdownH1(importedMarkdown, doc.title);
           }
           setEditorContent(importedMarkdown);
-          // Root-relative and relative image/link paths are common in
-          // markdown.new's output (e.g. "/library/originals/photo.jpg").
+          // Root-relative and relative image/link paths can appear in
+          // imported documents (e.g. "/library/originals/photo.jpg").
           // Reuse the same base-URL resolution the GitHub/file-URL load
           // paths already rely on (see setMarkdownUrl/resolveRelativeUrls)
           // so these paths get prefixed with the source page's origin

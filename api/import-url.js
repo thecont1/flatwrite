@@ -1,39 +1,40 @@
 /**
  * flatwrite.md - Minimalist Markdown Editor
- * 
+ *
  * Copyright (C) 2026 Mahesh Shantaram
  * Sole Proprietary Owner. All Rights Reserved.
- * 
+ *
  * This file is part of flatwrite.md.
  * flatwrite.md is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published 
+ * it under the terms of the GNU Affero General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * For commercial, closed-source embedding, and SaaS deployment exemptions,
  * a valid Commercial License Agreement is required. Contact: sales@flatwrite.md
  */
 
 // api/import-url.js — canonical /api/import-url handler
 //
-// Thin orchestration layer in front of Cloudflare's `markdown.new` service:
-// validates the target URL, forwards it to markdown.new for conversion
-// (auto / ai / browser pipeline), extracts a best-effort title + metadata
-// from the returned markdown, and hands back a document shape the editor
-// can drop straight into `setEditorContent()`.
+// Fetches a public document URL, then converts the downloaded bytes to
+// Markdown locally using the FlatWrite extract service (AnyDoc). Nothing
+// is sent to a third-party conversion service; the only network call is
+// the fetch of the user-supplied URL itself.
 //
 // Uses only standard Node.js http.ServerResponse methods so it works both
 // in Vercel's runtime and the custom server (index.js) — mirrors api/render.js.
 'use strict';
+const crypto = require('crypto');
 const dns = require('dns').promises;
 const net = require('net');
 const { readBody } = require('../core/io');
 const { createRateLimiter } = require('../core/rate-limit');
 
-const MARKDOWN_NEW_URL = 'https://markdown.new/';
+const EXTRACT_SERVICE_URL = process.env.EXTRACT_SERVICE_URL || 'http://127.0.0.1:8000';
+const INTERNAL_EXTRACT_KEY = process.env.INTERNAL_EXTRACT_KEY || '';
 const MAX_REQUEST_BYTES = 8 * 1024; // request body is just { url, method, retain_images }
-const MAX_MARKDOWN_BYTES = 4 * 1024 * 1024; // 4 MB cap on returned markdown
-const UPSTREAM_TIMEOUT_MS = 25_000; // ai/browser modes are slower than a plain fetch
+const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024; // same cap as the extract service
+const UPSTREAM_TIMEOUT_MS = 60_000;
 const VALID_METHODS = new Set(['auto', 'ai', 'browser']);
 
 // 20 requests per minute per caller IP — import is heavier than a render call.
@@ -91,9 +92,8 @@ function isPrivateIp(ip) {
 /**
  * Validate the URL the user wants imported. Rejects non-http(s) protocols,
  * localhost, and private/reserved network targets (including a DNS-rebinding
- * guard that resolves hostnames before allowing them through). markdown.new
- * itself performs the actual fetch of the target page, but we still refuse
- * to forward obviously unsafe targets.
+ * guard that resolves hostnames before allowing them through). The fetch is
+ * done by this handler; we refuse to download obviously unsafe targets.
  */
 async function validateImportUrl(rawUrl) {
   if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
@@ -122,10 +122,7 @@ async function validateImportUrl(rawUrl) {
   }
 
   // DNS-rebinding guard: resolve the hostname and reject if *any* resolved
-  // address (IPv4 or IPv6) is private/reserved, even though markdown.new
-  // does the real fetch. This is best-effort defense-in-depth — a TOCTOU
-  // gap exists between our resolution and the upstream fetch, but we still
-  // refuse to forward obviously unsafe targets.
+  // address (IPv4 or IPv6) is private/reserved.
   try {
     const addresses = await dns.lookup(hostname, { all: true });
     if (!addresses.length) {
@@ -145,8 +142,8 @@ async function validateImportUrl(rawUrl) {
 
 /**
  * Conservative YAML-frontmatter parser. Only handles the flat
- * `key: value` shape markdown.new / typical static-site generators emit —
- * no nested structures, no multi-line scalars. Good enough to pull out
+ * `key: value` shape typical static-site generators emit — no nested
+ * structures, no multi-line scalars. Good enough to pull out
  * title/description/image without pulling in a YAML dependency.
  */
 function parseFrontmatter(markdown) {
@@ -193,10 +190,130 @@ function extractTitle(markdown, frontmatter, sourceUrl) {
   }
 }
 
-function parseTokenCount(headerValue) {
-  if (!headerValue) return null;
-  const n = parseInt(headerValue, 10);
-  return Number.isFinite(n) ? n : null;
+// Map common MIME types to an AnyDoc-friendly filename extension. If we can't
+// pick one, the URL path should carry the extension; otherwise we reject.
+const MIME_TO_EXTENSION = {
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow': '.ppsx',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls',
+  'text/csv': '.csv',
+  'application/rtf': '.rtf',
+  'text/rtf': '.rtf',
+  'application/epub+zip': '.epub',
+  'application/vnd.oasis.opendocument.text': '.odt',
+  'application/vnd.oasis.opendocument.spreadsheet': '.ods',
+  'application/vnd.oasis.opendocument.presentation': '.odp',
+};
+
+function guessFilename(parsedUrl, contentType) {
+  const fromPath = parsedUrl.pathname.split('/').pop() || '';
+  if (fromPath && fromPath.includes('.')) {
+    return decodeURIComponent(fromPath);
+  }
+  const mime = (contentType || '').split(';')[0].trim().toLowerCase();
+  const ext = MIME_TO_EXTENSION[mime];
+  if (ext) {
+    return 'document' + ext;
+  }
+  return null;
+}
+
+function htmlContentType(contentType) {
+  const mime = (contentType || '').split(';')[0].trim().toLowerCase();
+  return mime === 'text/html' || mime === 'application/xhtml+xml' || mime === 'application/html';
+}
+
+async function fetchDocumentBytes(url, signal) {
+  const upstream = await fetch(url, {
+    signal,
+    headers: {
+      'Accept': 'application/pdf, application/msword, application/vnd.openxmlformats-officedocument.*, application/vnd.oasis.opendocument.*, text/csv, application/rtf, application/epub+zip, */*;q=0.1',
+      'User-Agent': 'FlatWrite/1.0 (document importer)',
+    },
+  });
+
+  if (!upstream.ok) {
+    const err = new Error(`Source URL returned ${upstream.status}`);
+    err.status = upstream.status === 404 ? 404 : 502;
+    throw err;
+  }
+
+  const contentLength = parseInt(upstream.headers.get('content-length') || '', 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_DOCUMENT_BYTES) {
+    const err = new Error('Document is too large (25 MB max)');
+    err.status = 413;
+    throw err;
+  }
+
+  const reader = upstream.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_DOCUMENT_BYTES) {
+      throw Object.assign(new Error('Document is too large (25 MB max)'), { status: 413 });
+    }
+    chunks.push(Buffer.from(value));
+  }
+
+  const buffer = Buffer.concat(chunks);
+  return {
+    buffer,
+    contentType: upstream.headers.get('content-type') || '',
+  };
+}
+
+function signExtractRequest(secret, timestamp) {
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`${timestamp}.POST./extract`)
+    .digest('hex');
+}
+
+async function callExtractService(buffer, filename) {
+  const fd = new FormData();
+  fd.append('file', new Blob([buffer]), filename);
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const headers = {};
+  if (INTERNAL_EXTRACT_KEY) {
+    headers['X-Extract-Timestamp'] = String(timestamp);
+    headers['X-Extract-Signature'] = signExtractRequest(INTERNAL_EXTRACT_KEY, timestamp);
+  }
+
+  const res = await fetch(`${EXTRACT_SERVICE_URL}/extract`, {
+    method: 'POST',
+    headers,
+    body: fd,
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const code = data && data.detail && data.detail.code;
+    const msg = (data && data.detail && data.detail.error) || (data && data.error) || `Extract service returned ${res.status}`;
+    const err = new Error(msg);
+    err.status = code === 'UNSUPPORTED_FILE_TYPE' ? 415 : (res.status >= 500 && res.status < 600 ? 502 : res.status);
+    throw err;
+  }
+
+  if (!data || typeof data.markdown !== 'string') {
+    throw Object.assign(new Error('Extract service returned malformed response'), { status: 502 });
+  }
+
+  return data;
 }
 
 module.exports = async function handleImportUrl(req, res) {
@@ -245,135 +362,70 @@ module.exports = async function handleImportUrl(req, res) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
-  let upstream;
+  let buffer;
+  let contentType;
   try {
-    upstream = await fetch(MARKDOWN_NEW_URL, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/markdown, text/plain;q=0.9, */*;q=0.1',
-      },
-      body: JSON.stringify({ url: sourceUrl, method, retain_images: retainImages }),
-    });
+    ({ buffer, contentType } = await fetchDocumentBytes(sourceUrl, controller.signal));
   } catch (err) {
     clearTimeout(timeout);
     const timedOut = err && err.name === 'AbortError';
-    return json(res, 504, {
-      ok: false,
-      error: timedOut ? 'Import timed out. Try again, or retry with browser mode for JS-heavy sites.' : 'Could not reach the import service.',
-    });
+    const status = err.status || (timedOut ? 504 : 502);
+    const error = timedOut
+      ? 'Import timed out. The document may be too large or the server too slow.'
+      : (err.message || 'Could not fetch the URL.');
+    return json(res, status, { ok: false, error });
   }
   clearTimeout(timeout);
 
-  if (!upstream.ok) {
-    // Never forward the raw upstream body to the client — just the status.
-    const status = upstream.status === 429 ? 429 : 502;
-    return json(res, status, {
+  if (!buffer || buffer.length === 0) {
+    return json(res, 502, { ok: false, error: 'The URL returned an empty document.' });
+  }
+
+  if (htmlContentType(contentType)) {
+    return json(res, 415, {
       ok: false,
-      error: status === 429
-        ? 'Import service is rate-limited right now. Please try again shortly.'
-        : `Import failed (upstream returned ${upstream.status}).`,
+      error: 'This URL points to an HTML page. Only document files (PDF, DOCX, PPTX, XLSX, etc.) can be imported locally with AnyDoc.',
     });
   }
 
-  // Early rejection if Content-Length already exceeds the cap.
-  const contentLength = parseInt(upstream.headers.get('content-length') || '', 10);
-  if (Number.isFinite(contentLength) && contentLength > MAX_MARKDOWN_BYTES) {
-    clearTimeout(timeout);
-    return json(res, 502, { ok: false, error: 'Imported content was too large.' });
+  const filename = guessFilename(validated.url, contentType);
+  if (!filename) {
+    return json(res, 400, {
+      ok: false,
+      error: 'Could not determine a document filename or supported MIME type from the URL.',
+    });
   }
 
-  // Stream the response body in chunks, enforcing the size limit during
-  // reading rather than after the full body is buffered. The AbortController
-  // timeout stays active until the body is fully consumed.
-  let rawText;
+  let extracted;
   try {
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    let total = 0;
-    let text = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_MARKDOWN_BYTES) {
-        controller.abort();
-        clearTimeout(timeout);
-        return json(res, 502, { ok: false, error: 'Imported content was too large.' });
-      }
-      text += decoder.decode(value, { stream: true });
-    }
-    text += decoder.decode(); // flush
-    rawText = text;
+    extracted = await callExtractService(buffer, filename);
   } catch (err) {
-    clearTimeout(timeout);
-    if (err && err.name === 'AbortError') {
-      return json(res, 504, { ok: false, error: 'Import timed out while reading content.' });
-    }
-    return json(res, 502, { ok: false, error: 'Failed to read imported content.' });
-  }
-  clearTimeout(timeout);
-
-  if (!rawText || !rawText.trim()) {
-    return json(res, 502, { ok: false, error: 'The import service returned no content.' });
+    return json(res, err.status || 502, { ok: false, error: err.message || 'Local conversion failed.' });
   }
 
-  const contentType = upstream.headers.get('content-type') || '';
-
-  // markdown.new's real-world response is a JSON envelope
-  // ({ success, url, title, content, tokens, ... }), not a bare
-  // text/markdown body, regardless of what Accept header we send. Detect
-  // that shape and unwrap it; otherwise treat the body as markdown
-  // directly (covers a future/alternate deployment that really does
-  // stream text/markdown).
-  let markdown = rawText;
-  let upstreamTitle = null;
-  let upstreamTokens = null;
-  if (contentType.includes('application/json') || /^\s*\{/.test(rawText)) {
-    try {
-      const envelope = JSON.parse(rawText);
-      if (envelope && envelope.success === false) {
-        return json(res, 502, { ok: false, error: 'The import service could not convert this page.' });
-      }
-      if (envelope && typeof envelope.content === 'string') {
-        markdown = envelope.content;
-        if (typeof envelope.title === 'string' && envelope.title.trim()) upstreamTitle = envelope.title.trim();
-        if (Number.isFinite(envelope.tokens)) upstreamTokens = envelope.tokens;
-      }
-    } catch {
-      // Not actually JSON despite the content-type/leading-brace hint —
-      // fall through and use rawText as markdown.
-    }
-  }
-
+  const markdown = extracted.markdown;
   if (!markdown || !markdown.trim()) {
-    return json(res, 502, { ok: false, error: 'The import service returned no usable content.' });
+    return json(res, 502, { ok: false, error: 'The document was empty after conversion.' });
   }
 
-  const tokenCount = parseTokenCount(upstream.headers.get('x-markdown-tokens')) ?? upstreamTokens;
-
-  const { frontmatter, body: bodyWithoutFrontmatter } = parseFrontmatter(markdown);
-  const title = upstreamTitle || extractTitle(bodyWithoutFrontmatter, frontmatter, sourceUrl);
-
-  const importMeta = {
-    importer: 'markdown.new',
-    tokenCount,
-    method,
-    retainImages,
-    contentType,
-    fetchedAt: new Date().toISOString(),
-  };
-  if (frontmatter && frontmatter.description) importMeta.description = frontmatter.description;
-  if (frontmatter && frontmatter.image) importMeta.image = frontmatter.image;
+  const { frontmatter, body: mdBody } = parseFrontmatter(markdown);
+  const title = extractTitle(mdBody, frontmatter, sourceUrl);
 
   return json(res, 200, {
     ok: true,
     document: {
       content: markdown,
-      sourceUrl,
       title,
-      importMeta,
+      sourceUrl,
+      importMeta: {
+        importer: 'anydoc',
+        tokenCount: null,
+        method,
+        retainImages,
+        contentType,
+        fetchedAt: new Date().toISOString(),
+        filename,
+      },
     },
   });
 };
