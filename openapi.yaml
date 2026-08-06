@@ -454,8 +454,6 @@ components:
                 - pdf-body
                 - excel-tables
                 - structured-data
-                - html-body
-                - zip-contents
                 - epub-body
                 - image-metadata
                 - audio-metadata
@@ -471,13 +469,9 @@ components:
                 - pdf
                 - excel
                 - csv
-                - json
-                - xml
-                - zip
                 - epub
                 - image
                 - audio
-                - html
             sizeBytes:
               type: integer
               format: int32

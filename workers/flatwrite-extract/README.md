@@ -1,7 +1,7 @@
 # flatwrite-extract Worker
 
 Cloudflare Worker serving the public `https://extract.flatwrite.md/extract`
-endpoint. It is a thin proxy in front of the MarkItDown-backed
+endpoint. It is a thin proxy in front of the AnyDoc-backed
 `flatwrite-extract` service on Fly.io.
 
 ## Endpoints

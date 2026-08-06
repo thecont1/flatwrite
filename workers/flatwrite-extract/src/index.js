@@ -24,7 +24,7 @@ import {
 /**
  * Cloudflare Worker: extract.flatwrite.md
  *
- * Multipart upload proxy in front of the Fly.io-hosted MarkItDown service.
+ * Multipart upload proxy in front of the Fly.io-hosted AnyDoc service.
  * Mirrors the auth, CORS, and HMAC-signing pattern of flatwrite-render.
  *
  *   - POST /extract         → forwards the multipart body to the upstream

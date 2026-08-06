@@ -8,8 +8,8 @@ Markdown is one of the greatest cross-platform information formats ever invented
 
 ## What it does
 
-- **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, PPTX, DOCX, XLSX, CSV, JSON, images, audio) — non-text files are converted to Markdown by the MarkItDown extract service.
-- **Import from URL** — paste any webpage URL and FlatWrite converts it to Markdown via Cloudflare's `markdown.new` service, then loads it straight into the editor.
+- **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, ODT/ODS/ODP, RTF, EPUB, images, audio) — non-text files are converted to Markdown locally by the AnyDoc extract service.
+- **Import from URL** — paste a URL to a document file and FlatWrite fetches it, converts it locally with AnyDoc, and loads the Markdown straight into the editor.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a clean, document-first preview.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
@@ -86,15 +86,15 @@ curl -X POST https://render.flatwrite.md/render \
   -d '{"markdown":"# Hello, FlatWrite"}'
 ```
 
-A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/form-data` uploads and converts non-text files to Markdown via the MarkItDown service under [`services/extract/`](./services/extract/). The proxy Worker under [`workers/flatwrite-extract/`](./workers/flatwrite-extract/) mirrors the auth model of the render Worker.
+A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/form-data` uploads and converts non-text files to Markdown locally via the AnyDoc service under [`services/extract/`](./services/extract/). The proxy Worker under [`workers/flatwrite-extract/`](./workers/flatwrite-extract/) mirrors the auth model of the render Worker.
 
-**Import from URL:** `POST /api/import-url` (canonical handler: [`api/import-url.js`](./api/import-url.js)) accepts `{ url, method?, retain_images? }` and forwards the request to Cloudflare's [`markdown.new`](https://markdown.new) service, which converts an arbitrary webpage into Markdown.
+**Import from URL:** `POST /api/import-url` (canonical handler: [`api/import-url.js`](./api/import-url.js)) accepts `{ url, method?, retain_images? }`, fetches the URL, and converts the downloaded document locally with AnyDoc. Only document files are supported; HTML web pages are rejected.
 
-- `method` selects the conversion pipeline: `auto` (default — tries the fast path, falls back automatically), `ai` (LLM-assisted extraction), or `browser` (renders the page in a headless browser first — slower, but the only option that reliably works on JS-heavy/SPA sites).
-- `retain_images` (default: `true`) controls whether image references are kept in the returned Markdown. FlatWrite's viewer/export pipeline (`core/render.js`, `core/inline-assets.js`) already resolves and renders images from markdown, so keeping images on by default preserves the most faithful reading experience; turn it off for a text-only import.
+- `method` is accepted for backward compatibility (`auto`, `ai`, `browser`) but is ignored by AnyDoc.
+- `retain_images` (default: `true`) is accepted for backward compatibility but is ignored by AnyDoc.
 - The endpoint validates the target URL (`http`/`https` only, no `localhost`, no private/reserved-network addresses, with a DNS-rebinding guard), enforces a request timeout, and never forwards raw upstream error bodies to the client.
-- The frontend's existing **Load from URL** dialog (sidebar → **From URL**) gained an **"Import as a webpage"** checkbox with an **Advanced options** section for `method`/`retain_images`. On success the returned Markdown replaces the editor content through the same `setEditorContent()` path used by every other load flow — there is no parallel document model. If the import looks unusually thin (likely a JS-heavy site that `auto` couldn't handle), FlatWrite surfaces a **"Retry with browser mode"** button.
-- Limitations: authenticated/paywalled pages and highly dynamic content may still convert poorly even in `browser` mode, since `markdown.new` cannot authenticate on the user's behalf. This feature requires the backend endpoint to be reachable (Vercel deployment or the local `index.js`/dev server) — it does not work against a static-assets-only deployment.
+- The frontend's existing **Load from URL** dialog (sidebar → **From URL**) still sends `method`/`retain_images` for backward compatibility. On success the returned Markdown replaces the editor content through the same `setEditorContent()` path used by every other load flow — there is no parallel document model.
+- Limitations: only document files are supported. Web pages and authenticated/paywalled content cannot be imported because AnyDoc does not convert HTML or authenticate on the user's behalf. This feature requires the backend endpoint and the extract service to be reachable (Vercel deployment or the local `index.js`/dev server plus `services/extract` on port 8000) — it does not work against a static-assets-only deployment.
 
 The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 
