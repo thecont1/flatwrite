@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
+    "pdf-inspector>=0.2.6",
 ]
 
 [project.optional-dependencies]
