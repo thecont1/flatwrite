@@ -3,10 +3,18 @@ FROM python:3.12-slim
 # System packages for the AnyDoc-backed extract service.
 # firecrawl-anydoc ships platform wheels with bundled native libraries,
 # so only ca-certificates and curl (for uv install) are needed.
+# rapidocr-onnxruntime depends on opencv-python, which needs libGL and
+# related X11 shared libraries at runtime (headless — no X server needed).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (single binary, pinned to a known-good version).
