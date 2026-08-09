@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.page/schema.json",
+  "name": "FlatWrite",
+  "description": "FlatWrite turns plain markdown into beautiful, shareable documents you actually enjoy reading. Makes markdown publishing feel effortless.",
+  "sidebar": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        {
+          "title": "Getting to know docs.page",
+          "href": "/",
+          "icon": "rocket"
+        },
+        {
+          "title": "Next Steps",
+          "href": "/next-steps",
+          "icon": "arrow-right"
+        }
+      ]
+    }
+  ]
+}
