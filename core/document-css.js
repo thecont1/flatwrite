@@ -95,6 +95,9 @@ function buildDocumentCss(opts) {
     .fw-render pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }
     .fw-render table { border-collapse: collapse; width: 100%; table-layout: fixed; }
     .fw-render th, .fw-render td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }
+    .fw-render thead { display: table-header-group; }
+    .fw-render tfoot { display: table-footer-group; }
+    .fw-render tr { break-inside: avoid; page-break-inside: avoid; }
     .fw-render thead th { background: #333333; color: #fff; }
     .fw-render tbody tr:nth-child(even) { background: #f2f2f2; }
     .fw-render tbody tr:nth-child(odd) { background: #ffffff; }
