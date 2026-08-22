@@ -1016,7 +1016,11 @@
       currentMarkdownUrl = "";
       githubBaseUrl = "";
       mathPromptDismissed = false;
-      openTableWorkshopIfNeeded(markdown, { fileType: "csv" });
+      var opened = openTableWorkshopIfNeeded(markdown, { fileType: "csv" });
+      if (!opened) {
+        maybePromptMathMode(markdown);
+        if (mode !== "edit") renderPreview();
+      }
     };
     reader.readAsText(file);
   }
@@ -1272,10 +1276,14 @@
       finishStructuredPrint();
       return;
     }
+    if (!isCurrentPreviewCommitted()) {
+      cancelStructuredPrintJob();
+      return;
+    }
     var doc = null;
     try { doc = previewFrame && previewFrame.contentDocument; } catch (_) { doc = null; }
     if (!doc) {
-      finishStructuredPrint();
+      cancelStructuredPrintJob();
       return;
     }
     var overflows = helper.tableOverflowsPage(doc);
@@ -1424,9 +1432,10 @@
         + "</div></div></th>";
     }
     html += "</tr></thead><tbody>";
-    for (var r = 0; r < model.rows.length; r++) {
-      var rowClass = mask[r] ? "" : " class=\"is-filtered-out\"";
-      html += "<tr" + rowClass + "><th class=\"table-workshop-rowgutter\" scope=\"row\">" + (r + 1) + "</th>";
+    for (var r = 0, vi = 0; r < model.rows.length; r++) {
+      if (!mask[r]) continue;
+      vi++;
+      html += "<tr><th class=\"table-workshop-rowgutter\" scope=\"row\">" + vi + "</th>";
       for (var c2 = 0; c2 < model.headers.length; c2++) {
         html += "<td><textarea class=\"table-workshop-cell\" rows=\"1\" data-row=\"" + r + "\" data-col=\"" + c2 + "\" spellcheck=\"false\">"
           + escapeHtmlText(model.rows[r][c2]) + "</textarea></td>";

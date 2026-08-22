@@ -3545,12 +3545,19 @@ body.dark .assist-accept {
   color: var(--text-primary);
   padding: 8px 10px;
   resize: none;
-  overflow: hidden;
+  overflow: auto;
   field-sizing: content;
 }
 
+@supports (field-sizing: content) {
+  .table-workshop-cell {
+    overflow: hidden;
+  }
+}
+
 .table-workshop-cell:focus {
-  outline: none;
+  outline: 2px solid #b06ab3;
+  outline-offset: -2px;
   background: rgba(176, 106, 179, 0.08);
 }
 

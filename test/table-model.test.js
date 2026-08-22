@@ -84,10 +84,13 @@ describe("parse / serialize", () => {
 });
 
 describe("mutations", () => {
-  test("sorts numbers descending and keeps empties last", () => {
+  test("sorts numbers and keeps empties last in both directions", () => {
     const t = TM.parseFirstTable(TABLE);
-    const sorted = TM.sortBy(t, 1, "desc");
-    expect(sorted.rows.map((r) => r[1])).toEqual(["12", "3", "1"]);
+    const withEmpty = { ...t, rows: [...t.rows, ["banana", "", "0.50"]] };
+    const desc = TM.sortBy(withEmpty, 1, "desc");
+    expect(desc.rows.map((r) => r[1])).toEqual(["12", "3", "1", ""]);
+    const asc = TM.sortBy(withEmpty, 1, "asc");
+    expect(asc.rows.map((r) => r[1])).toEqual(["1", "3", "12", ""]);
   });
 
   test("hides a column from serialize without dropping it from the model", () => {
@@ -138,6 +141,11 @@ describe("csv parse", () => {
     expect(t.rows[0]).toEqual(["1", "2", "3"]);
   });
 
+  test("preserves newlines inside quoted CSV fields", () => {
+    const t = TM.parseCsv('note\n"Line one\nLine two","second cell"\n');
+    expect(t.rows[0]).toEqual(["Line one\nLine two", "second cell"]);
+  });
+
   test("returns empty markdown for blank input", () => {
     expect(TM.csvToMarkdown("")).toBe("");
     expect(TM.csvToMarkdown("   \n")).toBe("");
@@ -152,9 +160,9 @@ describe("app wiring", () => {
   });
 
   test("index loads the model before app.js and ships the workshop dialog", () => {
-    expect(INDEX).toContain("table-model.js?v=2");
+    expect(INDEX).toContain("table-model.js?v=3");
     expect(INDEX).toContain("table-workshop");
-    expect(INDEX.indexOf("table-model.js?v=2")).toBeLessThan(INDEX.indexOf("app.js?v=140"));
+    expect(INDEX.indexOf("table-model.js?v=3")).toBeLessThan(INDEX.indexOf("app.js?v=141"));
   });
 
   test("preview CSS repeats thead on every printed page", () => {

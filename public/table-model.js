@@ -308,14 +308,23 @@
     return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
   }
 
+  function isEmptyValue(v) {
+    return String(v == null ? '' : v).trim() === '';
+  }
+
   function sortBy(model, col, dir) {
     var m = cloneModel(model);
     var c = clampIndex(col, 0, m.headers.length - 1);
     var sign = dir === 'desc' ? -1 : 1;
     var indexed = m.rows.map(function (row, i) { return { row: row, i: i }; });
     indexed.sort(function (x, y) {
-      var cmp = compareValues(x.row[c], y.row[c]);
-      if (cmp !== 0) return cmp * sign;
+      var aEmpty = isEmptyValue(x.row[c]);
+      var bEmpty = isEmptyValue(y.row[c]);
+      if (aEmpty && bEmpty) return x.i - y.i;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      var cmp = compareValues(x.row[c], y.row[c]) * sign;
+      if (cmp !== 0) return cmp;
       return x.i - y.i;
     });
     m.rows = indexed.map(function (x) { return x.row; });
@@ -427,8 +436,32 @@
     return visibleIndices(model).length;
   }
 
+  function splitCsvRecords(raw) {
+    var records = [];
+    var buf = '';
+    var inQuotes = false;
+    for (var i = 0; i < raw.length; i++) {
+      var ch = raw.charAt(i);
+      if (ch === '"') {
+        if (inQuotes && raw.charAt(i + 1) === '"') { buf += '""'; i++; continue; }
+        inQuotes = !inQuotes;
+        buf += ch;
+        continue;
+      }
+      if ((ch === '\n' || ch === '\r') && !inQuotes) {
+        records.push(buf);
+        buf = '';
+        if (ch === '\r' && raw.charAt(i + 1) === '\n') i++;
+        continue;
+      }
+      buf += ch;
+    }
+    if (buf !== '' || records.length === 0) records.push(buf);
+    return records;
+  }
+
   function detectCsvDelimiter(text) {
-    var sample = String(text || '').split(/\r?\n/, 8).join('\n');
+    var sample = splitCsvRecords(String(text || '')).slice(0, 8).join('\n');
     var counts = { ',': 0, '\t': 0, ';': 0 };
     var inQuotes = false;
     for (var i = 0; i < sample.length; i++) {
@@ -473,11 +506,11 @@
     var raw = String(text || '').replace(/^\uFEFF/, '');
     if (!raw.trim()) return null;
     var delimiter = detectCsvDelimiter(raw);
-    var lines = raw.split(/\r?\n/);
+    var records = splitCsvRecords(raw);
     var rows = [];
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === '') continue;
-      rows.push(parseCsvLine(lines[i], delimiter));
+    for (var i = 0; i < records.length; i++) {
+      if (records[i].trim() === '') continue;
+      rows.push(parseCsvLine(records[i], delimiter));
     }
     if (!rows.length) return null;
     var width = 0;

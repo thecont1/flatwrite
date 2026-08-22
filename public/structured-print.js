@@ -103,7 +103,8 @@
    */
   function tableOverflowsPage(doc) {
     if (!doc || !doc.querySelector || !doc.body) return false;
-    var area = doc.querySelector('[data-vivliostyle-page-container]')
+    var area = doc.querySelector('[data-vivliostyle-page-area]')
+      || doc.querySelector('[data-vivliostyle-page-container]')
       || doc.querySelector('.pagedjs_area')
       || doc.querySelector('main');
     if (!area) return false;
