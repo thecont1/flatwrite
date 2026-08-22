@@ -1354,7 +1354,7 @@
     var filter = document.getElementById("table-workshop-filter");
     if (filter) filter.value = "";
     var applyBtn = document.getElementById("table-modal-apply");
-    if (applyBtn) applyBtn.textContent = tableWorkshop.printAfter ? "Apply & print" : "Apply";
+    if (applyBtn) applyBtn.textContent = "Load";
     var lede = document.getElementById("table-modal-lede");
     if (lede) {
       lede.textContent = tableWorkshop.printAfter
@@ -1452,7 +1452,8 @@
     var TM = tableModelApi();
     if (!TM || !tableWorkshop.model || !editor) return;
     var md = editor.value;
-    var next = TM.replaceTable(md, tableWorkshop.block, tableWorkshop.model);
+    var mask = TM.rowMask(tableWorkshop.model, tableWorkshop.query);
+    var next = TM.replaceTable(md, tableWorkshop.block, tableWorkshop.model, { rowMask: mask });
     var printAfter = tableWorkshop.printAfter;
     closeTableWorkshop();
     setEditorContent(next);
@@ -1461,7 +1462,7 @@
     } else if (mode !== "edit") {
       renderPreview();
     }
-    showToast(printAfter ? "Table applied — laying out for print…" : "Table updated");
+    showToast(printAfter ? "Table loaded — laying out for print…" : "Table loaded");
   }
 
   function skipTableWorkshop() {
@@ -2072,7 +2073,7 @@
     "btn-table": "Open the table workshop to sort, hide, or edit a Markdown table",
     "table-modal-close": "Close the table workshop",
     "table-modal-skip": "Leave the table as-is and continue",
-    "table-modal-apply": "Write the table back and continue",
+    "table-modal-apply": "Load the filtered table into the editor",
     "table-add-col": "Add a column at the end of the table",
     "table-add-row": "Add a row at the end of the table",
     "btn-assist": "AI Assist — Coming Soon!",

@@ -72,6 +72,15 @@ describe("parse / serialize", () => {
     expect(next).toContain("oranges");
     expect(next).not.toContain("apples");
   });
+
+  test("serializeTable respects rowMask and only emits matching rows", () => {
+    const t = TM.parseFirstTable(TABLE);
+    const mask = TM.rowMask(t, "pear");
+    const md = TM.serializeTable(t, { rowMask: mask });
+    expect(md).toContain("pears");
+    expect(md).not.toContain("apples");
+    expect(md).not.toContain("kiwi");
+  });
 });
 
 describe("mutations", () => {
@@ -139,13 +148,13 @@ describe("app wiring", () => {
   test("CSV drop opens the workshop before print", () => {
     expect(SRC).toContain("openTableWorkshopIfNeeded");
     expect(SRC).toContain("bindTableWorkshop");
-    expect(SRC).toContain("Apply & print");
+    expect(SRC).toContain("Load");
   });
 
   test("index loads the model before app.js and ships the workshop dialog", () => {
     expect(INDEX).toContain("table-model.js?v=2");
     expect(INDEX).toContain("table-workshop");
-    expect(INDEX.indexOf("table-model.js?v=2")).toBeLessThan(INDEX.indexOf("app.js?v=138"));
+    expect(INDEX.indexOf("table-model.js?v=2")).toBeLessThan(INDEX.indexOf("app.js?v=139"));
   });
 
   test("preview CSS repeats thead on every printed page", () => {
