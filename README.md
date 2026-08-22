@@ -9,6 +9,7 @@ Markdown is one of the greatest cross-platform information formats ever invented
 ## What it does
 
 - **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, ODT/ODS/ODP, RTF, EPUB, images, audio) — non-text files are converted to Markdown locally by the AnyDoc extract service.
+- **Structured tables** — dropping a CSV or TSV is parsed in the browser (no extract worker) and opens a table workshop (sort, hide, rearrange, edit cells). Spreadsheets still go through extract. Apply and FlatWrite switches to View + Vivliostyle: JetBrains Mono, smaller type, narrow margins, landscape, repeating headers on every page, and the smallest ISO page (A4→A0) that fits the columns. The workshop is also on the Edit toolbar.
 - **Import from URL** — paste a URL to a document file and FlatWrite fetches it, converts it locally with AnyDoc, and loads the Markdown straight into the editor.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a clean, document-first preview.
