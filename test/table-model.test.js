@@ -154,7 +154,7 @@ describe("app wiring", () => {
   test("index loads the model before app.js and ships the workshop dialog", () => {
     expect(INDEX).toContain("table-model.js?v=2");
     expect(INDEX).toContain("table-workshop");
-    expect(INDEX.indexOf("table-model.js?v=2")).toBeLessThan(INDEX.indexOf("app.js?v=139"));
+    expect(INDEX.indexOf("table-model.js?v=2")).toBeLessThan(INDEX.indexOf("app.js?v=140"));
   });
 
   test("preview CSS repeats thead on every printed page", () => {
