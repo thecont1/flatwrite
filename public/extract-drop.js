@@ -42,10 +42,11 @@
   // read directly via FileReader.readAsText. Anything else goes
   // through the /extract multipart endpoint.
   const PLAIN_TEXT_EXTS = new Set(['.md', '.markdown', '.txt']);
+  const LOCAL_TABLE_EXTS = new Set(['.csv', '.tsv']);
 
   /**
    * @param {string} filename
-   * @returns {'plain' | 'extract'}
+   * @returns {'plain' | 'csv' | 'extract'}
    */
   function routeDroppedFile(filename) {
     if (!filename || typeof filename !== 'string') return 'extract';
@@ -54,6 +55,7 @@
     if (dot < 0) return 'extract';
     var ext = base.slice(dot).toLowerCase();
     if (PLAIN_TEXT_EXTS.has(ext)) return 'plain';
+    if (LOCAL_TABLE_EXTS.has(ext)) return 'csv';
     return 'extract';
   }
 
@@ -77,5 +79,6 @@
     routeDroppedFile: routeDroppedFile,
     buildExtractFormData: buildExtractFormData,
     PLAIN_TEXT_EXTS: PLAIN_TEXT_EXTS,
+    LOCAL_TABLE_EXTS: LOCAL_TABLE_EXTS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
