@@ -658,6 +658,10 @@
   var previewLoaderTimer = null;
   var currentRenderId = 0;
   var previewRequestId = 0;
+  var currentImportGeneration = 0;
+
+  function beginImport() { return ++currentImportGeneration; }
+  function isCurrentImport(gen) { return gen === currentImportGeneration; }
 
   function showPreviewLoader() {
     if (!previewLoader) return;
@@ -962,18 +966,21 @@
 
   function handleFileUpload(file) {
     if (!file) return;
+    var thisGen = beginImport();
     var reader = new FileReader();
     reader.onerror = function () {
+      if (!isCurrentImport(thisGen)) return;
       showToast("Could not read " + (file.name || "the selected file"));
     };
     reader.onload = function () {
+      if (!isCurrentImport(thisGen)) return;
       if (typeof reader.result !== "string" || reader.result.length === 0) {
         showToast("The selected file is empty");
         return;
       }
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded file?");
-        if (!ok) return;
+        if (!ok || !isCurrentImport(thisGen)) return;
       }
       setEditorContent(reader.result);
       currentMarkdownUrl = "";
@@ -985,6 +992,45 @@
       mathPromptDismissed = false;
       maybePromptMathMode(reader.result);
       if (mode !== "edit") renderPreview();
+    };
+    reader.readAsText(file);
+  }
+
+  function handleCsvUpload(file) {
+    if (!file) return;
+    var thisGen = beginImport();
+    var reader = new FileReader();
+    reader.onerror = function () {
+      if (!isCurrentImport(thisGen)) return;
+      showToast("Could not read " + (file.name || "the selected file"));
+    };
+    reader.onload = function () {
+      if (!isCurrentImport(thisGen)) return;
+      if (typeof reader.result !== "string" || reader.result.length === 0) {
+        showToast("The selected file is empty");
+        return;
+      }
+      var TM = window.FlatwriteTableModel;
+      var markdown = TM && typeof TM.csvToMarkdown === "function"
+        ? TM.csvToMarkdown(reader.result)
+        : "";
+      if (!markdown) {
+        showToast("Could not parse " + (file.name || "the CSV"));
+        return;
+      }
+      if (isEditorDirty()) {
+        var ok = confirm("Replace current content with loaded file?");
+        if (!ok || !isCurrentImport(thisGen)) return;
+      }
+      setEditorContent(markdown);
+      currentMarkdownUrl = "";
+      githubBaseUrl = "";
+      mathPromptDismissed = false;
+      var opened = openTableWorkshopIfNeeded(markdown, { fileType: "csv" });
+      if (!opened) {
+        maybePromptMathMode(markdown);
+        if (mode !== "edit") renderPreview();
+      }
     };
     reader.readAsText(file);
   }
@@ -1005,6 +1051,7 @@
      future integrations.
      ========================================================================== */
   var PLAIN_TEXT_EXTS_INLINE = { ".md": 1, ".markdown": 1, ".txt": 1 };
+  var LOCAL_TABLE_EXTS_INLINE = { ".csv": 1, ".tsv": 1 };
   function routeDroppedFileInline(filename) {
     if (!filename || typeof filename !== "string") return "extract";
     var base = filename.split(/[\\/]/).pop();
@@ -1012,6 +1059,7 @@
     if (dot < 0) return "extract";
     var ext = base.slice(dot).toLowerCase();
     if (PLAIN_TEXT_EXTS_INLINE[ext]) return "plain";
+    if (LOCAL_TABLE_EXTS_INLINE[ext]) return "csv";
     return "extract";
   }
 
@@ -1090,6 +1138,11 @@
       handleFileUpload(file);
       return;
     }
+    if (routing === "csv") {
+      handleCsvUpload(file);
+      return;
+    }
+    var thisGen = beginImport();
     showToast("Extracting " + file.name + "…");
     try {
       var token = await getExtractToken();
@@ -1119,14 +1172,18 @@
         showToast("No text could be extracted from " + file.name);
         return;
       }
+      if (!isCurrentImport(thisGen)) return;
       setEditorContent(data.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
       mathPromptDismissed = false;
       maybePromptMathMode(data.markdown);
-      if (mode !== "edit") renderPreview();
+      var openedWorkshop = openTableWorkshopIfNeeded(data.markdown, data.metadata);
+      if (!openedWorkshop && mode !== "edit") renderPreview();
       var meta = data.metadata || {};
-      showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
+      if (!openedWorkshop) {
+        showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
+      }
     } catch (e) {
       // Translate the opaque "Failed to fetch" message (thrown by the
       // browser when the network request was blocked — usually CORS,
@@ -1152,6 +1209,403 @@
     }
   }
 
+  /* ==========================================================================
+     Structured-data print pipeline
+     ==========================================================================
+     After AnyDoc converts a CSV / spreadsheet into a Markdown table,
+     open the table workshop so the user can sort / hide / tidy cells.
+     Applying the workshop then starts the print-ready layout:
+
+       1. Table markdown is already in the editor (AnyDoc / extract).
+       2. Switch to View mode with Vivliostyle (full CSS table support).
+       3. Narrow margins, smaller type, JetBrains Mono.
+       4. Landscape + the smallest ISO size that holds the columns.
+       5. Stay in View so the paginated layout remains visible.
+          (Read mode forces the Plain engine and would undo steps 2–4.)
+
+     The fit loop re-measures the committed Paged.js preview and steps
+     A4 → A3 → A2 → A1 → A0 until the table no longer overflows, or
+     until the user interrupts by changing mode / engine.
+     ========================================================================== */
+
+  var structuredPrintJob = null;
+
+  function cancelStructuredPrintJob() {
+    structuredPrintJob = null;
+  }
+
+  function applyStructuredPrintSettings(settings) {
+    if (!settings) return;
+    setDocEngine(settings.engine);
+    orientation = settings.orientation;
+    pageSize = settings.pageSize;
+    pageMarginsLR = settings.marginsLR;
+    pageMarginsTB = settings.marginsTB;
+    pageColumns = settings.columns;
+    sizeStep = settings.sizeStep;
+    comfortFont = settings.font;
+    if (fontPickerLabel) {
+      fontPickerLabel.textContent = comfortFont;
+      fontPickerLabel.style.fontFamily = '"' + comfortFont + '", system-ui, sans-serif';
+    }
+    syncDocControlsUI();
+    scheduleAutosave();
+  }
+
+  function beginStructuredPrintIfNeeded(markdown, metadata) {
+    var helper = window.FlatwriteStructuredPrint;
+    if (!helper || typeof helper.shouldAutoPrint !== "function") return false;
+    if (!helper.shouldAutoPrint(markdown, metadata)) return false;
+    if (surfaceMode === "app") return false;
+
+    var cols = helper.countMarkdownTableColumns(markdown);
+    var settings = helper.buildStructuredPrintSettings(cols);
+    structuredPrintJob = {
+      startedAt: Date.now(),
+      iter: 0,
+      maxIters: helper.MAX_FIT_ITERS || 8
+    };
+    applyStructuredPrintSettings(settings);
+    setMode("preview");
+    showToast("Laying out table for print…");
+    return true;
+  }
+
+  function finishStructuredPrint() {
+    if (!structuredPrintJob) return;
+    cancelStructuredPrintJob();
+    showToast("Table ready to print");
+  }
+
+  function continueStructuredPrintOnReady() {
+    if (!structuredPrintJob) return;
+    if (mode !== "preview" || (currentDocEngine !== "pagedjs" && currentDocEngine !== "vivliostyle")) {
+      cancelStructuredPrintJob();
+      return;
+    }
+    var helper = window.FlatwriteStructuredPrint;
+    if (!helper || typeof helper.tableOverflowsPage !== "function") {
+      finishStructuredPrint();
+      return;
+    }
+    if (!isCurrentPreviewCommitted()) {
+      cancelStructuredPrintJob();
+      return;
+    }
+    var doc = null;
+    try { doc = previewFrame && previewFrame.contentDocument; } catch (_) { doc = null; }
+    if (!doc) {
+      cancelStructuredPrintJob();
+      return;
+    }
+    var overflows = helper.tableOverflowsPage(doc);
+    var next = helper.nextLargerPageSize(pageSize);
+    if (overflows && next !== pageSize && structuredPrintJob.iter < structuredPrintJob.maxIters) {
+      structuredPrintJob.iter++;
+      pageSize = next;
+      if (pageSizeSel) pageSizeSel.value = pageSize;
+      scheduleAutosave();
+      renderPreview();
+      return;
+    }
+    finishStructuredPrint();
+  }
+
+  /* ==========================================================================
+     Table workshop — tidy a Markdown table before print
+     ========================================================================== */
+
+  var tableWorkshop = {
+    open: false,
+    printAfter: false,
+    model: null,
+    block: null,
+    query: "",
+    sortCol: -1,
+    sortDir: "asc",
+    selectedCol: -1,
+    returnFocus: null
+  };
+
+  function tableModelApi() {
+    return window.FlatwriteTableModel || null;
+  }
+
+  function openTableWorkshopIfNeeded(markdown, metadata) {
+    var helper = window.FlatwriteStructuredPrint;
+    var TM = tableModelApi();
+    if (!helper || !TM || typeof helper.shouldAutoPrint !== "function") return false;
+    if (!helper.shouldAutoPrint(markdown, metadata)) return false;
+    if (surfaceMode === "app") return false;
+    var block = TM.findTables(markdown)[0];
+    if (!block) {
+      return beginStructuredPrintIfNeeded(markdown, metadata);
+    }
+    openTableWorkshop({ printAfter: true, block: block });
+    return true;
+  }
+
+  function openTableWorkshop(opts) {
+    opts = opts || {};
+    var TM = tableModelApi();
+    var overlay = document.getElementById("table-modal-overlay");
+    if (!TM || !overlay) return false;
+    var md = editor ? editor.value : "";
+    var block = opts.block || TM.tableAtOffset(md, editor ? editor.selectionStart : 0);
+    if (!block && opts.insertIfMissing) {
+      var blank = TM.serializeTable(TM.emptyModel());
+      editorInsertBlock(blank);
+      md = editor.value;
+      block = TM.findTables(md)[0];
+    }
+    if (!block) {
+      showToast("No table found — place the caret in a Markdown table");
+      return false;
+    }
+    tableWorkshop.open = true;
+    tableWorkshop.printAfter = !!opts.printAfter;
+    tableWorkshop.model = TM.cloneModel(block.table);
+    tableWorkshop.block = block;
+    tableWorkshop.query = "";
+    tableWorkshop.sortCol = -1;
+    tableWorkshop.sortDir = "asc";
+    tableWorkshop.selectedCol = 0;
+    tableWorkshop.returnFocus = document.activeElement;
+    var filter = document.getElementById("table-workshop-filter");
+    if (filter) filter.value = "";
+    var applyBtn = document.getElementById("table-modal-apply");
+    if (applyBtn) applyBtn.textContent = "Load";
+    var lede = document.getElementById("table-modal-lede");
+    if (lede) {
+      lede.textContent = tableWorkshop.printAfter
+        ? "Tidy the table, then print it."
+        : "Edit cells, sort columns, hide what you don’t need.";
+    }
+    overlay.classList.remove("hidden");
+    renderTableWorkshop();
+    requestAnimationFrame(function () {
+      if (filter) filter.focus();
+    });
+    return true;
+  }
+
+  function closeTableWorkshop() {
+    var overlay = document.getElementById("table-modal-overlay");
+    if (overlay) overlay.classList.add("hidden");
+    tableWorkshop.open = false;
+    tableWorkshop.printAfter = false;
+    tableWorkshop.model = null;
+    tableWorkshop.block = null;
+    if (tableWorkshop.returnFocus && typeof tableWorkshop.returnFocus.focus === "function") {
+      tableWorkshop.returnFocus.focus();
+    }
+    tableWorkshop.returnFocus = null;
+  }
+
+  function currentWorkshopModel() {
+    var TM = tableModelApi();
+    return TM ? TM.normalizeModel(tableWorkshop.model) : null;
+  }
+
+  function mutateWorkshop(next) {
+    tableWorkshop.model = next;
+    renderTableWorkshop();
+  }
+
+  function renderTableWorkshop() {
+    var TM = tableModelApi();
+    var grid = document.getElementById("table-workshop-grid");
+    var countEl = document.getElementById("table-workshop-count");
+    if (!TM || !grid || !tableWorkshop.model) return;
+    var model = TM.normalizeModel(tableWorkshop.model);
+    var mask = TM.rowMask(model, tableWorkshop.query);
+    var visibleRows = 0;
+    for (var i = 0; i < mask.length; i++) if (mask[i]) visibleRows++;
+    if (countEl) {
+      countEl.textContent = visibleRows + " of " + model.rows.length + " rows · "
+        + TM.visibleColumnCount(model) + " columns";
+    }
+
+    var html = "<thead><tr><th class=\"table-workshop-rowgutter\" scope=\"col\"></th>";
+    for (var c = 0; c < model.headers.length; c++) {
+      var hiddenClass = model.hidden[c] ? " is-hidden" : "";
+      var sortClass = tableWorkshop.sortCol === c ? " is-active" : "";
+      var sortLabel = tableWorkshop.sortCol === c
+        ? (tableWorkshop.sortDir === "desc" ? "↓" : "↑")
+        : "↕";
+      html += "<th scope=\"col\"><div class=\"table-workshop-colhead" + hiddenClass + "\" data-col=\"" + c + "\">"
+        + "<div class=\"table-workshop-colhead-top\">"
+        + "<input class=\"table-workshop-colname\" data-col=\"" + c + "\" value=\"" + escapeHtmlAttr(model.headers[c]) + "\" aria-label=\"Column " + (c + 1) + " name\">"
+        + "<button type=\"button\" class=\"table-workshop-icon" + sortClass + "\" data-act=\"sort\" data-col=\"" + c + "\" title=\"Sort\">" + sortLabel + "</button>"
+        + "<button type=\"button\" class=\"table-workshop-icon\" data-act=\"left\" data-col=\"" + c + "\" title=\"Move left\" " + (c === 0 ? "disabled" : "") + ">‹</button>"
+        + "<button type=\"button\" class=\"table-workshop-icon\" data-act=\"right\" data-col=\"" + c + "\" title=\"Move right\" " + (c === model.headers.length - 1 ? "disabled" : "") + ">›</button>"
+        + "<button type=\"button\" class=\"table-workshop-icon\" data-act=\"hide\" data-col=\"" + c + "\" title=\"" + (model.hidden[c] ? "Show column" : "Hide column") + "\">" + (model.hidden[c] ? "⊘" : "◉") + "</button>"
+        + "<button type=\"button\" class=\"table-workshop-icon\" data-act=\"delcol\" data-col=\"" + c + "\" title=\"Delete column\">×</button>"
+        + "</div></div></th>";
+    }
+    html += "</tr></thead><tbody>";
+    for (var r = 0, vi = 0; r < model.rows.length; r++) {
+      if (!mask[r]) continue;
+      vi++;
+      html += "<tr><th class=\"table-workshop-rowgutter\" scope=\"row\">" + vi + "</th>";
+      for (var c2 = 0; c2 < model.headers.length; c2++) {
+        html += "<td><textarea class=\"table-workshop-cell\" rows=\"1\" data-row=\"" + r + "\" data-col=\"" + c2 + "\" spellcheck=\"false\">"
+          + escapeHtmlText(model.rows[r][c2]) + "</textarea></td>";
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    grid.innerHTML = html;
+  }
+
+  function escapeHtmlText(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function escapeHtmlAttr(value) {
+    return escapeHtmlText(value).replace(/"/g, "&quot;");
+  }
+
+  function applyTableWorkshop() {
+    var TM = tableModelApi();
+    if (!TM || !tableWorkshop.model || !editor) return;
+    var md = editor.value;
+    var mask = TM.rowMask(tableWorkshop.model, tableWorkshop.query);
+    var next = TM.replaceTable(md, tableWorkshop.block, tableWorkshop.model, { rowMask: mask });
+    var printAfter = tableWorkshop.printAfter;
+    closeTableWorkshop();
+    setEditorContent(next);
+    if (printAfter) {
+      beginStructuredPrintIfNeeded(next, { fileType: "csv" });
+    } else if (mode !== "edit") {
+      renderPreview();
+    }
+    showToast(printAfter ? "Table loaded — laying out for print…" : "Table loaded");
+  }
+
+  function skipTableWorkshop() {
+    var printAfter = tableWorkshop.printAfter;
+    var md = editor ? editor.value : "";
+    closeTableWorkshop();
+    if (printAfter) beginStructuredPrintIfNeeded(md, { fileType: "csv" });
+  }
+
+  function bindTableWorkshop() {
+    var overlay = document.getElementById("table-modal-overlay");
+    if (!overlay || overlay.dataset.fwBound === "1") return;
+    overlay.dataset.fwBound = "1";
+    var TM = tableModelApi;
+    var grid = document.getElementById("table-workshop-grid");
+    var filter = document.getElementById("table-workshop-filter");
+    var applyBtn = document.getElementById("table-modal-apply");
+    var skipBtn = document.getElementById("table-modal-skip");
+    var closeBtn = document.getElementById("table-modal-close");
+    var addCol = document.getElementById("table-add-col");
+    var addRow = document.getElementById("table-add-row");
+    var openBtn = document.getElementById("btn-table");
+
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
+        openTableWorkshop({ printAfter: false, insertIfMissing: true });
+      });
+    }
+    if (applyBtn) applyBtn.addEventListener("click", applyTableWorkshop);
+    if (skipBtn) skipBtn.addEventListener("click", skipTableWorkshop);
+    if (closeBtn) closeBtn.addEventListener("click", skipTableWorkshop);
+    if (addCol) {
+      addCol.addEventListener("click", function () {
+        var api = TM();
+        if (!api || !tableWorkshop.model) return;
+        mutateWorkshop(api.insertColumn(tableWorkshop.model, tableWorkshop.model.headers.length));
+      });
+    }
+    if (addRow) {
+      addRow.addEventListener("click", function () {
+        var api = TM();
+        if (!api || !tableWorkshop.model) return;
+        mutateWorkshop(api.insertRow(tableWorkshop.model, tableWorkshop.model.rows.length));
+      });
+    }
+    if (filter) {
+      filter.addEventListener("input", function () {
+        tableWorkshop.query = filter.value;
+        renderTableWorkshop();
+      });
+    }
+    if (grid) {
+      grid.addEventListener("click", function (e) {
+        var btn = e.target.closest("[data-act]");
+        if (!btn) return;
+        var api = TM();
+        if (!api || !tableWorkshop.model) return;
+        var col = parseInt(btn.getAttribute("data-col"), 10);
+        var act = btn.getAttribute("data-act");
+        if (act === "sort") {
+          var dir = (tableWorkshop.sortCol === col && tableWorkshop.sortDir === "asc") ? "desc" : "asc";
+          tableWorkshop.sortCol = col;
+          tableWorkshop.sortDir = dir;
+          mutateWorkshop(api.sortBy(tableWorkshop.model, col, dir));
+          return;
+        }
+        if (act === "left") { mutateWorkshop(api.moveColumn(tableWorkshop.model, col, col - 1)); return; }
+        if (act === "right") { mutateWorkshop(api.moveColumn(tableWorkshop.model, col, col + 1)); return; }
+        if (act === "hide") {
+          var hidden = !api.normalizeModel(tableWorkshop.model).hidden[col];
+          mutateWorkshop(api.setHidden(tableWorkshop.model, col, hidden));
+          return;
+        }
+        if (act === "delcol") { mutateWorkshop(api.deleteColumn(tableWorkshop.model, col)); }
+      });
+      grid.addEventListener("change", function (e) {
+        var api = TM();
+        if (!api || !tableWorkshop.model) return;
+        var name = e.target.closest(".table-workshop-colname");
+        if (name) {
+          var col = parseInt(name.getAttribute("data-col"), 10);
+          mutateWorkshop(api.setHeader(tableWorkshop.model, col, name.value));
+        }
+      });
+      grid.addEventListener("input", function (e) {
+        var api = TM();
+        if (!api || !tableWorkshop.model) return;
+        var cell = e.target.closest(".table-workshop-cell");
+        if (!cell) return;
+        var row = parseInt(cell.getAttribute("data-row"), 10);
+        var col = parseInt(cell.getAttribute("data-col"), 10);
+        tableWorkshop.model = api.setCell(tableWorkshop.model, row, col, cell.value);
+      });
+    }
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) skipTableWorkshop();
+    });
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        skipTableWorkshop();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      var focusable = overlay.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
   /**
    * Shared routing decision for any dropped/picked file, regardless of
    * where the drop landed (the outer document in Edit mode, or a
@@ -1169,6 +1623,8 @@
       : routeDroppedFileInline(file.name);
     if (route === "plain") {
       handleFileUpload(file);
+    } else if (route === "csv") {
+      handleCsvUpload(file);
     } else {
       handleExtractDrop(file);
     }
@@ -1635,6 +2091,12 @@
     "btn-read": "Read without editing controls",
     "btn-page-break": "Insert PDF-only line spacing; edit lines=1 for more (ignored in Plain and Read)",
     "btn-math": "Math Mode On/Off. Click to enable/disable math formulas and notations.",
+    "btn-table": "Open the table workshop to sort, hide, or edit a Markdown table",
+    "table-modal-close": "Close the table workshop",
+    "table-modal-skip": "Leave the table as-is and continue",
+    "table-modal-apply": "Load the filtered table into the editor",
+    "table-add-col": "Add a column at the end of the table",
+    "table-add-row": "Add a row at the end of the table",
     "btn-assist": "AI Assist — Coming Soon!",
     "assist-close": "Close AI Assist",
     "assist-run": "Run the selected AI Assist operation",
@@ -2049,6 +2511,8 @@
         : routeDroppedFileInline(file.name);
       if (route === "plain") {
         handleFileUpload(file);
+      } else if (route === "csv") {
+        handleCsvUpload(file);
       } else {
         handleExtractDrop(file);
       }
@@ -2250,6 +2714,7 @@
       });
     }
     bindMathPromptDialog();
+    bindTableWorkshop();
     syncMathModeUI();
 
     /* Orientation toggle */
@@ -2485,6 +2950,7 @@
         var loadOverlay = document.getElementById("load-modal-overlay");
         var compOverlay = document.getElementById("comp-modal-overlay");
         var mathOverlay = document.getElementById("math-modal-overlay");
+        var tableOverlay = document.getElementById("table-modal-overlay");
         if (mathOverlay && !mathOverlay.classList.contains("hidden")) {
           e.preventDefault();
           mathPromptDismissed = true;
@@ -2493,6 +2959,7 @@
         }
         if ((loadOverlay && !loadOverlay.classList.contains("hidden"))
             || (compOverlay && !compOverlay.classList.contains("hidden"))
+            || (tableOverlay && !tableOverlay.classList.contains("hidden"))
             || appShell.classList.contains("drawer-open")) {
           return;
         }
@@ -2518,6 +2985,10 @@
     window.addEventListener("message", function (e) {
       if (e.source !== previewFrame.contentWindow && e.source !== previewFrameNext.contentWindow) return;
       if (e.data && (e.data.type === "paged-error" || e.data.type === "vivl-error")) {
+        if (structuredPrintJob) {
+          cancelStructuredPrintJob();
+          showToast("Could not paginate the table");
+        }
         onPreviewFrameError(e);
       }
       if (e.data && e.data.type === "scroll") {
@@ -2529,10 +3000,12 @@
       if (e.data && e.data.type === "vivl-ready") {
         positionWidthHandles();
         onPreviewFrameReady(e);
+        continueStructuredPrintOnReady();
       }
       if (e.data && e.data.type === "paged-ready") {
         positionWidthHandles();
         onPreviewFrameReady(e);
+        continueStructuredPrintOnReady();
       }
       if (e.data && e.data.type === "zoomChanged") {
         positionWidthHandles();
@@ -2653,6 +3126,9 @@
 
   function setDocEngine(engineKey) {
     if (!DOC_ENGINES[engineKey]) engineKey = "none";
+    if (structuredPrintJob && engineKey !== "pagedjs" && engineKey !== "vivliostyle") {
+      cancelStructuredPrintJob();
+    }
     currentDocEngine = engineKey;
     /* Update toggle UI */
     if (engineToggle) {
@@ -2876,10 +3352,16 @@
       + 'h3 { font-size: ' + (15 * scale * 1.25) + 'px !important; margin-top: 1.4em !important; }'
       + 'h4 { font-size: ' + (15 * scale * 1.1) + 'px !important; }'
       + 'img { max-width: 100%; height: auto; display: block; }'
+      + 'strong, b { font-weight: 700 !important; }'
+      + 'em, i { font-style: italic !important; }'
+      + 's, del, strike { text-decoration: line-through; }'
       + 'pre, code { font-family: "JetBrains Mono", monospace !important; }'
       + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
       + 'table { border-collapse: collapse; table-layout: fixed; width: 100%; }'
       + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+      + 'thead { display: table-header-group; }'
+      + 'tfoot { display: table-footer-group; }'
+      + 'tr { break-inside: avoid; page-break-inside: avoid; }'
       + 'thead th { background: #333333; color: #fff; }'
       + 'tbody tr:nth-child(even) { background: #f2f2f2; } tbody tr:nth-child(odd) { background: #ffffff; }'
       + 'blockquote { margin: 0; padding: 0 1em; border-left: 3px solid #ccc; }'
@@ -3221,6 +3703,8 @@
         + 'pre { overflow-x: auto; word-wrap: break-word; white-space: pre-wrap; }'
         + 'table { border-collapse: collapse; width: 100%; }'
         + 'th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; }'
+        + 'thead { display: table-header-group; }'
+        + 'tr { break-inside: avoid; page-break-inside: avoid; }'
         + 'thead th { background: #333333; color: #fff; }'
         + 'tbody tr:nth-child(even) { background: #f2f2f2; }'
         + 'tbody tr:nth-child(odd) { background: #ffffff; }'
@@ -3843,6 +4327,9 @@
      ========================================================================== */
 
   function setMode(newMode) {
+    if (structuredPrintJob && newMode !== "preview") {
+      cancelStructuredPrintJob();
+    }
     var prevMode = mode;
     mode = newMode;
 
@@ -4686,6 +5173,7 @@
       status.textContent = method === "browser" ? "Trying browser rendering…" : "Importing webpage…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
+      var thisGen = beginImport();
 
       fetch("/api/import-url", {
         method: "POST",
@@ -4698,8 +5186,9 @@
           });
         })
         .then(function (result) {
-          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
           btnFetch.disabled = false;
+          if (!isCurrentImport(thisGen)) return;
+          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
           if (!succeeded) {
             var friendly = (result.data && result.data.error) || "Could not import this page.";
             status.textContent = friendly;
@@ -4713,6 +5202,7 @@
             var okReplace = confirm("Replace current content with imported page?");
             if (!okReplace) return;
           }
+          if (!isCurrentImport(thisGen)) return;
           close();
           var importedMarkdown = rewriteMarkdownUrls(doc.content, doc.sourceUrl);
           if (window.FlatwriteUrlRouting) {
@@ -4733,6 +5223,7 @@
         })
         .catch(function (err) {
           btnFetch.disabled = false;
+          if (!isCurrentImport(thisGen)) return;
           status.textContent = "Could not import this page. Check the URL and try again.";
           status.className = "load-url-status error";
           if (method === "auto") addBrowserRetry(url);
@@ -4787,6 +5278,8 @@
             // modes.
             handleFileUpload(file);
             showToast("Loaded markdown from URL");
+          } else if (route === "csv") {
+            handleCsvUpload(file);
           } else {
             handleExtractDrop(file);
           }

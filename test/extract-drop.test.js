@@ -66,8 +66,10 @@ describe("routeDroppedFile", () => {
     expect(drop.routeDroppedFile("data.xlsx")).toBe("extract");
   });
 
-  test("routes .csv to the extract path", () => {
-    expect(drop.routeDroppedFile("data.csv")).toBe("extract");
+  test("routes .csv and .tsv to the local table path", () => {
+    expect(drop.routeDroppedFile("data.csv")).toBe("csv");
+    expect(drop.routeDroppedFile("data.tsv")).toBe("csv");
+    expect(drop.routeDroppedFile("NOTES.CSV")).toBe("csv");
   });
 
   test("routes .json to the extract path", () => {
