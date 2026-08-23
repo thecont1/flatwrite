@@ -123,7 +123,7 @@ describe("app wiring", () => {
   test("index loads the helper before app.js", () => {
     expect(INDEX).toContain("structured-print.js?v=2");
     var helperAt = INDEX.indexOf("structured-print.js?v=2");
-    var appAt = INDEX.indexOf("app.js?v=141");
+    var appAt = INDEX.indexOf("app.js?v=142");
     expect(helperAt).toBeGreaterThan(-1);
     expect(appAt).toBeGreaterThan(helperAt);
   });

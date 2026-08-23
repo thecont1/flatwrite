@@ -658,6 +658,10 @@
   var previewLoaderTimer = null;
   var currentRenderId = 0;
   var previewRequestId = 0;
+  var currentImportGeneration = 0;
+
+  function beginImport() { return ++currentImportGeneration; }
+  function isCurrentImport(gen) { return gen === currentImportGeneration; }
 
   function showPreviewLoader() {
     if (!previewLoader) return;
@@ -962,18 +966,21 @@
 
   function handleFileUpload(file) {
     if (!file) return;
+    var thisGen = beginImport();
     var reader = new FileReader();
     reader.onerror = function () {
+      if (!isCurrentImport(thisGen)) return;
       showToast("Could not read " + (file.name || "the selected file"));
     };
     reader.onload = function () {
+      if (!isCurrentImport(thisGen)) return;
       if (typeof reader.result !== "string" || reader.result.length === 0) {
         showToast("The selected file is empty");
         return;
       }
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded file?");
-        if (!ok) return;
+        if (!ok || !isCurrentImport(thisGen)) return;
       }
       setEditorContent(reader.result);
       currentMarkdownUrl = "";
@@ -991,11 +998,14 @@
 
   function handleCsvUpload(file) {
     if (!file) return;
+    var thisGen = beginImport();
     var reader = new FileReader();
     reader.onerror = function () {
+      if (!isCurrentImport(thisGen)) return;
       showToast("Could not read " + (file.name || "the selected file"));
     };
     reader.onload = function () {
+      if (!isCurrentImport(thisGen)) return;
       if (typeof reader.result !== "string" || reader.result.length === 0) {
         showToast("The selected file is empty");
         return;
@@ -1010,7 +1020,7 @@
       }
       if (isEditorDirty()) {
         var ok = confirm("Replace current content with loaded file?");
-        if (!ok) return;
+        if (!ok || !isCurrentImport(thisGen)) return;
       }
       setEditorContent(markdown);
       currentMarkdownUrl = "";
@@ -1132,6 +1142,7 @@
       handleCsvUpload(file);
       return;
     }
+    var thisGen = beginImport();
     showToast("Extracting " + file.name + "…");
     try {
       var token = await getExtractToken();
@@ -1161,6 +1172,7 @@
         showToast("No text could be extracted from " + file.name);
         return;
       }
+      if (!isCurrentImport(thisGen)) return;
       setEditorContent(data.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
@@ -5161,6 +5173,7 @@
       status.textContent = method === "browser" ? "Trying browser rendering…" : "Importing webpage…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
+      var thisGen = beginImport();
 
       fetch("/api/import-url", {
         method: "POST",
@@ -5173,8 +5186,9 @@
           });
         })
         .then(function (result) {
-          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
           btnFetch.disabled = false;
+          if (!isCurrentImport(thisGen)) return;
+          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
           if (!succeeded) {
             var friendly = (result.data && result.data.error) || "Could not import this page.";
             status.textContent = friendly;
@@ -5188,6 +5202,7 @@
             var okReplace = confirm("Replace current content with imported page?");
             if (!okReplace) return;
           }
+          if (!isCurrentImport(thisGen)) return;
           close();
           var importedMarkdown = rewriteMarkdownUrls(doc.content, doc.sourceUrl);
           if (window.FlatwriteUrlRouting) {
@@ -5208,6 +5223,7 @@
         })
         .catch(function (err) {
           btnFetch.disabled = false;
+          if (!isCurrentImport(thisGen)) return;
           status.textContent = "Could not import this page. Check the URL and try again.";
           status.className = "load-url-status error";
           if (method === "auto") addBrowserRetry(url);
