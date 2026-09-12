@@ -25,7 +25,8 @@
 // in Vercel's runtime and the custom server (index.js) — mirrors api/render.js.
 'use strict';
 const crypto = require('crypto');
-const dns = require('dns').promises;
+const dns = require('dns');
+const dnsPromises = dns.promises;
 const net = require('net');
 const { readBody } = require('../core/io');
 const { createRateLimiter } = require('../core/rate-limit');
@@ -123,8 +124,35 @@ async function validateImportUrl(rawUrl) {
 
   // DNS-rebinding guard: resolve the hostname and reject if *any* resolved
   // address (IPv4 or IPv6) is private/reserved.
+  //
+  // Two resolution paths, in order:
+  //   1. dns.lookup(hostname, { all: true }) — Node.js (Vercel, index.js,
+  //      the dev server). Follows the OS resolver, IPv4+IPv6 in one call.
+  //   2. dns.promises.resolve4/resolve6 — Cloudflare Workers, where
+  //      node:dns.lookup is not implemented (throws "Not implemented") but
+  //      resolve4/resolve6 work and each query counts as a subrequest.
+  // Both are awaited so the guard keeps working on every runtime the
+  // canonical handler runs on; total cost is one lookup either way.
   try {
-    const addresses = await dns.lookup(hostname, { all: true });
+    let addresses;
+    try {
+      addresses = await dnsPromises.lookup(hostname, { all: true });
+    } catch (lookupErr) {
+      if (typeof lookupErr === 'object' && lookupErr !== null &&
+          (lookupErr.code === 'ERR_NOT_IMPLEMENTED' /* Node semver */ ||
+           /not implemented/i.test(String(lookupErr.message || lookupErr)))) {
+        const [v4, v6] = await Promise.all([
+          dnsPromises.resolve4(hostname).catch(() => []),
+          dnsPromises.resolve6(hostname).catch(() => []),
+        ]);
+        addresses = [
+          ...v4.map((address) => ({ address, family: 4 })),
+          ...v6.map((address) => ({ address, family: 6 })),
+        ];
+      } else {
+        throw lookupErr;
+      }
+    }
     if (!addresses.length) {
       return { ok: false, error: 'Could not resolve host' };
     }
