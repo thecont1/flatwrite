@@ -1,13 +1,31 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "flatwrite",
+  "main": "worker/index.js",
   "compatibility_date": "2026-06-24",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "public"
+    "directory": "public",
+    "binding": "ASSETS",
+    // SPA fallback: unknown paths serve /index.html with 200 (navigation
+    // requests), matching the Vercel deployment's `/* /index.html 200`
+    // proxy rule from public/_redirects.
+    "not_found_handling": "single-page-application",
+    // Only API paths invoke the Worker; every other request is served
+    // directly by the static assets layer (with _redirects/_headers
+    // processing), without a Worker invocation.
+    "run_worker_first": ["/api/*"]
   },
+  // nodejs_compat (compat date >= 2025-04-01 auto-populates process.env with
+  // Worker env vars/secrets) is required by api/render.js, api/import-url.js
+  // and core/*: node:crypto, node:dns, node:net, node:module (createRequire),
+  // plus Buffer. Secrets to set via `wrangler secret put`:
+  //   INTERNAL_RENDER_KEY  — HMAC secret for /api/render (same as Vercel)
+  //   EXTRACT_SERVICE_URL  — e.g. https://flatwrite-extract.fly.dev
+  //   INTERNAL_EXTRACT_KEY — HMAC secret for the extract service
+  //   DUSTEBIN_BASE_URL    — paste bin base URL for /api/share + /api/s
   "compatibility_flags": [
     "nodejs_compat"
   ]
