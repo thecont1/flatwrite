@@ -29,7 +29,30 @@ const { loadAsset } = require('./inline-assets');
 const { sanitizeFontName } = require('./document-css');
 const { FONT_INVENTORY } = require('./font-inventory');
 
-const FONT_DIR = path.resolve(__dirname, '..', 'public', 'fonts');
+// Resolved lazily: __dirname is unavailable when this CommonJS module is
+// bundled into an ESM Worker (Cloudflare Workers), so on Workers the path
+// is only meaningful as a token the injected asset reader maps to the
+// ASSETS binding URL (worker/index.js toAssetUrl() matches '/public/fonts').
+let fontDir = null;
+function getFontDir() {
+  if (!fontDir) {
+    fontDir = path.resolve(typeof __dirname === 'string' ? __dirname : '', '..', 'public', 'fonts');
+  }
+  return fontDir;
+}
+
+// Injected by the Worker entry (see core/inline-assets.js setAssetReader).
+// Signature: (absPath) → boolean — does the font file exist?
+let fontFileExists = null;
+
+function setFontFileExists(fn) {
+  fontFileExists = typeof fn === 'function' ? fn : null;
+}
+
+function fontExists(filePath) {
+  if (fontFileExists) return fontFileExists(filePath);
+  return fs.existsSync(filePath);
+}
 
 async function buildFontFaces(fontName) {
   const safeName = sanitizeFontName(fontName);
@@ -42,8 +65,8 @@ async function buildFontFaces(fontName) {
 
   const blocks = [];
   for (const face of faces) {
-    const filePath = path.join(FONT_DIR, face.file);
-    if (!fs.existsSync(filePath)) {
+    const filePath = path.join(getFontDir(), face.file);
+    if (!fontExists(filePath)) {
       throw new Error(`Font file missing: ${filePath}`);
     }
     const { dataUri } = await loadAsset(filePath);
@@ -67,5 +90,6 @@ async function buildFontFaces(fontName) {
 
 module.exports = {
   buildFontFaces,
+  setFontFileExists,
   FONT_INVENTORY,
 };

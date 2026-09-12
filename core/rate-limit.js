@@ -35,7 +35,18 @@ function createRateLimiter(opts) {
   // Map<key, number[]> — key is caller identifier, value is array of timestamps (ms)
   const hits = new Map();
 
-  // Periodic cleanup: evict keys whose newest hit is older than windowMs
+  // Periodic cleanup: evict keys whose newest hit is older than windowMs.
+  // Created lazily on first check() — Cloudflare Workers forbid setInterval
+  // within global scope, and module-load time is global scope there.
+  let cleanupInterval = null;
+
+  function ensureCleanupTimer() {
+    if (cleanupInterval) return;
+    cleanupInterval = setInterval(cleanup, windowMs * 2);
+    // Allow Node.js to exit even if cleanup is pending
+    if (cleanupInterval.unref) cleanupInterval.unref();
+  }
+
   const cleanup = () => {
     const cutoff = Date.now() - windowMs;
     for (const [key, timestamps] of hits) {
@@ -46,17 +57,13 @@ function createRateLimiter(opts) {
     }
   };
 
-  // Run cleanup every 2× window
-  const cleanupInterval = setInterval(cleanup, windowMs * 2);
-  // Allow Node.js to exit even if cleanup is pending
-  if (cleanupInterval.unref) cleanupInterval.unref();
-
   /**
    * Check whether a request from `key` is allowed.
    * @param {string} key - caller identifier (e.g. IP address)
    * @returns {{ allowed: boolean, remaining: number, resetMs: number }}
    */
   function check(key) {
+    ensureCleanupTimer();
     const now = Date.now();
     const cutoff = now - windowMs;
 

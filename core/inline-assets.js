@@ -29,6 +29,22 @@ const cache = new Map();
 
 let currentCacheBytes = 0;
 
+/**
+ * Pluggable local-asset reader. In Node.js (index.js, dev server, tests)
+ * this stays null and readLocal() reads from the filesystem. On Cloudflare
+ * Workers there is no filesystem — the Worker entry injects a reader that
+ * resolves assets from the ASSETS binding here, so core/font-loader.js can
+ * embed the vendored .woff2 files without any Node-only dependency.
+ *
+ * The reader contract: (absolutePath) → { buffer: ArrayBuffer|Uint8Array,
+ * contentType } or null when the asset does not exist.
+ */
+let assetReader = null;
+
+function setAssetReader(fn) {
+  assetReader = typeof fn === 'function' ? fn : null;
+}
+
 function base64ForMime(mime) {
   if (!mime) return '';
   if (mime.includes('woff2')) return 'font/woff2';
@@ -72,6 +88,13 @@ async function fetchRemote(url, timeoutMs = 8000) {
 
 function readLocal(filePath) {
   const resolved = path.resolve(filePath);
+  // Worker-injected reader takes precedence (no filesystem on Workers). It may
+  // return a thenable — callers await the result (loadAsset does).
+  if (assetReader) {
+    const entry = assetReader(resolved);
+    if (entry) return entry;
+    throw new Error(`Failed to read local asset ${filePath}: not found`);
+  }
   try {
     const buffer = fs.readFileSync(resolved);
     return { buffer, contentType: mimeFromPath(resolved) };
@@ -87,7 +110,7 @@ async function loadAsset(source) {
 
   const { buffer, contentType } = source.startsWith('http://') || source.startsWith('https://')
     ? await fetchRemote(source)
-    : readLocal(source);
+    : await readLocal(source);
 
   const bytes = buffer.byteLength || buffer.length;
   if (currentCacheBytes + bytes > MAX_CACHE_BYTES) {
@@ -136,4 +159,5 @@ async function inlineCssUrls(css) {
 module.exports = {
   loadAsset,
   inlineCssUrls,
+  setAssetReader,
 };
