@@ -1,4 +1,4 @@
-/.well-known/model-context.doc.json
+/.well-known/model-context.docs.json
   Content-Type: application/json
   Access-Control-Allow-Origin: *
 
