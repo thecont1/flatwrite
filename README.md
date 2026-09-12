@@ -95,7 +95,7 @@ A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/fo
 - `retain_images` (default: `true`) is accepted for backward compatibility but is ignored by AnyDoc.
 - The endpoint validates the target URL (`http`/`https` only, no `localhost`, no private/reserved-network addresses, with a DNS-rebinding guard), enforces a request timeout, and never forwards raw upstream error bodies to the client.
 - The frontend's existing **Load from URL** dialog (sidebar → **From URL**) still sends `method`/`retain_images` for backward compatibility. On success the returned Markdown replaces the editor content through the same `setEditorContent()` path used by every other load flow — there is no parallel document model.
-- Limitations: only document files are supported. Web pages and authenticated/paywalled content cannot be imported because AnyDoc does not convert HTML or authenticate on the user's behalf. This feature requires the backend endpoint and the extract service to be reachable (Vercel deployment or the local `index.js`/dev server plus `services/extract` on port 8000) — it does not work against a static-assets-only deployment.
+- Limitations: only document files are supported. Web pages and authenticated/paywalled content cannot be imported because AnyDoc does not convert HTML or authenticate on the user's behalf. This feature requires the backend endpoint and the extract service to be reachable (the Cloudflare Worker on `flatwrite.md` or the local `index.js`/dev server plus `services/extract` on port 8000) — it does not work against a static-assets-only deployment.
 
 The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 

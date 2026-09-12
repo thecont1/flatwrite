@@ -739,9 +739,23 @@ Set the `API_KEY` secret on each Worker:
 wrangler secret put API_KEY
 ```
 
-### Deploying the static site
+### Deploying the main site (flatwrite.md apex + www)
 
-The `public/` directory is served as a static site. The manifests and generated JS files are committed to the repo so they're available without a build step in the deployment pipeline.
+The main site is itself a Worker with static assets (root `wrangler.jsonc`):
+`worker/index.js` serves the `/api/render`, `/api/import-url`, `/api/share`,
+and `/api/s` endpoints; every other path is served from `public/` by the
+assets layer (SPA fallback via `not_found_handling`).
+
+```bash
+wrangler deploy
+```
+
+Secrets/vars (set via `wrangler secret put` / `[vars]`):
+- `INTERNAL_RENDER_KEY` — HMAC secret for `/api/render` (same key the render
+  Worker uses to sign its upstream calls).
+- `EXTRACT_SERVICE_URL` — AnyDoc extract service base URL.
+- `INTERNAL_EXTRACT_KEY` — HMAC secret shared with the extract service.
+- `DUSTEBIN_BASE_URL` — paste bin base URL behind `/api/share` and `/api/s`.
 
 ---
 
