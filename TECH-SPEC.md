@@ -1,251 +1,226 @@
 # FlatWrite — Technical Specification
 
-This document is the detailed engineering breakdown of FlatWrite for technical inspectors: architecture, conversion pipeline, deployment topology, security model, error contracts, and testing. For the product overview, see [README.md](./README.md).
-
-## Table of contents
-
-1. [System overview](#1-system-overview)
-2. [Deployment topology](#2-deployment-topology)
-3. [The document conversion pipeline](#3-the-document-conversion-pipeline)
-4. [The extract API worker](#4-the-extract-api-worker)
-5. [URL import pipeline](#5-url-import-pipeline)
-6. [Render, share, and assist services](#6-render-share-and-assist-services)
-7. [Authentication and security model](#7-authentication-and-security-model)
-8. [Error contracts](#8-error-contracts)
-9. [Asset vendoring and versioning](#9-asset-vendoring-and-versioning)
-10. [Performance characteristics](#10-performance-characteristics)
-11. [Testing infrastructure](#11-testing-infrastructure)
-12. [Repository layout](#12-repository-layout)
-
----
+Engineering reference for FlatWrite: architecture, conversion, rendering, deployment, security, and testing. For the product overview, see [README.md](./README.md); for product-design principles, see [.impeccable.md](./.impeccable.md).
 
 ## 1. System overview
 
-FlatWrite is a zero-VM, zero-container web application. There is no server-side application runtime anywhere in the system: the editor is a static single-page app, document conversion executes as WebAssembly either inside the user's browser or inside Cloudflare Workers, and all backend functionality is implemented as edge Workers plus one serverless function host.
+FlatWrite has no always-on VM or container. The editor is a static browser application; interactive conversion runs as WebAssembly in the user's browser; programmatic conversion runs in a Cloudflare Worker; remaining backend behavior is implemented as Cloudflare Workers and small serverless handlers.
 
-The system has four planes:
-
-| Plane | What runs there | Technology |
+| Plane | Responsibility | Implementation |
 |---|---|---|
-| **Client** | Editor, all interactive document conversion, image OCR, table workshop, pagination engines | Vanilla JS SPA, AnyDoc/pdf-inspector WASM, Tesseract.js, Paged.js, Vivliostyle |
-| **Edge API** | Public render/extract/assist/MCP APIs, token minting | Cloudflare Workers on `*.flatwrite.md` subdomains |
-| **Static host + API adapter** | `flatwrite.md` apex, `/api/*` serverless functions | Vercel (git-integration deploys) with a mirror Cloudflare Worker for `*.workers.dev` |
-| **Share backend** | Paste bin for shareable URLs | External `dustebin` service, configured via `DUSTEBIN_BASE_URL` |
+| Client | Editor, interactive conversion, OCR, tables, typography, pagination | Vanilla JS SPA, AnyDoc/pdf-inspector WASM, Tesseract.js, Paged.js, Vivliostyle |
+| Edge APIs | Render, extract, assist, MCP, token minting | Independent Cloudflare Workers on `*.flatwrite.md` |
+| Apex host | Static app and `/api/*` adapters | Vercel production deployment plus a Cloudflare Workers mirror |
+| Share backend | Paste storage for share links | External Dustebin service configured by `DUSTEBIN_BASE_URL` |
 
-The defining architectural decision (November 2026 migration): **document conversion never runs on a VM or container.** The previous implementation — a Python/FastAPI service wrapping AnyDoc, pdf-inspector, and RapidOCR on Fly.io — was fully retired and the Fly app destroyed. The conversion engines now ship as WebAssembly compiled from the same Rust cores, pinned to exact versions, vendored into the repository, and executed wherever the work is cheapest:
+The defining migration decision: **the retired Python/FastAPI/Fly.io conversion service was replaced by pinned Rust-derived WASM modules**. Local interactive conversion never transits a conversion server; the public extract API executes the same engines inside the extract Worker isolate.
 
-- Interactive conversion runs **in the user's browser**. For locally dropped files, bytes never transit any server at all. URL imports do pass through the server-side `/api/fetch-document` handler — it fetches the remote document and returns the raw bytes — but conversion still runs in the browser and nothing is stored server-side.
-- The public programmatic extract API runs **in-process in a Cloudflare Worker**.
+### Browser application and rendering
+
+The browser app is framework-free vanilla JavaScript centered on `public/app.js`.
+
+- **Persistence:** IndexedDB stores the active document and preferences. YAML frontmatter carries those settings into shared documents.
+- **Modes:** Edit shows the markdown source; View shows the styled preview with typography/layout controls; Read is distraction-free, uses the Plain renderer, forces 100% zoom, and hides resize handles.
+- **Preview isolation:** rendered output is sanitized and placed in sandboxed iframes. A staging iframe reduces visual flicker during re-renders.
+- **Sanitization:** browser rendering uses vendored DOMPurify and fails closed to escaped text if it is unavailable; server rendering uses `sanitize-html` with a matching allowlist.
+- **Pagination:** Plain is unpaginated; Paged.js favors speed; Vivliostyle favors complex paged layout and tables. Engine scripts currently load from upstream CDNs rather than vendored assets; Vivliostyle is version-pinned, while the Paged.js URL is not.
+- **Typography:** bundled fonts are self-hosted. Browser and server use matching scale tables to map user controls into document CSS. Browser previews/exports link the vendored font stylesheet; server-rendered documents inline font assets.
+- **Math Mode:** opt-in per document. `core/math.js` parses TeX-style delimiters into placeholders, then KaTeX renders them before pagination so Paged.js/Vivliostyle receive static math output.
+- **App surface:** an unfinished component/framework surface exists behind the `?appsurface=1` opt-in and is not part of the primary document workflow.
 
 ## 2. Deployment topology
 
-```
- flatwrite.md (apex)          — Vercel, auto-deployed from git main.
-                                Static assets from public/ + serverless /api/* functions.
- *.thecontrarian.workers.dev  — Cloudflare Workers mirror of the same static app
-                                (wrangler deploy of worker/index.js). Not the production
-                                apex path; useful for pre-production verification.
- render.flatwrite.md          — Cloudflare Worker: render API + /mcp-token
- extract.flatwrite.md         — Cloudflare Worker: extract API + /mcp-token
- assist.flatwrite.md          — Cloudflare Worker: Morph AI-assist pipeline + /mcp-token
- mcp.flatwrite.md             — Cloudflare Worker: MCP Streamable HTTP transport
+```text
+flatwrite.md                    Cloudflare-proxied Vercel: static public/ app + serverless /api/* handlers
+*.thecontrarian.workers.dev     Cloudflare mirror of the static app and /api routing shim
+render.flatwrite.md             render API + /mcp-token
+extract.flatwrite.md            extract API + /mcp-token
+assist.flatwrite.md             Morph AI-assist API + /mcp-token
+mcp.flatwrite.md                MCP Streamable HTTP transport
 ```
 
-**Critical operational fact:** pushing to `main` on GitHub is what ships the production apex. `wrangler deploy` of the root project only affects the `workers.dev` mirror. DNS for the zone is Cloudflare-proxied, but the apex ultimately serves from Vercel.
+Operational facts:
 
-The four subdomain Workers are deployed independently with wrangler from their own directories (`workers/flatwrite-*/`), each with its own `wrangler.toml`. The extract Worker additionally has `deploy.sh`, which exists because wrangler 4.x auto-discovers the parent `wrangler.jsonc` and would otherwise deploy to the wrong Worker; the script forces `--config wrangler.toml`, always passes an explicit `--env` (so the staging deploy can't steal the production route), and stashes `public/_redirects` during upload because the SPA-fallback rule trips Cloudflare's upload validator.
+- Pushing `main` ships the production apex through Vercel's git integration.
+- The root `wrangler deploy` updates only the Workers mirror described by `wrangler.jsonc`; no production apex route is declared in that file.
+- Each subdomain Worker deploys independently from `workers/flatwrite-*/` with its own `wrangler.toml`.
+- `workers/flatwrite-extract/deploy.sh` forces the correct config/environment and stashes `public/_redirects` during upload so staging cannot steal the production route and Cloudflare's validator does not reject the SPA fallback.
 
 ### Secrets inventory
 
-| Worker | Secrets | Notes |
+| Worker | Secrets | Purpose |
 |---|---|---|
-| `flatwrite` (apex mirror) | `INTERNAL_RENDER_KEY`, `DUSTEBIN_BASE_URL` | No extract-related secrets remain |
-| `flatwrite-render` | `API_KEY`, `INTERNAL_RENDER_KEY` | `INTERNAL_RENDER_KEY` HMAC-signs forwarding to `/api/render` |
-| `flatwrite-extract` | `API_KEY` | HMAC key for token mint/verify and `X-Api-Key` auth |
-| `flatwrite-assist` | `API_KEY` + Morph credentials | See `docs/MORPH-ASSIST.md` |
+| `flatwrite` mirror | `INTERNAL_RENDER_KEY`, `DUSTEBIN_BASE_URL` | Render forwarding and share paste access |
+| `flatwrite-render` | `API_KEY`, `INTERNAL_RENDER_KEY` | Public auth and HMAC-signed forwarding to `/api/render` |
+| `flatwrite-extract` | `API_KEY` | API-key verification and HMAC token minting |
+| `flatwrite-assist` | `API_KEY`, Morph credentials | Public auth and Morph access |
 
-The retired `EXTRACT_SERVICE_URL` and `INTERNAL_EXTRACT_KEY` secrets no longer exist anywhere — there is no upstream service left to point at. Repo tests assert their absence from live source.
+`EXTRACT_SERVICE_URL` and `INTERNAL_EXTRACT_KEY` are retired; tests assert that they remain absent from live source.
 
-## 3. The document conversion pipeline
+## 3. Document conversion pipeline
 
-### 3.1 Conversion engines
+### Engines and formats
 
-Two WebAssembly modules compiled from Rust do all structured document conversion:
+Structured conversion uses exact pinned WASM versions:
 
-- **`@firecrawl/anydoc-wasm` 0.2.4** — office formats (DOC/DOCX, PPT/PPTX, XLS/XLSX, ODT/ODS/ODP, RTF, EPUB, CSV/TSV)
-- **`@firecrawl/pdf-inspector-wasm` 1.26.1** — text-based PDFs, including column detection, table reconstruction, and heading-tier inference
+- `@firecrawl/anydoc-wasm` **0.2.4** — DOC/DOCX/DOCM/ODT/RTF, PPT/PPS/POT/PPTX/PPTM/PPSX/PPSM/ODP, XLS/XLSX/XLSM/XLSB/ODS/CSV, and EPUB.
+- `@firecrawl/pdf-inspector-wasm` **1.26.1** — text-based PDFs, including columns, tables, and heading inference.
 
-These versions are exact pins. The WASM builds are not byte-identical to the old Python bindings (they are newer upstream and in some ways better — math handling, xlsb support), so the behavioral contract is enforced by golden fixtures rather than by assuming upstream parity.
+Do not upgrade casually: behavior is locked by the golden corpus, and the old live Python reference service no longer exists.
 
-One caveat on upgrades: earlier research validated 0.2.5/1.27.1 but production pins 0.2.4/1.26.1. Do not upgrade without re-capturing the golden corpus (`scripts/capture-extract-golden.mjs` no longer has a live Fly reference — regeneration requires a deliberate fixture review).
+### Browser execution
 
-### 3.2 Client-side execution
-
-Conversion in the browser is a three-layer structure, all in `public/`:
-
-```
-app.js  →  local-extract.js  →  extract-worker.js (Web Worker)  →  extract-core.js
-                                    ↓ lazy-loads WASM
-                              vendor/anydoc-0.2.4/*, vendor/pdf-inspector-1.26.1/*
+```text
+app.js → local-extract.js → extract-worker.js → extract-core.js
+                              ↓ lazy-loads one WASM family
+                    vendor/anydoc-0.2.4 or pdf-inspector-1.26.1
 ```
 
-- **`extract-core.js`** is the shared pure-logic module: the extension/type table, OCR line-to-markdown layout reconstruction, metadata stubs for audio/blank images, frontmatter parsing, title extraction, and the error-code mapping. It is engine-agnostic — engines (AnyDoc, pdf-inspector, OCR) are injected, which is what makes the same logic testable in Node/bun and reusable across browser and Worker contexts. It is a line-for-line port of the retired Python service's `converter.py`/`ocr.py`/`rules.py` behavior.
-- **`extract-worker.js`** is a module Web Worker wrapper. AnyDoc/pdf-inspector calls are synchronous CPU work, so they must not run on the main thread. WASM modules are lazy-loaded on first use per format family — a PDF conversion never downloads the AnyDoc module.
-- **`local-extract.js`** is the main-thread facade. Images are the exception to worker placement: Tesseract.js already owns its internal worker, so OCR is orchestrated here and only the layout reconstruction is shared.
+- `extract-core.js` is engine-agnostic shared logic: extension routing, errors, metadata stubs, OCR post-processing, frontmatter, and titles. Engines are injected so the same module runs in the browser, tests, and the extract Worker.
+- `extract-worker.js` keeps synchronous WASM CPU work off the main thread and lazy-loads only the needed engine family.
+- `local-extract.js` coordinates browser File objects and Tesseract OCR.
+- The input ceiling is 25 MiB.
 
-### 3.3 Image OCR
+### OCR and deliberate limits
 
-Standalone image files (png/jpg/jpeg/gif/webp/tiff) dropped into the editor are OCR'd locally with **Tesseract.js 7.0.0** (English data, `@tesseract.js-data/eng` 1.0.0, core 7.0.0). Recognized line boxes `{x, y, w, h, text, conf}` are flattened into structured markdown by `ocrLinesToMarkdown` — headings, bullet lists, continuation lines — a direct port of the old service's RapidOCR post-processing.
+- Standalone PNG/JPEG/GIF/WebP/TIFF images are OCR'd locally with Tesseract.js 7.0.0. OCR lines are reconstructed into headings, lists, and paragraphs by the ported `ocrLinesToMarkdown` logic.
+- Tesseract is known to be weaker than the retired RapidOCR pipeline, especially for bullets. Empty or failed OCR degrades to an image metadata stub rather than an error.
+- Scanned/image-only PDFs return `422 NEEDS_OCR`; PDF pages are not OCR'd.
+- Encrypted files return `422 ENCRYPTED`.
+- Audio files produce metadata stubs; there is no transcription.
+- The public extract API rejects images and audio with `415 UNSUPPORTED_FILE_TYPE`; OCR is intentionally browser-interactive only.
 
-Known quality regression, accepted as a product decision: Tesseract is visibly weaker than RapidOCR, especially on bullet glyphs. If OCR finds no readable text, or the OCR engine itself fails, the result degrades to a metadata stub (filename/size/type + explanatory note) rather than an error — same contract as the Python service.
+## 4. Extract API Worker
 
-### 3.4 What is deliberately not converted
+`workers/flatwrite-extract/` implements `POST https://extract.flatwrite.md/extract`:
 
-- **Scanned or image-only PDFs** are rejected with `422 NEEDS_OCR` everywhere. No part of the system OCRs PDF pages (the retired service didn't truly either).
-- **Encrypted files** are rejected with `422 ENCRYPTED`.
-- **Audio files** get a metadata-only stub — there is no transcription and never was.
-- **Images/audio through the public extract API** are rejected with `415 UNSUPPORTED_FILE_TYPE` — OCR is browser-interactive only, by design.
-
-## 4. The extract API worker
-
-`workers/flatwrite-extract/` implements `POST https://extract.flatwrite.md/extract` — the public programmatic conversion API. It runs the same two WASM modules **in-process inside the Worker isolate**; there is no upstream service, no `UPSTREAM_URL`, no HMAC re-signing hop.
-
-Request flow:
-
-```
-multipart/form-data upload (≤25 MB)
-  → auth (X-Api-Key or X-Mcp-Token, see §7)
-  → validation (extension/type table shared with the browser pipeline)
+```text
+multipart/form-data upload (≤25 MiB)
+  → auth (X-Api-Key or X-Mcp-Token)
+  → extension/type validation
   → in-process WASM conversion
   → { markdown, metadata } or structured error
 ```
 
-Error wire shapes intentionally differ by stage (backward compatibility with the old API's consumers):
-
-- **Validation failures** (auth, unsupported type, size) — flat: `{"error", "code"}`
-- **Conversion failures** — FastAPI-style wrapped: `{"detail": {"error", "code"}}`
-
-A staging copy (`flatwrite-extract-staging`, workers.dev-only) exists for pre-production measurement. `./deploy.sh --env staging` deploys it; the production route lives only in `[env.production]` so a staging deploy can never steal `extract.flatwrite.md/*`.
+Validation errors use the flat shape `{"error", "code"}`; conversion errors use the legacy wrapped shape `{"detail": {"error", "code"}}` for backward compatibility. A workers.dev-only staging environment exists for measurement and pre-production verification.
 
 ## 5. URL import pipeline
 
-`POST /api/import-url` is retired — it returns `410 ENDPOINT_RETIRED` permanently. The old endpoint conflated fetching with server-side conversion, which is impossible in the zero-VM architecture. Its replacement splits the two responsibilities:
+`POST /api/import-url` is permanently retired and returns `410 ENDPOINT_RETIRED` because fetching and server-side conversion are no longer conflated.
 
-**`POST /api/fetch-document`** (`api/fetch-document.js`) — server-side fetch only:
+Its replacement, `POST /api/fetch-document`, performs server-side fetch only:
 
-- Body: `{url}`; `http`/`https` only
-- SSRF hardening: no localhost, no RFC1918/loopback/link-local/CGNAT/IPv6-ULA ranges, no multicast/benchmarking/protocol-assignment ranges, and no IPv4-transition embeddings (IPv4-mapped, IPv4-compatible, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) of those addresses; DNS resolution validation with a rebinding guard (Workers `resolve4`/`resolve6` fallback), and **every redirect hop re-validated** (manual redirect following, max 5)
-- 25 MB streaming cap, 60 s timeout, 20 req/min/IP rate limit
-- Extension validated against the same `EXTENSIONS` table the browser converter uses
-- Success: raw bytes as `application/octet-stream` with `X-Flatwrite-Filename` (URI-encoded), `X-Flatwrite-Source-Url`, `X-Flatwrite-Source-Content-Type`, `Cache-Control: no-store`. Raw upstream error bodies are never forwarded.
+- accepts `http`/`https` URLs;
+- blocks localhost, private, loopback, link-local, CGNAT, multicast, benchmarking, protocol-assignment, and IPv4-transition address ranges;
+- validates DNS resolution and revalidates every redirect hop, with a maximum of five redirects;
+- enforces a 25 MiB streaming cap, 60 second timeout, and 20 requests/minute/IP limit;
+- returns raw bytes as `application/octet-stream` with FlatWrite filename/source headers and `Cache-Control: no-store`;
+- never forwards upstream error bodies.
 
-**Residual SSRF consideration — DNS pinning.** Validation resolves each hostname and rejects private results, but the subsequent `fetch()` performs its own resolution, leaving a theoretical time-of-check/time-of-use window for attacker-controlled DNS that alternates responses. Connection-level IP pinning (connecting to the validated address while preserving `Host`/SNI) is not reliably enforceable across the runtimes this handler serves: the Worker `fetch` API exposes no connect-level control at all, and the handler must remain portable. The enforced controls are therefore: deny-by-default private resolution on every hop, manual redirect revalidation, and the bounded response handling above. Deployments with strict egress requirements should additionally enforce network-level egress filtering at the platform layer.
+A DNS time-of-check/time-of-use gap remains because neither portability layer exposes connection-level IP pinning. Mitigations are deny-by-default resolution, redirect revalidation, bounded responses, and the recommendation that strict deployments add platform-level egress filtering.
 
-The browser then constructs a `File` from those bytes and runs the exact same local conversion pipeline as drag-and-drop, including frontmatter parsing and title extraction. There is one document model — everything lands in the editor through `setEditorContent()`.
+After fetching, the browser constructs a `File` and runs the same local conversion path as drag-and-drop. Direct markdown/text URLs are fetched from the browser when CORS permits; document imports depend on `/api/fetch-document` being deployed.
 
-Direct URL loading (sidebar → From URL) still fetches plain markdown/text directly from the browser when CORS allows, and falls back to `/api/fetch-document` only for convertible document types. Consequence: against a static-assets-only deployment (no `/api` functions), CORS-blocked document imports cannot work — the conversion itself has no such dependency.
+## 6. Render, share, assist, and MCP
 
-## 6. Render, share, and assist services
-
-- **Render** — `render.flatwrite.md` is a JSON-first façade in front of the canonical `/api/render` handler, forwarding with an `INTERNAL_RENDER_KEY` HMAC signature. Rendering itself (`core/render.js`, marked-based) is shared code executed identically in the browser preview, the API, and the MCP tools — one renderer, byte-identical output across all surfaces. Legacy YAML input mode is preserved.
-- **Share** — markdown is POSTed to a `dustebin` paste service (`DUSTEBIN_BASE_URL`); the resulting short id becomes the share URL (`/s/:id` resolves it). This is why shared links are short and survive URL-length limits.
-- **MCP** — four surfaces documented in `mcp/MCP.md`: a stdio server (`mcp/flatwrite-render-server`), the Streamable HTTP worker (`mcp.flatwrite.md`), in-browser WebMCP tools (`public/webmcp*.js`), and the plain HTTP API. The same tool implementations back all four.
-- **Assist** — `assist.flatwrite.md` proxies the Morph models pipeline (Reflex → Router → Compact → Fast) for rewrite/shorten/grammar/custom instructions. Spec in `docs/MORPH-ASSIST.md`.
+- **Render:** `render.flatwrite.md` is a JSON-first facade over the canonical `/api/render` handler. `core/render.js` backs the HTTP API and MCP surfaces. The browser preview uses a parallel marked pipeline with matching task-list, math, sanitization, and document-CSS behavior; parity is pinned by tests rather than shared imports. Legacy YAML input is preserved.
+- **Share:** `/api/share` posts markdown plus style frontmatter to Dustebin with `language: "markdown"`; `/api/s` resolves the paste id. The client enforces a 400,000-character share limit. The server currently requests `expiration: "30d"`, while the client toast says links are available for up to 7 days — a known copy/contract inconsistency that should be reconciled before documenting a precise lifetime.
+- **Assist:** `assist.flatwrite.md` implements the Morph pipeline documented in `docs/MORPH-ASSIST.md` (Reflex → Router → Compact → Fast model). The API and WebMCP bridge exist, but the visible editor toolbar is still deliberately gated behind the “coming soon” toast.
+- **MCP:** the same tool implementations back the stdio server, Streamable HTTP Worker, in-browser WebMCP tools, and HTTP API. See `mcp/MCP.md`.
 
 ## 7. Authentication and security model
 
-The public Workers share one auth model (`public/webmcp-shared.js` is the canonical implementation):
+Public Workers use two credential types:
 
-- **`X-Api-Key`** — long-lived secret (`API_KEY` Worker secret), accepted only from non-browser callers. Any request carrying an `Origin` header with an API key is rejected (`API_KEY_NOT_ALLOWED_FROM_BROWSER`) so the key can never be exercised from a browser context.
-- **`X-Mcp-Token`** — short-lived HMAC-signed token minted by `POST /mcp-token`, gated by a trusted-origin allowlist (`https://flatwrite.md`, `https://*.flatwrite.md`, plus an opt-in `ALLOWED_DEV_ORIGINS` var for local development) and per-IP rate limiting. This is how the browser editor and WebMCP clients authenticate.
-- HMAC comparison is constant-time; tokens carry scope (`mcp`, `assist`) and expiry.
+- **`X-Api-Key`:** long-lived server-to-server secret. Any request carrying an `Origin` header is rejected with `API_KEY_NOT_ALLOWED_FROM_BROWSER`, and preflight responses do not advertise the header.
+- **`X-Mcp-Token`:** 60-second HMAC-signed token minted by `POST /mcp-token` for trusted browser origins. Render/extract tokens use scope `mcp`; assist tokens use scope `assist`.
 
-Transport security properties worth noting:
+HMAC comparison is constant-time. Trusted origins include the apex, single-label `*.flatwrite.md` subdomains such as `www`, and worker-specific local-development allowances. CORS is allowlist-only.
 
-- Interactive conversion is structurally private: document bytes never leave the browser, verified in production by network-trace regression tests asserting zero requests to any conversion endpoint during a drop.
-- `/api/fetch-document` never forwards upstream response bodies on failure — a scanned/attacker-controlled upstream cannot smuggle content-shaped errors into the client.
-- CORS on the API workers is allowlist-only; preflight succeeds solely for trusted origins.
+Other security properties:
+
+- Interactive local conversion is structurally private: bytes never leave the browser for conversion.
+- `/api/fetch-document` is a byte proxy only and does not store fetched documents.
+- Browser preview iframes are sandboxed; rendered HTML is sanitized before injection.
+- Vendored copies of `marked` and `dompurify` avoid third-party runtime script execution in the apex origin.
+- `/api/render` expects an `INTERNAL_RENDER_KEY` HMAC signature when called through the render Worker.
 
 ## 8. Error contracts
 
+Canonical public errors:
+
 | Condition | Status | Code | Shape |
-|---|---|---|---|
-| Unsupported type for the API (incl. all images/audio) | 415 | `UNSUPPORTED_FILE_TYPE` | flat (validation) |
-| Scanned/image-only PDF | 422 | `NEEDS_OCR` | wrapped (conversion) |
-| Encrypted file | 422 | `ENCRYPTED` | wrapped |
-| Conversion engine failure | 500 | `CONVERT_FAILED` | wrapped |
+|---|---:|---|---|
+| Unsupported API file type, including images/audio | 415 | `UNSUPPORTED_FILE_TYPE` | flat validation |
+| Payload over 25 MiB | 413 | `PAYLOAD_TOO_LARGE` | flat validation |
+| Scanned/image-only PDF | 422 | `NEEDS_OCR` | wrapped conversion |
+| Encrypted file | 422 | `ENCRYPTED` | wrapped conversion |
+| Conversion engine failure | 500 | `CONVERT_FAILED` | wrapped conversion |
 | Invalid/expired token | 401 | `INVALID_TOKEN` | flat |
 | API key used from a browser | 401 | `API_KEY_NOT_ALLOWED_FROM_BROWSER` | flat |
 | Untrusted origin | 403 | `ORIGIN_NOT_ALLOWED` | flat |
 | Rate limit | 429 | `RATE_LIMIT` | flat |
-| `/api/import-url` anything | 410 | `ENDPOINT_RETIRED` | flat |
-| Missing worker secret | 500 | `MISCONFIGURED` | flat |
+| Retired `/api/import-url` | 410 | `ENDPOINT_RETIRED` | flat |
+| Missing Worker secret | 500 | `MISCONFIGURED` | flat |
 
-The browser drop pipeline maps the same codes into user-facing error UI; audio/blank-image metadata stubs are success responses, not errors.
+Browser conversion maps the same codes into user-facing UI. Audio and blank-image metadata stubs are successful responses, not errors.
 
 ## 9. Asset vendoring and versioning
 
-WASM and OCR assets are **committed to git** under `public/vendor/` (≈35 MB total, ≈16 MB gzipped on the wire):
+`public/vendor/` is committed to git so Vercel, Workers, and tests use bit-identical inputs. Current sizes are approximately:
 
-```
-public/vendor/
-  anydoc-0.2.4/          6.4 MB
-  pdf-inspector-1.26.1/  5.8 MB
-  tesseract-7.0.0/       23 MB (multiple SIMD variants for browser support tiers)
-  extract-manifest.json  — version map consumed at runtime
-```
+| Asset | Raw | Gzip-sum |
+|---|---:|---:|
+| `anydoc-0.2.4/` | 6.40 MiB | 2.79 MiB |
+| `pdf-inspector-1.26.1/` | 5.75 MiB | 2.45 MiB |
+| `tesseract-7.0.0/` | 14.14 MiB | 7.04 MiB |
+| all vendored assets | 26.37 MiB | 12.30 MiB |
 
-Rationale: production ships through Vercel's git integration, and build-time generation could not be verified to run reliably there. Committed assets are deployment-target-independent and bit-deterministic — `scripts/vendor-extract-assets.mjs` copies exactly these files out of the pinned `node_modules` versions, so local builds and wrangler deploys regenerate byte-identical output. The versioned directory names are the cache-busting mechanism: upgrades change the path, never the contents of an existing path.
-
-Cache-busting of application code is manual and test-enforced: `app.js?v=N` and `local-extract.js?v=N` query strings in `index.html` are pinned by unit tests, forcing a deliberate bump on every change. (Vercel serves immutable-cache headers for static assets; see `vercel.json`.)
+Versioned directory names are the cache-busting mechanism: upgrades change paths rather than mutating existing assets. `scripts/vendor-extract-assets.mjs` regenerates the WASM/OCR payload from pinned `node_modules` versions. Application cache-busting is manual and test-enforced through query versions in `public/index.html`.
 
 ## 10. Performance characteristics
 
-Measured against the production extract Worker (Workers Free plan, November 2026, `scripts/measure-extract-cpu.mjs` + `wrangler tail`, 150+ runs):
+Production extract-Worker measurements from November 2026 (`scripts/measure-extract-cpu.mjs`, 150+ runs):
 
-- Typical documents (the 30-file corpus: pptx/docx/xlsx/pdf/csv/epub): **0–20 ms CPU**, ~70 ms wall-clock end-to-end for a small pptx.
-- WASM module startup is single-digit milliseconds per isolate; both modules combined are ~12.7 MB raw, well under the 64 MiB uncompressed Worker size limit (bundle ≈6.5 MiB, ≈2.9 MiB gzip) and the 128 MB isolate memory limit even with a 25 MB upload expanded in memory.
-- A stress-case 2.4 MB docx with ~40k paragraphs measured **260–345 ms CPU** and still returned 200.
+- Typical corpus documents: **0–20 ms CPU**; roughly 70 ms wall-clock for a small PPTX.
+- WASM startup is single-digit milliseconds per isolate.
+- A 2.4 MB DOCX with about 40,000 paragraphs measured **260–345 ms CPU** and returned 200.
 
-The Workers Free plan nominally allows 10 ms CPU per request. Cloudflare tolerates bursts in practice — every measured request succeeded — but very large files rely on that tolerance and could theoretically hit error 1102 under strict enforcement.
+The Workers Free plan nominally allows 10 ms CPU/request, but Cloudflare tolerated the measured bursts. Dense Office XML can amplify cost far beyond input size: a 68 KB DOCX with roughly 2M XML nodes converted in about 600 ms in Bun while holding about 300 MiB RSS. Inputs beyond engine ceilings fail with `500 CONVERT_FAILED` rather than crashing the isolate. If Worker error 1102 appears in production, the planned escalation is either a stricter input-node budget or moving only the extract Worker to Workers Paid.
 
-**Conversion-cost amplification.** The 25 MB input cap bounds bytes, not cost: office XML is dense, and a small upload can expand enormously. Independent-review measurements with the real engines (Bun, not workerd): a 68 KB docx of ~2M XML nodes converted in ~600 ms while holding ~300 MiB RSS and producing ~8.5 M characters — the engine's internal `max_xml_nodes` ceiling (2M) sits above the 128 MB isolate memory limit. Inputs beyond the ceiling fail cleanly with `500 CONVERT_FAILED` rather than crashing the isolate (locked by regression fixture `docx-density-bomb.docx`). Before relying on Free-plan burst tolerance for the public API, take a production measurement of the densest acceptable input; the escalation paths are capping accepted node budget at the engine layer or moving the extract Worker to Workers Paid. This is a documented best-effort posture: the plan is deliberately unchanged because the high-volume interactive path never touches the Worker at all. The escalation path, if 1102s ever appear in production logs, is moving only the extract Worker to Workers Paid (5 min CPU ceiling).
-
-Browser-side conversion has no such ceiling: a reference pptx converts in roughly a second on commodity hardware including WASM warm-up, with the ~2.9 MB compressed engine lazy-loaded once per format family.
+Browser-side conversion has no equivalent request CPU ceiling; a reference PPTX converts in about a second on commodity hardware after lazy engine loading.
 
 ## 11. Testing infrastructure
 
-- **Unit/golden tests** — `bun test ./test/*.test.js`, 480 tests. Includes the 30-file golden corpus (`test/fixtures/extract-corpus/` + `extract-golden/`) captured from the production Fly service before decommissioning, so the WASM pipeline is continuously compared against the behavior users actually experienced. Also asserts negative contracts: retired secrets absent from source, import-url retirement shape, cache-bump versions pinned.
-- **End-to-end** — Playwright (`test/e2e/`), including network-trace assertions that interactive conversion fires zero requests toward any conversion backend, and the URL-import flow.
-- **HTTP API collections** — Bruno collections (`bruno:run:api`, `bruno:run:webmcp` npm scripts).
-- **Production smoke** — the migration was verified in production with scripted Playwright drops (exact 232-character golden markdown reproduced against the live site) and raw `curl` probes of every error contract.
+- **Unit/golden tests:** `bun test ./test/*.test.js` currently passes **482 tests across 18 files**. Coverage includes the 30-file golden conversion corpus, error shapes, retired-secret absence, auth, rendering, math, import, share, and cache-version pins.
+- **End-to-end:** Playwright covers pagination visual baselines, security, URL import, and network traces proving interactive local conversion does not call a conversion backend.
+- **HTTP collections:** Bruno collections are available through `bruno:run:api` and `bruno:run:webmcp`.
+- **Production smoke:** migration behavior was verified with scripted drops against the live site and raw curl probes of error contracts.
 
 ## 12. Repository layout
 
-```
-public/                  static SPA — editor, conversion pipeline, vendored WASM
-  app.js                 main application logic (~5.8k lines)
-  extract-core.js        shared conversion logic (engine-injected, port of Python service)
-  extract-worker.js      Web Worker host for WASM conversion
-  local-extract.js       main-thread facade + Tesseract orchestration
-  vendor/                committed WASM/OCR assets (see §9)
-  webmcp*.js             in-browser MCP tools
-worker/index.js          Cloudflare mirror of apex: assets binding + /api routing shim
-api/                     serverless functions (Vercel + Worker shim share these)
-  fetch-document.js      SSRF-hardened document fetcher
-  import-url.js          retired — returns 410
-  render.js              canonical render handler
-  share.js, s.js         paste-bin share + resolution
-workers/
-  flatwrite-render/      render API Worker
-  flatwrite-extract/     extract API Worker (+ deploy.sh, staging env)
-  flatwrite-assist/      Morph AI-assist Worker
-  flatwrite-mcp/         MCP Streamable HTTP Worker
-mcp/                     stdio MCP server + MCP.md spec
-core/                    shared render logic
-scripts/                 vendoring, CPU measurement, golden capture
-test/                    unit/golden tests + fixtures + e2e
-openapi.yaml             HTTP API specification
-vercel.json              apex routing + immutable asset caching
-wrangler.jsonc           apex-mirror Worker config (workers.dev)
+```text
+public/                     static SPA, conversion pipeline, vendored runtime assets
+  app.js                    main browser application
+  extract-core.js           shared engine-injected conversion logic
+  extract-worker.js         Web Worker host for WASM conversion
+  local-extract.js          browser facade and Tesseract orchestration
+  vendor/                   committed WASM/OCR/marked/DOMPurify assets
+  webmcp*.js                in-browser MCP tools
+worker/index.js             Cloudflare mirror: assets binding + /api routing shim
+api/                        canonical serverless handlers shared by Vercel/Worker shim
+  fetch-document.js         SSRF-hardened remote document fetcher
+  import-url.js             retired endpoint; returns 410
+  render.js                 canonical render handler
+  share.js, s.js            Dustebin share creation/resolution
+workers/                    independent render/extract/assist/MCP Workers
+mcp/                        stdio MCP server and MCP manual
+core/                       shared render, typography, math, auth, and utility logic
+scripts/                    vendoring, measurement, fixtures, and e2e helpers
+test/                       unit/golden tests, fixtures, and Playwright e2e
+bruno/                      HTTP API collections
+openapi.yaml                HTTP API specification
+.impeccable.md              product design context
+vercel.json                 apex routing and cache headers
+wrangler.jsonc              Workers mirror configuration
 ```
