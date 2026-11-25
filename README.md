@@ -8,14 +8,14 @@ Markdown is one of the greatest cross-platform information formats ever invented
 
 ## What it does
 
-- **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, ODT/ODS/ODP, RTF, EPUB, images, audio) — non-text files are converted to Markdown in your browser by AnyDoc and pdf-inspector WebAssembly in a Web Worker. Images use local Tesseract.js OCR, so dropped file bytes never leave the device for interactive conversion.
-- **Structured tables** — a dropped CSV or TSV is parsed in the browser (no extract worker) and opens a table workshop (sort, hide, rearrange, edit cells). Spreadsheets still go through the browser-local extract pipeline. Load and FlatWrite switches to View + Vivliostyle: JetBrains Mono, smaller type, narrow margins, landscape, repeating headers on every page, and the smallest ISO page (A4→A0) that fits the columns. The workshop is also on the Edit toolbar.
-- **Import from URL** — paste a URL to a document file and FlatWrite fetches the bytes server-side, converts them locally in your browser, and loads the Markdown straight into the editor.
+- **Turn almost any document into markdown.** Drop a PDF, Word document, PowerPoint deck, Excel spreadsheet, CSV, OpenDocument file, RTF, EPUB, or image onto the page and FlatWrite converts it into clean, editable markdown. You can also paste a link to a document on the web and import it the same way.
+- **Your files never leave your device.** Conversion happens entirely inside your browser — there is no server upload, no waiting in a queue, and no copy of your document stored anywhere else. Even images are read locally, with on-device text recognition.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a clean, document-first preview.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
+- **Work with tables.** Drop a CSV or spreadsheet and a table workshop opens: sort columns, hide the ones you don't need, rearrange, edit cells — then export with print formatting that fits the table on the page.
 - **Export** to `.md`, `.html`, or `.pdf` whenever you are ready.
-- **Share** your document as a real URL
+- **Share** your document as a real URL.
 
 ## Share & publish
 
@@ -69,16 +69,18 @@ All three engines share the same typography controls (font, size, weight, line s
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.
 
-Then either paste a markdown file into the text area, open a markdown file that's already on your hard disk, or open one from a URL. 
+Then either paste a markdown file into the text area, open a markdown file that's already on your hard disk, drop in a document to convert, or open one from a URL.
 
 Make any edits to the raw markdown in **Edit** mode, then switch to **View** mode to apply style changes, then click on **Read** to see the final version in an uncluttered layout. When you click on the **Share** icon, the URL gets automatically copied to your clipboard.
 
 ## For developers
 
-FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
-FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+FlatWrite also exposes its renderer and document converter as public APIs and an MCP server, so AI agents and other software can use it programmatically.
 
-**AI Assist (Morph):** rewrite / shorten / fix grammar / custom instructions via Reflex → Router → Compact → Fast Models. See [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md). Endpoint: `https://assist.flatwrite.md/assist`.
+- **[TECH-SPEC.md](./TECH-SPEC.md)** — the full technical breakdown: architecture, conversion pipeline, deployment topology, and testing.
+- [`mcp/MCP.md`](./mcp/MCP.md) — the MCP tool reference and authentication model.
+- [`openapi.yaml`](./openapi.yaml) — the HTTP API specification.
+- [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md) — the AI rewriting assistant.
 
 ```bash
 curl -X POST https://render.flatwrite.md/render \
@@ -86,20 +88,6 @@ curl -X POST https://render.flatwrite.md/render \
   -H 'X-Api-Key: ***' \
   -d '{"markdown":"# Hello, FlatWrite"}'
 ```
-
-A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/form-data` uploads and converts document files to Markdown in-process in the Cloudflare Worker with AnyDoc and pdf-inspector WebAssembly. There is no upstream conversion service; the Worker under [`workers/flatwrite-extract/`](./workers/flatwrite-extract/) mirrors the auth model of the render Worker. The retired Python/Fly.io implementation was removed after the cutover; see git history for reference.
-
-The public extract API is document-only: image and audio uploads return `415 UNSUPPORTED_FILE_TYPE`, scanned or image-only PDFs return `422 NEEDS_OCR`, encrypted files return `422 ENCRYPTED`, and conversion failures return `500 CONVERT_FAILED`. Browser-interactive image OCR is still available locally through Tesseract.js (English, best-effort); scanned PDFs are not OCR'd anywhere. Conversion-stage error bodies keep the FastAPI-style `{"detail":{"error","code"}}` shape.
-
-Deployment impact: the extract Worker only needs the `API_KEY` secret. The main flatwrite Worker no longer uses `EXTRACT_SERVICE_URL` or `INTERNAL_EXTRACT_KEY`. The extract Worker currently runs on Cloudflare Workers Free (10 ms nominal CPU per request): typical documents measure roughly 0–20 ms CPU and bursts are tolerated, but very large multi-MB documents have measured 250–350 ms CPU and are best-effort — they may eventually hit Cloudflare error 1102.
-
-**Import from URL:** `POST /api/import-url` is retired and returns `410 ENDPOINT_RETIRED`. The replacement is `POST /api/fetch-document` (canonical handler: [`api/fetch-document.js`](./api/fetch-document.js)), which accepts `{url}`, fetches the document server-side, and returns the raw bytes as `application/octet-stream` with `X-Flatwrite-Filename` (URI-encoded), `X-Flatwrite-Source-Url`, `X-Flatwrite-Source-Content-Type`, and `Cache-Control: no-store` headers. The browser then converts those bytes through the same local pipeline used for drag-and-drop.
-
-- The endpoint validates the target URL (`http`/`https` only, no `localhost`, no private/reserved-network addresses, with a DNS-rebinding guard), re-validates every redirect hop, enforces a request timeout, and never forwards raw upstream error bodies to the client.
-- The frontend's existing **Load from URL** dialog (sidebar → **From URL**) is unchanged for users. The legacy browser/auto retry distinction is retained in the UI, but `method` and `retain_images` are no longer sent to the server. On success the converted Markdown replaces the editor content through the same `setEditorContent()` path used by every other load flow — there is no parallel document model.
-- Limitations: HTML pages and authenticated/paywalled content cannot be imported, documents are capped at 25 MB, and the URL must resolve to a file type supported by the browser-local converter. Server-side fetching requires the `/api/fetch-document` backend endpoint (the Cloudflare Worker on `flatwrite.md` or the local `index.js`/dev server), so CORS-blocked and extensionless imports do not work against a static-assets-only deployment; conversion itself no longer requires the retired extract service.
-
-The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 
 ## Why another markdown editor?
 
