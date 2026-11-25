@@ -18,24 +18,24 @@
 //
 // This is the Worker that replaces the Vercel deployment. It serves:
 //
-//   POST /api/render       → api/render.js      (canonical render handler)
-//   POST /api/import-url   → api/import-url.js  (AnyDoc import-from-URL)
-//   POST /api/share        → Dustebin paste create (index.js handleShare logic)
+//   POST /api/render         → api/render.js         (canonical render handler)
+//   POST /api/fetch-document → api/fetch-document.js (SSRF-guarded document fetch)
+//   POST /api/import-url     → api/import-url.js     (retired: 410)
+//   POST /api/share          → Dustebin paste create (index.js handleShare logic)
 //   GET  /api/s?key=       → Dustebin paste fetch   (index.js handleFetch logic)
 //   everything else        → static assets via env.ASSETS (public/)
 //
-// The canonical API handlers (api/render.js, api/import-url.js) are reused
-// verbatim via createRequire — they are written against plain Node.js
-// http.ServerRequest/ServerResponse APIs, so this entry provides a thin
-// adaptation layer:
+// The canonical API handlers (api/render.js, api/fetch-document.js,
+// api/import-url.js) are reused verbatim — they are written against plain
+// Node.js http.ServerRequest/ServerResponse APIs, so this entry provides a
+// thin adaptation layer:
 //
 //   Request  → { method, url, headers, socket: { remoteAddress }, on(...) }
 //   Response → { statusCode, setHeader(), end() }  (collected into a Worker Response)
 //
 // process.env is auto-populated with Worker env vars/secrets by
 // nodejs_compat for compatibility dates >= 2025-04-01, so the handlers'
-// process.env.INTERNAL_RENDER_KEY / EXTRACT_SERVICE_URL / TRUST_PROXY reads
-// work unchanged.
+// process.env.INTERNAL_RENDER_KEY / TRUST_PROXY reads work unchanged.
 //
 // Static assets: assets.run_worker_first is limited to /api/* in
 // wrangler.jsonc, so every non-API request is served directly by the
@@ -45,11 +45,13 @@
 
 // The canonical handlers are CommonJS modules. Importing them as ESM lets
 // the bundler (Wrangler/esbuild) statically resolve their whole require()
-// graph — api/render.js, core/render.js, core/math.js, core/font-loader.js,
-// sanitize-html, marked — and wrap them with CJS interop. This works in
+// graph — api/render.js, api/fetch-document.js, public/extract-core.js,
+// core/render.js, core/math.js, core/font-loader.js, sanitize-html, marked —
+// and wrap them with CJS interop. This works in
 // workerd (import.meta.url is unavailable there, so createRequire is not).
 import handleRender from '../api/render.js';
 import handleImportUrl from '../api/import-url.js';
+import handleFetchDocument from '../api/fetch-document.js';
 import { setAssetReader } from '../core/inline-assets.js';
 import { setFontFileExists } from '../core/font-loader.js';
 
@@ -136,12 +138,22 @@ function toWorkerResponse(state) {
   for (const [name, value] of Object.entries(state.headers)) {
     headers.set(name, value);
   }
-  const body = state.body === null || state.body === undefined ? null : String(state.body);
+
+  // Binary handlers (notably /api/fetch-document) end() with a Buffer. Passing
+  // it through unchanged is essential: String(buffer) would UTF-8-decode and
+  // corrupt document bytes. Text/JSON handlers retain the previous String()
+  // behaviour.
+  let body = null;
+  if (state.body !== null && state.body !== undefined) {
+    const isBuffer = typeof Buffer !== 'undefined' && Buffer.isBuffer(state.body);
+    const isBinary = isBuffer || state.body instanceof Uint8Array || state.body instanceof ArrayBuffer;
+    body = isBinary ? state.body : String(state.body);
+  }
   const resp = new Response(body, { status: state.statusCode, headers });
 
-  // Workerd does not sniff Content-Type for opaque string bodies — preserve
-  // whatever the handler set, defaulting to JSON (every end() call in the
-  // canonical handlers writes JSON).
+  // Workerd does not sniff Content-Type for opaque bodies — preserve whatever
+  // the handler set, defaulting to JSON because most canonical end() calls
+  // write JSON. Binary endpoints set their own Content-Type explicitly.
   if (!resp.headers.has('Content-Type')) {
     resp.headers.set('Content-Type', 'application/json');
   }
@@ -315,6 +327,14 @@ export default {
       if (request.method === 'POST') {
         const { res, state } = makeResponseShim();
         await handleRender(makeRequestShim(request), res);
+        return toWorkerResponse(state);
+      }
+      return Response.json({ error: 'POST only' }, { status: 405 });
+    }
+    if (pathname === '/api/fetch-document') {
+      if (request.method === 'POST') {
+        const { res, state } = makeResponseShim();
+        await handleFetchDocument(makeRequestShim(request), res);
         return toWorkerResponse(state);
       }
       return Response.json({ error: 'POST only' }, { status: 405 });

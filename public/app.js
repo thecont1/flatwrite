@@ -861,8 +861,8 @@
 
   /**
    * Extract a sensible filename from a URL for routing purposes.
-   * The router uses the extension to decide whether to send a file
-   * to the extract endpoint (.pdf, .pptx, etc.) or read it as
+   * The router uses the extension to decide whether to convert a file
+   * locally (.pdf, .pptx, etc.) or read it as
    * plain text (.md, .markdown, .txt). If the URL has no
    * recognizable filename (e.g. an API endpoint or a bare host),
    * we return a generic name — the dispatcher will then route to
@@ -1042,9 +1042,8 @@
      into app.js so the routing decision is always available — even if
      extract-drop.js failed to load (script tag typo, cache miss,
      deploy lag). Without this fallback, .md/.markdown/.txt drops
-     would be misrouted to the extract endpoint on production and
-     415-rejected by the Fly service (markdown isn't in the Fly
-     extension allowlist — see services/extract/validators.py).
+     would be misrouted to local conversion and rejected as unsupported
+     (markdown is intentionally handled by the direct FileReader path).
 
      The standalone public/extract-drop.js is kept for bun-test
      coverage of the routing logic and as a small public API for
@@ -1067,56 +1066,39 @@
      File import — drag-and-drop extract flow
      ==========================================================================
      Routes any dropped file that isn't a plain-text file (`.md`, `.txt`,
-     `.markdown`) through the new /extract endpoint, which converts it to
-     Markdown via the AnyDoc service behind extract.flatwrite.md.
+     `.markdown`) through browser-local conversion. Office documents and PDFs
+     are converted in a Web Worker by AnyDoc/pdf-inspector WebAssembly; images
+     are OCR'd locally with the vendored Tesseract.js runtime.
 
-     Plain-text files still go through handleFileUpload() — no need to
-     round-trip to the server for a raw text read.
+     Plain-text files still go through handleFileUpload() — no conversion
+     engine is needed for a raw text read.
      ========================================================================== */
 
-  // Local dev override: when the editor itself is served from localhost,
-  // point at a locally-running `wrangler dev` instance of the extract
-  // Worker (see workers/flatwrite-extract/README.md § Local dev) instead
-  // of the production endpoint. Production hosts are unaffected.
-  var IS_LOCAL_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  var EXTRACT_BASE = IS_LOCAL_DEV ? "http://127.0.0.1:8787" : "https://extract.flatwrite.md";
-  var EXTRACT_URL = EXTRACT_BASE + "/extract";
-  var EXTRACT_TOKEN_URL = EXTRACT_BASE + "/mcp-token";
   var EXTRACT_MAX_BYTES = 25 * 1024 * 1024;
-  var _extractCachedToken = null;
-  var _extractInflightToken = null;
 
-  async function getExtractToken() {
-    if (_extractCachedToken && _extractCachedToken.expiresAt > Math.floor(Date.now() / 1000) + 10) {
-      return _extractCachedToken;
+  function convertFileLocally(file) {
+    if (!window.FlatwriteLocalExtract || typeof window.FlatwriteLocalExtract.extract !== "function") {
+      var err = new Error("local extraction unavailable");
+      err.status = 500;
+      err.code = "CONVERT_FAILED";
+      throw err;
     }
-    if (_extractInflightToken) return _extractInflightToken;
-    _extractInflightToken = (async () => {
-      try {
-        var r = await fetch(EXTRACT_TOKEN_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-        if (!r.ok) {
-          throw new Error("token mint failed: HTTP " + r.status);
-        }
-        var body = await r.json();
-        if (!body || !body.token || !body.expiresAt) {
-          throw new Error("token mint returned malformed body");
-        }
-        _extractCachedToken = body;
-        return body;
-      } finally {
-        _extractInflightToken = null;
-      }
-    })();
-    return _extractInflightToken;
+    return window.FlatwriteLocalExtract.extract(file, file.name);
+  }
+
+  function extractErrorMessage(err) {
+    var code = err && err.code;
+    if (code === "UNSUPPORTED_FILE_TYPE") return "this file type isn't supported";
+    if (code === "NEEDS_OCR") return "this PDF is scanned — OCR for PDFs isn't supported";
+    if (code === "ENCRYPTED") return "file is password-protected";
+    if (code === "PAYLOAD_TOO_LARGE") return "file is too large (25 MB max)";
+    return "conversion failed";
   }
 
   /**
-   * POST a dropped file to /extract and load the returned markdown into
-   * the editor. Re-uses the Worker's mcp-token flow for browser-safe auth,
-   * mirroring webmcp.js's render-worker call site.
+   * Convert a dropped file locally and load the returned markdown into the
+   * editor. Conversion happens in this browser; no file bytes leave the
+   * device for the drag-and-drop extraction path.
    */
   async function handleExtractDrop(file) {
     if (!file) return;
@@ -1143,69 +1125,36 @@
       return;
     }
     var thisGen = beginImport();
-    showToast("Extracting " + file.name + "…");
+    var isImage = /\.(png|jpe?g|gif|webp|tiff?)$/i.test(file.name);
+    showToast(isImage
+      ? "Running OCR on " + file.name + "… (first use downloads OCR engine)"
+      : "Extracting " + file.name + "…");
     try {
-      var token = await getExtractToken();
-      var fd = new FormData();
-      fd.append("file", file, file.name);
-      var resp = await fetch(EXTRACT_URL, {
-        method: "POST",
-        headers: { "X-Mcp-Token": token.token },
-        body: fd,
-      });
-      var text = await resp.text();
-      var data;
-      try { data = JSON.parse(text); } catch (_) { data = null; }
-      if (!resp.ok) {
-        if (resp.status === 401) _extractCachedToken = null;
-        var errCode = (data && data.detail && data.detail.code) || (data && data.code) || "EXTRACT_FAILED";
-        var errMsg = (data && data.detail && data.detail.error) || (data && data.error) || ("HTTP " + resp.status);
-        showToast("Extract failed: " + errMsg);
-        console.error("[extract]", errCode, errMsg);
+      var result = await convertFileLocally(file);
+      if (!result || typeof result.markdown !== "string") {
+        showToast("Extract failed: conversion failed");
         return;
       }
-      if (!data || typeof data.markdown !== "string") {
-        showToast("Extract failed: malformed response");
-        return;
-      }
-      if (data.markdown.length === 0) {
+      if (result.markdown.length === 0) {
         showToast("No text could be extracted from " + file.name);
         return;
       }
       if (!isCurrentImport(thisGen)) return;
-      setEditorContent(data.markdown);
+      setEditorContent(result.markdown);
       currentMarkdownUrl = "";
       githubBaseUrl = "";
       mathPromptDismissed = false;
-      maybePromptMathMode(data.markdown);
-      var openedWorkshop = openTableWorkshopIfNeeded(data.markdown, data.metadata);
+      maybePromptMathMode(result.markdown);
+      var openedWorkshop = openTableWorkshopIfNeeded(result.markdown, result.metadata);
       if (!openedWorkshop && mode !== "edit") renderPreview();
-      var meta = data.metadata || {};
+      var meta = result.metadata || {};
       if (!openedWorkshop) {
         showToast("Loaded " + (meta.fileType || "file") + " from " + file.name);
       }
     } catch (e) {
-      // Translate the opaque "Failed to fetch" message (thrown by the
-      // browser when the network request was blocked — usually CORS,
-      // offline, or DNS) into an actionable hint. Without this, the
-      // user sees "Failed to fetch" with no way to debug.
-      var rawMsg = (e && e.message) ? e.message : String(e);
-      var friendly;
-      if (/Failed to fetch|NetworkError|Load failed/i.test(rawMsg)) {
-        friendly = "network error (check your connection or the file size)";
-      } else if (/timeout|aborted/i.test(rawMsg)) {
-        friendly = "request timed out";
-      } else if (/413/i.test(rawMsg)) {
-        friendly = "file is too large (25 MB max)";
-      } else if (/415/i.test(rawMsg)) {
-        friendly = "this file type isn't supported";
-      } else if (/401/i.test(rawMsg)) {
-        friendly = "authentication failed — refresh the page";
-      } else {
-        friendly = rawMsg;
-      }
-      showToast("Extract failed: " + friendly);
-      console.error("[extract]", e);
+      var code = e && e.code ? e.code : "CONVERT_FAILED";
+      showToast("Extract failed: " + extractErrorMessage(e));
+      console.error("[extract]", code, e);
     }
   }
 
@@ -2504,8 +2453,8 @@
       var file = loadFileInput.files && loadFileInput.files[0];
       if (!file) return;
       // Route through the dispatcher: .md/.markdown/.txt go via
-      // handleFileUpload (FileReader), everything else via the
-      // /extract endpoint. Mirrors the drag-and-drop behavior.
+      // handleFileUpload (FileReader), everything else via browser-local
+      // conversion. Mirrors the drag-and-drop behavior.
       var route = window.FlatwriteExtractDrop
         ? window.FlatwriteExtractDrop.routeDroppedFile(file.name)
         : routeDroppedFileInline(file.name);
@@ -5147,16 +5096,17 @@
     }
 
     /**
-     * POST a document URL to /api/import-url. The backend fetches the
-     * document and converts it locally with AnyDoc, then loads the
-     * returned markdown into the editor. Reuses the same dirty-check +
-     * setEditorContent + renderPreview flow as every other load path so
-     * there is no parallel document model.
+     * POST a document URL to /api/fetch-document. The server only performs
+     * the SSRF-guarded fetch and returns raw bytes; conversion then runs in
+     * this browser through the same local pipeline as drag-and-drop. The
+     * converted Markdown reuses the existing dirty-check + setEditorContent +
+     * renderPreview flow as every other load path so there is no parallel
+     * document model.
      *
-     * Only document files (PDF, DOCX, PPTX, XLSX, CSV, etc.) are
-     * supported; web pages (HTML) are rejected because AnyDoc does not
-     * convert them. The method/retain-images pickers are kept for API
-     * compatibility but are ignored by AnyDoc.
+     * Only document files supported by extract-core (PDF, DOCX, PPTX, XLSX,
+     * images, audio, etc.) can be imported; HTML pages are rejected by the
+     * server. The browser/auto method distinction is retained only for the
+     * legacy retry UX — neither value is sent to the server.
      */
     function addBrowserRetry(url) {
       var retry = document.createElement("button");
@@ -5168,67 +5118,110 @@
       status.appendChild(retry);
     }
 
-    function doImportWebpage(url, method) {
+    async function doImportWebpage(url, method) {
       method = method === "browser" ? "browser" : "auto";
-      status.textContent = method === "browser" ? "Trying browser rendering…" : "Importing webpage…";
+      status.textContent = method === "browser" ? "Trying browser rendering…" : "Fetching document…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
       var thisGen = beginImport();
 
-      fetch("/api/import-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, method: method, retain_images: true }),
-      })
-        .then(function (res) {
-          return res.json().catch(function () { return null; }).then(function (data) {
-            return { ok: res.ok, status: res.status, data: data };
-          });
-        })
-        .then(function (result) {
-          btnFetch.disabled = false;
-          if (!isCurrentImport(thisGen)) return;
-          var succeeded = result.ok && result.data && result.data.ok === true && result.data.document;
-          if (!succeeded) {
-            var friendly = (result.data && result.data.error) || "Could not import this page.";
-            status.textContent = friendly;
-            status.className = "load-url-status error";
-            if (method === "auto") addBrowserRetry(url);
-            return;
-          }
-
-          var doc = result.data.document;
-          if (isEditorDirty()) {
-            var okReplace = confirm("Replace current content with imported page?");
-            if (!okReplace) return;
-          }
-          if (!isCurrentImport(thisGen)) return;
-          close();
-          var importedMarkdown = rewriteMarkdownUrls(doc.content, doc.sourceUrl);
-          if (window.FlatwriteUrlRouting) {
-            importedMarkdown = window.FlatwriteUrlRouting.ensureMarkdownH1(importedMarkdown, doc.title);
-          }
-          setEditorContent(importedMarkdown);
-          // Root-relative and relative image/link paths can appear in
-          // imported documents (e.g. "/library/originals/photo.jpg").
-          // Reuse the same base-URL resolution the GitHub/file-URL load
-          // paths already rely on (see setMarkdownUrl/resolveRelativeUrls)
-          // so these paths get prefixed with the source page's origin
-          // instead of resolving against flatwrite.md and 404ing.
-          setMarkdownUrl(doc.sourceUrl);
-          mathPromptDismissed = false;
-          maybePromptMathMode(importedMarkdown);
-          if (mode !== "edit") renderPreview();
-          showToast("Imported \u201c" + (doc.title || doc.sourceUrl) + "\u201d");
-        })
-        .catch(function (err) {
-          btnFetch.disabled = false;
-          if (!isCurrentImport(thisGen)) return;
-          status.textContent = "Could not import this page. Check the URL and try again.";
-          status.className = "load-url-status error";
-          if (method === "auto") addBrowserRetry(url);
-          console.error("[import-url]", err);
+      try {
+        var res = await fetch("/api/fetch-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url }),
         });
+
+        if (!res.ok) {
+          var data = await res.json().catch(function () { return null; });
+          var serverMessage = (data && data.error) || "Could not import this page.";
+          var serverError = new Error(serverMessage);
+          serverError.friendlyMessage = serverMessage;
+          throw serverError;
+        }
+
+        var filenameHeader = res.headers.get("X-Flatwrite-Filename") || "";
+        var filename = "remote";
+        if (filenameHeader) {
+          try {
+            filename = decodeURIComponent(filenameHeader) || filename;
+          } catch (_) {
+            filename = filenameHeader;
+          }
+        }
+        var sourceUrl = res.headers.get("X-Flatwrite-Source-Url") || url;
+        var blob = await res.blob();
+        var file = new File([blob], filename, {});
+
+        if (!isCurrentImport(thisGen)) return;
+        status.textContent = "Converting document…";
+
+        var conversion;
+        try {
+          conversion = await convertFileLocally(file);
+        } catch (conversionErr) {
+          var conversionMessage = extractErrorMessage(conversionErr);
+          var wrapped = new Error(conversionMessage);
+          wrapped.friendlyMessage = conversionMessage;
+          wrapped.originalError = conversionErr;
+          throw wrapped;
+        }
+        if (!conversion || typeof conversion.markdown !== "string" || conversion.markdown.length === 0) {
+          var emptyConversion = new Error("conversion failed");
+          emptyConversion.friendlyMessage = "conversion failed";
+          throw emptyConversion;
+        }
+
+        var markdown = conversion.markdown;
+        var title = filename;
+        try {
+          title = new URL(sourceUrl).hostname || title;
+        } catch (_) {
+          // Keep the filename fallback.
+        }
+        try {
+          // Dynamic import keeps the title helpers out of app.js's initial
+          // parse/eval cost. The './' form is required in the browser: a bare
+          // 'extract-core.js' specifier would need an import map.
+          var core = await import("./extract-core.js");
+          var parsedMarkdown = core.parseFrontmatter(markdown);
+          title = core.extractTitle(parsedMarkdown.body, parsedMarkdown.frontmatter, sourceUrl) || title;
+        } catch (titleErr) {
+          console.warn("[fetch-document] title extraction unavailable", titleErr);
+        }
+
+        if (!isCurrentImport(thisGen)) return;
+        if (isEditorDirty()) {
+          var okReplace = confirm("Replace current content with imported page?");
+          if (!okReplace) return;
+        }
+        if (!isCurrentImport(thisGen)) return;
+        close();
+        var importedMarkdown = rewriteMarkdownUrls(markdown, sourceUrl);
+        if (window.FlatwriteUrlRouting) {
+          importedMarkdown = window.FlatwriteUrlRouting.ensureMarkdownH1(importedMarkdown, title);
+        }
+        setEditorContent(importedMarkdown);
+        // Root-relative and relative image/link paths can appear in
+        // imported documents (e.g. "/library/originals/photo.jpg").
+        // Reuse the same base-URL resolution the GitHub/file-URL load
+        // paths already rely on (see setMarkdownUrl/resolveRelativeUrls)
+        // so these paths get prefixed with the source page's origin
+        // instead of resolving against flatwrite.md and 404ing.
+        setMarkdownUrl(sourceUrl);
+        mathPromptDismissed = false;
+        maybePromptMathMode(importedMarkdown);
+        if (mode !== "edit") renderPreview();
+        showToast("Imported \u201c" + (title || sourceUrl) + "\u201d");
+      } catch (err) {
+        if (!isCurrentImport(thisGen)) return;
+        status.textContent = (err && err.friendlyMessage) || "Could not import this page. Check the URL and try again.";
+        status.className = "load-url-status error";
+        if (method === "auto") addBrowserRetry(url);
+        console.error("[fetch-document]", err && err.originalError ? err.originalError : err);
+      } finally {
+        btnFetch.disabled = false;
+      }
     }
 
     function doFetch() {
@@ -5285,7 +5278,16 @@
           }
         })
         .catch(function (err) {
-          if (initialRoute === "probe") {
+          // Extensionless/probed URLs always get the server-fetch fallback.
+          // Known convertible documents do too when their direct browser fetch
+          // fails (most commonly CORS): the server can still fetch the bytes,
+          // while conversion remains browser-local. Plain markdown/text stays
+          // direct-only because /api/fetch-document intentionally allows only
+          // extract-core conversion types.
+          var fallbackRoute = window.FlatwriteExtractDrop
+            ? window.FlatwriteExtractDrop.routeDroppedFile(filename)
+            : routeDroppedFileInline(filename);
+          if (initialRoute === "probe" || fallbackRoute === "extract" || fallbackRoute === "csv") {
             doImportWebpage(url);
             return;
           }

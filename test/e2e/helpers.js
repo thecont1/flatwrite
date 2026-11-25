@@ -3,9 +3,30 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '../..');
 const SYNTHETIC = fs.readFileSync(path.join(ROOT, 'test/fixtures/pagination.md'), 'utf8');
-const IMPORT_FIXTURE = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'test/fixtures/import-url/thecontrarian-ayodhya.json'), 'utf8')
-);
+const IMPORT_CSV = fs.readFileSync(path.join(ROOT, 'test/fixtures/extract-corpus/csv.csv'));
+const IMPORT_SOURCE_URL = 'https://example.com/download';
+const IMPORT_FILENAME = 'csv.csv';
+
+function fulfillFetchDocument(route, { status = 200, body = IMPORT_CSV, sourceUrl = IMPORT_SOURCE_URL } = {}) {
+  if (status !== 200) {
+    return route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, error: 'Conversion failed' }),
+    });
+  }
+  return route.fulfill({
+    status: 200,
+    contentType: 'application/octet-stream',
+    headers: {
+      'X-Flatwrite-Filename': encodeURIComponent(IMPORT_FILENAME),
+      'X-Flatwrite-Source-Url': sourceUrl,
+      'X-Flatwrite-Source-Content-Type': 'text/csv',
+      'Cache-Control': 'no-store',
+    },
+    body,
+  });
+}
 
 async function openLoadModal(page, url) {
   await page.click('#btn-load-url');
@@ -35,17 +56,11 @@ async function loadFixture(page, options = {}) {
       }));
       await openLoadModal(page, fixtureUrl);
     } else if (ingestion === 'import') {
-      await page.route('**/api/import-url', route => route.fulfill({
-        status: 200,
-        contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify(IMPORT_FIXTURE),
-      }));
-      await page.route(IMPORT_FIXTURE.document.sourceUrl, route => route.fulfill({
-        status: 200,
-        contentType: 'text/html; charset=utf-8',
-        body: '<!doctype html><title>Recorded import route</title>',
-      }));
-      await openLoadModal(page, IMPORT_FIXTURE.document.sourceUrl);
+      await page.route('**/api/fetch-document', route => fulfillFetchDocument(route));
+      // Force the extensionless probe to fail so the dialog uses the
+      // server-fetch + browser-conversion path rather than a direct download.
+      await page.route(IMPORT_SOURCE_URL, route => route.abort());
+      await openLoadModal(page, IMPORT_SOURCE_URL);
     } else {
       throw new Error(`Unknown ingestion path: ${ingestion}`);
     }
@@ -197,7 +212,10 @@ async function footerProbe(page, engine) {
 }
 
 module.exports = {
-  IMPORT_FIXTURE,
+  IMPORT_CSV,
+  IMPORT_FILENAME,
+  IMPORT_SOURCE_URL,
+  fulfillFetchDocument,
   loadFixture,
   paginatedPageCount,
   printedPageCount,

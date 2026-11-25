@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const handleRender = require("./api/render");
 const handleImportUrl = require("./api/import-url");
+const handleFetchDocument = require("./api/fetch-document");
 const { readBody } = require("./core/io");
 
 const MIME = {
@@ -119,6 +120,10 @@ module.exports = async function handler(req, res) {
   if (url === "/api/s"      && req.method === "GET")  return handleFetch(req, res);
   if (url === "/api/render") {
     if (req.method === "POST") return handleRender(req, res);
+    return json(res, 405, { error: "POST only" });
+  }
+  if (url === "/api/fetch-document") {
+    if (req.method === "POST") return handleFetchDocument(req, res);
     return json(res, 405, { error: "POST only" });
   }
   if (url === "/api/import-url") {
