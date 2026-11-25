@@ -1,0 +1,13 @@
+{
+  "file": "csv.csv",
+  "status": 200,
+  "body": {
+    "markdown": "| Kind | Value | Note |\n| --- | --- | --- |\n| Percent | 15.5% | fifteen and a half |\n| Currency | 1234.5 | dollars |\n| Thousands | 9876543 | grouped |\n| Date | 2026-03-15 | ides of March |\n| Duration | 26:30:15 | over a day |\n| Tiny | 0.0000004 | four ten-millionths |\n| Boolean | TRUE | yes |\n",
+    "metadata": {
+      "extractionType": "structured-data",
+      "filename": "csv.csv",
+      "fileType": "csv",
+      "sizeBytes": 210
+    }
+  }
+}

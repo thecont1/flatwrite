@@ -1,0 +1,10 @@
+{
+  "file": "encrypted.odt",
+  "status": 500,
+  "body": {
+    "detail": {
+      "error": "Conversion failed",
+      "code": "CONVERSION_FAILED"
+    }
+  }
+}

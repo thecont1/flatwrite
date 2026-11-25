@@ -18,32 +18,45 @@ import {
   mintToken,
   verifyToken,
   constantTimeEqual,
-  sign,
 } from '../../../public/webmcp-shared.js';
+import { convert, ExtractError } from '../../../public/extract-core.js';
+import { enginesReady } from './engines.js';
 
 /**
  * Cloudflare Worker: extract.flatwrite.md
  *
- * Multipart upload proxy in front of the Fly.io-hosted AnyDoc service.
- * Mirrors the auth, CORS, and HMAC-signing pattern of flatwrite-render.
+ * Multipart upload endpoint that converts documents to Markdown in-process
+ * with WASM engines (@firecrawl/anydoc-wasm + @firecrawl/pdf-inspector-wasm).
+ * No upstream service: conversion happens inside this isolate. Auth and CORS
+ * mirror flatwrite-render.
  *
- *   - POST /extract         → forwards the multipart body to the upstream
- *                             Fly.io service at POST /extract, after
- *                             re-signing with INTERNAL_EXTRACT_KEY.
+ *   - POST /extract         → multipart/form-data with a `file` field;
+ *                             converts in-process and returns
+ *                             { markdown, metadata } as JSON.
  *   - POST /mcp-token       → mints a short-lived HMAC-signed token for
  *                             browser-side WebMCP clients (mirrors render).
  *   - OPTIONS               → 204 with CORS headers (only for trusted
  *                             origins).
  *
+ * Accepted file types on this API: pdf, word, powerpoint, excel, csv, epub.
+ * Images and audio are deliberately rejected with 415 UNSUPPORTED_FILE_TYPE
+ * (browser-side extraction handles those locally instead; this public API
+ * is document-only).
+ *
  * Auth model:
  *   - X-Api-Key    — long-lived key, server-to-server only. Rejected if
  *                    the request carries an Origin header.
  *   - X-Mcp-Token  — short-lived HMAC token (60s default). Browser-safe.
- *                    The Worker validates the signature against
- *                    env.API_KEY, then strips the caller's credential and
- *                    re-signs with env.INTERNAL_EXTRACT_KEY for the
- *                    upstream call. The upstream never sees the caller's
- *                    X-Api-Key or X-Mcp-Token.
+ *                    The Worker validates the signature against env.API_KEY.
+ *
+ * Error wire contract (preserved from the previous Fly-hosted service):
+ *   - Worker-level validation errors (method, auth, content-type, boundary,
+ *     size pre-check, missing file field) are flat: { error, code }.
+ *   - Conversion-stage errors mirror the old FastAPI service's wrapped
+ *     shape: { detail: { error, code } } with the ExtractError's
+ *     status/code/message (EMPTY_FILE 400, PAYLOAD_TOO_LARGE 413,
+ *     UNSUPPORTED_FILE_TYPE 415, ENCRYPTED 422, NEEDS_OCR 422,
+ *     CONVERT_FAILED 500).
  *
  * CORS:
  *   - Same trusted-origin allowlist as flatwrite-render.
@@ -57,7 +70,12 @@ const TOKEN_TTL_SECONDS = 60;
 // deploys should back this with KV or Durable Objects.
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_TOKENS_PER_IP = 10;
+// Conversion costs real in-isolate CPU and /mcp-token is Origin-gated only,
+// so /extract gets its own per-IP budget — generous for interactive and
+// batch use, tight enough to bound scripted burn of the Free-plan isolate.
+const RATE_LIMIT_MAX_EXTRACT_PER_IP = 30;
 const tokenRequestLog = new Map(); // ip -> array of timestamps
+const extractRequestLog = new Map(); // ip -> array of timestamps
 
 // Hard cap on distinct tracked IPs to bound memory under an IP-rotation
 // attack. This is a stop-gap for a single-isolate in-memory Map; a
@@ -68,6 +86,11 @@ const MAX_TRACKED_IPS = 10_000;
 const TRUSTED_ORIGINS = new Set([
   'https://flatwrite.md',
 ]);
+
+// Document types accepted on this API. Images and audio are excluded on
+// purpose: OCR/transcription runs browser-side, and this endpoint is
+// document-only — extract-core maps excluded types to 415.
+const ALLOW_TYPES = ['pdf', 'word', 'powerpoint', 'excel', 'csv', 'epub'];
 
 /**
  * Extra origins trusted for CORS, sourced from the `ALLOWED_DEV_ORIGINS`
@@ -81,29 +104,37 @@ function parseDevOrigins(raw) {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function isTokenRateLimited(ip) {
+function hitRateLimit(log2, ip, maxPerWindow) {
   if (!ip) return false;
   const now = Date.now();
   const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
-  let log = tokenRequestLog.get(ip);
+  let log = log2.get(ip);
   if (!log) {
-    if (tokenRequestLog.size >= MAX_TRACKED_IPS) {
+    if (log2.size >= MAX_TRACKED_IPS) {
       // Maps preserve insertion order — evict the oldest tracked IP to
       // make room, rather than letting the Map grow without bound.
-      const oldestKey = tokenRequestLog.keys().next().value;
-      tokenRequestLog.delete(oldestKey);
+      const oldestKey = log2.keys().next().value;
+      log2.delete(oldestKey);
     }
     log = [];
-    tokenRequestLog.set(ip, log);
+    log2.set(ip, log);
   }
   const cutoff = now - windowMs;
   const withinWindow = log.filter((ts) => ts > cutoff);
-  if (withinWindow.length >= RATE_LIMIT_MAX_TOKENS_PER_IP) {
+  if (withinWindow.length >= maxPerWindow) {
     return true;
   }
   withinWindow.push(now);
-  tokenRequestLog.set(ip, withinWindow);
+  log2.set(ip, withinWindow);
   return false;
+}
+
+function isTokenRateLimited(ip) {
+  return hitRateLimit(tokenRequestLog, ip, RATE_LIMIT_MAX_TOKENS_PER_IP);
+}
+
+function isExtractRateLimited(ip) {
+  return hitRateLimit(extractRequestLog, ip, RATE_LIMIT_MAX_EXTRACT_PER_IP);
 }
 
 function isTrustedOrigin(origin, devOrigins) {
@@ -198,18 +229,14 @@ async function handleExtract(req, env, devOrigins) {
   const auth = await authenticateRequest(req, env);
   if (!auth.ok) return jsonResponse(auth.status, auth.body, cors);
 
-  if (!env.INTERNAL_EXTRACT_KEY) {
-    return jsonResponse(500, { error: 'Worker misconfigured', code: 'MISCONFIGURED' }, cors);
-  }
-  if (!env.UPSTREAM_URL) {
-    return jsonResponse(500, { error: 'Worker misconfigured', code: 'MISCONFIGURED' }, cors);
+  // Per-IP conversion budget. Counted after auth so unauthenticated noise
+  // does not consume a legitimate caller's window, and keyed on the
+  // connecting IP rather than any client-controlled header.
+  const callerIp = req.headers.get('CF-Connecting-IP') || 'unknown';
+  if (isExtractRateLimited(callerIp)) {
+    return jsonResponse(429, { error: 'Rate limit exceeded', code: 'RATE_LIMIT' }, cors);
   }
 
-  // The browser sends multipart/form-data. We forward the body verbatim
-  // (no parsing on the Worker side) and re-sign with INTERNAL_EXTRACT_KEY
-  // so the upstream Fly service can verify the request came from the Worker.
-  // Cloudflare's `fetch()` will stream the body to the upstream without
-  // buffering the full file in memory.
   const contentType = req.headers.get('Content-Type') || '';
   if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
     return jsonResponse(415, {
@@ -219,8 +246,7 @@ async function handleExtract(req, env, devOrigins) {
   }
 
   // A multipart body without a usable boundary is malformed — reject at
-  // the edge rather than paying for an upstream round-trip that would
-  // just fail the same way.
+  // the edge before paying for body parsing.
   const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
   if (!boundaryMatch || !(boundaryMatch[1] || boundaryMatch[2])) {
     return jsonResponse(400, {
@@ -229,9 +255,8 @@ async function handleExtract(req, env, devOrigins) {
     }, cors);
   }
 
-  // Reject oversized uploads at the Worker edge to avoid paying the
-  // upstream egress for a request the Fly service will reject anyway.
-  // 25 MB hard cap, matches the Fly service.
+  // Reject oversized uploads at the Worker edge before buffering the body.
+  // 25 MB hard cap, matches extract-core's MAX_BYTES.
   const contentLength = parseInt(req.headers.get('Content-Length') || '0', 10);
   if (Number.isFinite(contentLength) && contentLength > 25 * 1024 * 1024) {
     return jsonResponse(413, {
@@ -240,42 +265,127 @@ async function handleExtract(req, env, devOrigins) {
     }, cors);
   }
 
-  // Sign the request with the internal key. The payload format is
-  // `<timestamp>.<method>.<path>` — keeps it easy to verify on the
-  // upstream side without an extra dependency.
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = await sign(env.INTERNAL_EXTRACT_KEY, `${timestamp}.POST./extract`);
+  // Content-Length can be absent or inaccurate, so bound the actual body
+  // bytes before parsing: read the stream with a hard cap (25 MB plus a
+  // small multipart-framing allowance), then re-parse the bounded copy.
+  const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
+  const BODY_CAP = 25 * 1024 * 1024 + MULTIPART_OVERHEAD_ALLOWANCE;
+  let bodyBytes = null;
+  if (req.body) {
+    try {
+      const reader = req.body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > BODY_CAP) {
+          try {
+            const cancelled = reader.cancel();
+            if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
+          } catch {
+            // Best-effort only.
+          }
+          return jsonResponse(413, {
+            error: 'Payload too large (25 MB max)',
+            code: 'PAYLOAD_TOO_LARGE',
+          }, cors);
+        }
+        chunks.push(value);
+      }
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      bodyBytes = merged;
+    } catch {
+      return jsonResponse(400, {
+        error: 'malformed multipart body',
+        code: 'BAD_REQUEST',
+      }, cors);
+    }
+  }
 
-  let upstream;
+  let formData;
   try {
-    upstream = await fetch(`${env.UPSTREAM_URL}/extract`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': contentType,
-        'X-Extract-Timestamp': String(timestamp),
-        'X-Extract-Signature': signature,
-      },
-      body: req.body,
+    const bounded = new Request(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: bodyBytes,
     });
-  } catch (e) {
-    return jsonResponse(502, {
-      error: 'Failed to reach upstream extract service',
-      code: 'UPSTREAM_UNREACHABLE',
-      detail: e.message,
+    formData = await bounded.formData();
+  } catch {
+    return jsonResponse(400, {
+      error: 'malformed multipart body',
+      code: 'BAD_REQUEST',
     }, cors);
   }
 
-  // Forward the upstream JSON response verbatim, preserving its status.
-  // FastAPI always returns JSON from /extract, so we can pass the body
-  // through as text and set the right content-type.
-  const text = await upstream.text();
-  return new Response(text, {
-    status: upstream.status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      ...cors,
-    },
-  });
+  const file = formData.get('file');
+  if (!file || typeof file === 'string') {
+    return jsonResponse(400, {
+      error: 'multipart file field is required',
+      code: 'BAD_REQUEST',
+    }, cors);
+  }
+  // The old FastAPI service rejected an empty filename with a wrapped
+  // detail error — preserve that exact wire shape here.
+  if (!file.name) {
+    return jsonResponse(400, {
+      detail: { error: 'filename is empty', code: 'BAD_REQUEST' },
+    }, cors);
+  }
+
+  const engines = await enginesReady;
+  if (!engines) {
+    // initEngines already logged the cause server-side. Never crash the
+    // isolate; fail the conversion cleanly instead.
+    return jsonResponse(500, {
+      detail: { error: 'Conversion failed', code: 'CONVERT_FAILED' },
+    }, cors);
+  }
+
+  // formData() buffering means a truthful Content-Length already gated the
+  // upload, but a chunked/inaccurate upload can still slip an oversized file
+  // field through — check the parsed size before paying for the copy.
+  if (typeof file.size === 'number' && file.size > 25 * 1024 * 1024) {
+    return jsonResponse(413, {
+      error: 'Payload too large (25 MB max)',
+      code: 'PAYLOAD_TOO_LARGE',
+    }, cors);
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    const result = await convert({
+      bytes,
+      filename: file.name,
+      engines,
+      allowTypes: ALLOW_TYPES,
+    });
+    return jsonResponse(200, {
+      markdown: result.markdown,
+      metadata: result.metadata,
+    }, cors);
+  } catch (error) {
+    if (error instanceof ExtractError) {
+      // Conversion-stage errors keep the FastAPI-style wrapped shape the
+      // frontend and API clients parse.
+      return jsonResponse(error.status, {
+        detail: { error: error.message, code: error.code },
+      }, cors);
+    }
+    // Unexpected engine/runtime failure: log server-side, never leak
+    // internals to the caller.
+    console.error('flatwrite-extract: unexpected conversion error:', error);
+    return jsonResponse(500, {
+      detail: { error: 'Conversion failed', code: 'CONVERT_FAILED' },
+    }, cors);
+  }
 }
 
 async function handleMintToken(req, env, devOrigins) {
@@ -303,7 +413,7 @@ async function handleMintToken(req, env, devOrigins) {
 // Exposed for tests only — lets test suites assert the rate-limit Map
 // stays bounded without needing to issue 10,000+ real requests through
 // the full Worker fetch() handler.
-export const __testing = { tokenRequestLog, MAX_TRACKED_IPS, isTokenRateLimited };
+export const __testing = { tokenRequestLog, extractRequestLog, MAX_TRACKED_IPS, isTokenRateLimited, isExtractRateLimited };
 
 export default {
   async fetch(req, env) {

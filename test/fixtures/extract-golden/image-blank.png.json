@@ -1,0 +1,13 @@
+{
+  "file": "image-blank.png",
+  "status": 200,
+  "body": {
+    "markdown": "## Image metadata\n\n- **Filename:** `image-blank.png`\n- **Size:** 368297 bytes\n\n_No text was detected in this image (OCR found no readable text)._\n",
+    "metadata": {
+      "extractionType": "image-ocr",
+      "filename": "image-blank.png",
+      "fileType": "image",
+      "sizeBytes": 368297
+    }
+  }
+}

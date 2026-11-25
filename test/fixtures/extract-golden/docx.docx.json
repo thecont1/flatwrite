@@ -1,0 +1,13 @@
+{
+  "file": "docx.docx",
+  "status": 200,
+  "body": {
+    "markdown": "# Fixture Document\n\nPlain paragraph with **bold**, *italic*, and ~~struck~~ runs.\n\n**Style-bold paragraph with a NotBold-styled span inside.**\n\n## Lists\n\n1. First numbered\n\n2. Second numbered\n\n   - a) Alpha sub one\n\n   - b) Alpha sub two\n\n        - i. Roman sub sub\n\n3. Third numbered\n\nInterrupting paragraph between lists.\n\n4. Fourth, continuing the count\n\n- IV. Roman starting at four\n\n- I. Roman five\n\n- Bullet one\n\n- Bullet two\n\n  - Nested bullet\n\n## Table\n\n|  |  |  |\n| --- | --- | --- |\n| Wide head |  | End |\n| Tall | B2 | C2 |\n|  | B3 | C3 |\n\n## Notes and special text\n\nMusic clef 𝄞 appears before this footnote[^1] reference.\n\nAn endnote follows here[^2].\n\nPersian with ZWNJ: می‌خواهم. Family emoji: 👨‍👩‍👧.\n\nMarkdown specials: \\*stars* \\_under_ \\[bracket] \\`tick` #hash 1. dotted | pipe.\n\n## Links and anchors\n\nExternal link to [example](https://example.com/page).\n\nRelative link to [a sibling file](../../fixture-src/sibling.odt).\n\n<a id=\"plainmark\"></a>This plain paragraph carries a bookmark.\n\nJump to [the bookmarked paragraph](#plainmark).\n\n## Objects\n\nInline image: tiny red dot done.\n\nText box:  after the box.\n\nInside the text box.\n\n## Quote and code\n\nValue below one millionth: 0.0000004 should survive.\n\n[^1]: Footnote after an astral character.\n\n[^2]: Endnote body text.\n",
+    "metadata": {
+      "extractionType": "word-body",
+      "filename": "docx.docx",
+      "fileType": "word",
+      "sizeBytes": 10159
+    }
+  }
+}

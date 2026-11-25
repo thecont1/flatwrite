@@ -1,0 +1,13 @@
+{
+  "file": "pdf-text.pdf",
+  "status": 200,
+  "body": {
+    "markdown": "# Fixture Document\n\nPlain paragraph with **bold**, *italic*, and struck runs. **Style-bold paragraph with a** NotBold-styled span **inside.**\n\n## Lists\n\n1.First numbered\n2.Second numbered\na)Alpha sub one\nb)Alpha sub two\ni.Roman sub sub\n3.Third numbered Interrupting paragraph between lists.\n4.Fourth, continuing the count IV.Roman starting at four\nV.Roman five •Bullet one •Bullet two ◦Nested bullet\n## Table\n\nWide head End Tall B2 C2 B3 C3\n\n## Notes and special text\n\nMusic clef 𝄞 appears before this footnote¹ reference. i An endnote follows here. Persian with ZWNJ: مهاوخیم. Family emoji: 👨👩👧. Markdown specials: *stars* _under_ [bracket] `tick` #hash 1. dotted | pipe.\n\n## Links and anchors\n\nExternal link to example. Relative link to <u>a sibling file</u>. This plain paragraph carries a bookmark. Jump to <u>the bookmarked paragraph</u>.\n\n## Objects\n\nInline image: done.\n\n### Inside the text box.\n\nText box: after the box.\n\n## Quote and code\n\nValue below one millionth: 0.0000004 should survive.\n\nFootnote after an astral character.\n\ni Endnote body text.\n",
+    "metadata": {
+      "extractionType": "pdf-body",
+      "filename": "pdf-text.pdf",
+      "fileType": "pdf",
+      "sizeBytes": 90060
+    }
+  }
+}

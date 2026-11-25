@@ -8,14 +8,14 @@ Markdown is one of the greatest cross-platform information formats ever invented
 
 ## What it does
 
-- **Load** markdown from a URL, a file on disk, or by **dropping a file** (PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, ODT/ODS/ODP, RTF, EPUB, images, audio) — non-text files are converted to Markdown locally by the AnyDoc extract service.
-- **Structured tables** — a dropped CSV or TSV is parsed in the browser (no extract worker) and opens a table workshop (sort, hide, rearrange, edit cells). Spreadsheets still go through extract. Load and FlatWrite switches to View + Vivliostyle: JetBrains Mono, smaller type, narrow margins, landscape, repeating headers on every page, and the smallest ISO page (A4→A0) that fits the columns. The workshop is also on the Edit toolbar.
-- **Import from URL** — paste a URL to a document file and FlatWrite fetches it, converts it locally with AnyDoc, and loads the Markdown straight into the editor.
+- **Turn almost any document into markdown.** Drop a PDF, Word document, PowerPoint deck, Excel spreadsheet, CSV, OpenDocument file, RTF, EPUB, or image onto the page and FlatWrite converts it into clean, editable markdown. You can also paste a link to a document on the web and import it the same way.
+- **Your files never leave your device.** Conversion happens entirely inside your browser — there is no server upload, no waiting in a queue, and no copy of your document stored anywhere else. Even images are read locally, with on-device text recognition.
 - **Edit** markdown with a clean, minimal editor and a helpful formatting toolbar.
 - **View** your rendered markdown with a clean, document-first preview.
 - **Read** mode gives you a focused, distraction-free preview you can resize to taste.
+- **Work with tables.** Drop a CSV or spreadsheet and a table workshop opens: sort columns, hide the ones you don't need, rearrange, edit cells — then export with print formatting that fits the table on the page.
 - **Export** to `.md`, `.html`, or `.pdf` whenever you are ready.
-- **Share** your document as a real URL
+- **Share** your document as a real URL.
 
 ## Share & publish
 
@@ -69,16 +69,18 @@ All three engines share the same typography controls (font, size, weight, line s
 
 Open [flatwrite.md](https://flatwrite.md) in your browser.
 
-Then either paste a markdown file into the text area, open a markdown file that's already on your hard disk, or open one from a URL. 
+Then either paste a markdown file into the text area, open a markdown file that's already on your hard disk, drop in a document to convert, or open one from a URL.
 
 Make any edits to the raw markdown in **Edit** mode, then switch to **View** mode to apply style changes, then click on **Read** to see the final version in an uncluttered layout. When you click on the **Share** icon, the URL gets automatically copied to your clipboard.
 
 ## For developers
 
-FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
-FlatWrite exposes the same renderer that powers the editor as a public HTTP API and an MCP server. The full specification — tool reference, authentication model, output schemas, and setup examples — is in [`mcp/MCP.md`](./mcp/MCP.md).
+FlatWrite also exposes its renderer and document converter as public APIs and an MCP server, so AI agents and other software can use it programmatically.
 
-**AI Assist (Morph):** rewrite / shorten / fix grammar / custom instructions via Reflex → Router → Compact → Fast Models. See [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md). Endpoint: `https://assist.flatwrite.md/assist`.
+- **[TECH-SPEC.md](./TECH-SPEC.md)** — the full technical breakdown: architecture, conversion pipeline, deployment topology, and testing.
+- [`mcp/MCP.md`](./mcp/MCP.md) — the MCP tool reference and authentication model.
+- [`openapi.yaml`](./openapi.yaml) — the HTTP API specification.
+- [`docs/MORPH-ASSIST.md`](./docs/MORPH-ASSIST.md) — the AI rewriting assistant.
 
 ```bash
 curl -X POST https://render.flatwrite.md/render \
@@ -86,18 +88,6 @@ curl -X POST https://render.flatwrite.md/render \
   -H 'X-Api-Key: ***' \
   -d '{"markdown":"# Hello, FlatWrite"}'
 ```
-
-A second endpoint, `https://extract.flatwrite.md/extract`, accepts `multipart/form-data` uploads and converts non-text files to Markdown locally via the AnyDoc service under [`services/extract/`](./services/extract/). The proxy Worker under [`workers/flatwrite-extract/`](./workers/flatwrite-extract/) mirrors the auth model of the render Worker.
-
-**Import from URL:** `POST /api/import-url` (canonical handler: [`api/import-url.js`](./api/import-url.js)) accepts `{ url, method?, retain_images? }`, fetches the URL, and converts the downloaded document locally with AnyDoc. Only document files are supported; HTML web pages are rejected.
-
-- `method` is accepted for backward compatibility (`auto`, `ai`, `browser`) but is ignored by AnyDoc.
-- `retain_images` (default: `true`) is accepted for backward compatibility but is ignored by AnyDoc.
-- The endpoint validates the target URL (`http`/`https` only, no `localhost`, no private/reserved-network addresses, with a DNS-rebinding guard), enforces a request timeout, and never forwards raw upstream error bodies to the client.
-- The frontend's existing **Load from URL** dialog (sidebar → **From URL**) still sends `method`/`retain_images` for backward compatibility. On success the returned Markdown replaces the editor content through the same `setEditorContent()` path used by every other load flow — there is no parallel document model.
-- Limitations: only document files are supported. Web pages and authenticated/paywalled content cannot be imported because AnyDoc does not convert HTML or authenticate on the user's behalf. This feature requires the backend endpoint and the extract service to be reachable (the Cloudflare Worker on `flatwrite.md` or the local `index.js`/dev server plus `services/extract` on port 8000) — it does not work against a static-assets-only deployment.
-
-The OpenAPI spec is in [`openapi.yaml`](./openapi.yaml).
 
 ## Why another markdown editor?
 

@@ -1,0 +1,13 @@
+{
+  "file": "doc-cyrillic.doc",
+  "status": 200,
+  "body": {
+    "markdown": "Привет, мир!\n\nВторой абзац по-русски.\n",
+    "metadata": {
+      "extractionType": "word-body",
+      "filename": "doc-cyrillic.doc",
+      "fileType": "word",
+      "sizeBytes": 5632
+    }
+  }
+}

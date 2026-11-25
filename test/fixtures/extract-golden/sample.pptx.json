@@ -1,0 +1,13 @@
+{
+  "file": "sample.pptx",
+  "status": 200,
+  "body": {
+    "markdown": "## Welcome\n\n- First bullet\n- Second bullet\n\n> Speaker: greet the audience warmly and pause for laughs.\n>\n> Next: introduce the agenda.\n\n## Agenda\n\n- Item one\n- Item two\n\n## Closing\n\n> Wrap up with the call to action and thank-yous.\n",
+    "metadata": {
+      "extractionType": "powerpoint-notes",
+      "filename": "sample.pptx",
+      "fileType": "powerpoint",
+      "sizeBytes": 35667
+    }
+  }
+}

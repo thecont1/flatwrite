@@ -1,0 +1,13 @@
+{
+  "file": "ods.ods",
+  "status": 200,
+  "body": {
+    "markdown": "## Values\n\n| Kind | Value | Note |\n| --- | --- | --- |\n| Percent | 15.5% | fifteen and a half |\n| Currency | $1,234.50 | dollars |\n| Thousands | 9,876,543 | grouped |\n| Date | 2026-03-15 | ides of March |\n| Duration | 26:30:15 | over a day |\n| Tiny | 0.0000004 | four ten-millionths |\n| Boolean | TRUE | yes |\n\n## Merged Grid\n\n|  |  |  |\n| --- | --- | --- |\n| Span two |  | Right |\n| 1 | 2 | 3 |\n",
+    "metadata": {
+      "extractionType": "excel-tables",
+      "filename": "ods.ods",
+      "fileType": "excel",
+      "sizeBytes": 16142
+    }
+  }
+}

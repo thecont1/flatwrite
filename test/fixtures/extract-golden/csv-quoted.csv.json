@@ -1,0 +1,13 @@
+{
+  "file": "csv-quoted.csv",
+  "status": 200,
+  "body": {
+    "markdown": "| name | desc | qty |\n| --- | --- | --- |\n| padded | comma, inside | 3 |\n| plain | multi line | 4 |\n",
+    "metadata": {
+      "extractionType": "structured-data",
+      "filename": "csv-quoted.csv",
+      "fileType": "csv",
+      "sizeBytes": 66
+    }
+  }
+}

@@ -18,24 +18,24 @@
 //
 // This is the Worker that replaces the Vercel deployment. It serves:
 //
-//   POST /api/render       → api/render.js      (canonical render handler)
-//   POST /api/import-url   → api/import-url.js  (AnyDoc import-from-URL)
-//   POST /api/share        → Dustebin paste create (index.js handleShare logic)
+//   POST /api/render         → api/render.js         (canonical render handler)
+//   POST /api/fetch-document → api/fetch-document.js (SSRF-guarded document fetch)
+//   POST /api/import-url     → api/import-url.js     (retired: 410)
+//   POST /api/share          → Dustebin paste create (index.js handleShare logic)
 //   GET  /api/s?key=       → Dustebin paste fetch   (index.js handleFetch logic)
 //   everything else        → static assets via env.ASSETS (public/)
 //
-// The canonical API handlers (api/render.js, api/import-url.js) are reused
-// verbatim via createRequire — they are written against plain Node.js
-// http.ServerRequest/ServerResponse APIs, so this entry provides a thin
-// adaptation layer:
+// The canonical API handlers (api/render.js, api/fetch-document.js,
+// api/import-url.js) are reused verbatim — they are written against plain
+// Node.js http.ServerRequest/ServerResponse APIs, so this entry provides a
+// thin adaptation layer:
 //
 //   Request  → { method, url, headers, socket: { remoteAddress }, on(...) }
 //   Response → { statusCode, setHeader(), end() }  (collected into a Worker Response)
 //
 // process.env is auto-populated with Worker env vars/secrets by
 // nodejs_compat for compatibility dates >= 2025-04-01, so the handlers'
-// process.env.INTERNAL_RENDER_KEY / EXTRACT_SERVICE_URL / TRUST_PROXY reads
-// work unchanged.
+// process.env.INTERNAL_RENDER_KEY / TRUST_PROXY reads work unchanged.
 //
 // Static assets: assets.run_worker_first is limited to /api/* in
 // wrangler.jsonc, so every non-API request is served directly by the
@@ -45,11 +45,13 @@
 
 // The canonical handlers are CommonJS modules. Importing them as ESM lets
 // the bundler (Wrangler/esbuild) statically resolve their whole require()
-// graph — api/render.js, core/render.js, core/math.js, core/font-loader.js,
-// sanitize-html, marked — and wrap them with CJS interop. This works in
+// graph — api/render.js, api/fetch-document.js, public/extract-core.js,
+// core/render.js, core/math.js, core/font-loader.js, sanitize-html, marked —
+// and wrap them with CJS interop. This works in
 // workerd (import.meta.url is unavailable there, so createRequire is not).
 import handleRender from '../api/render.js';
 import handleImportUrl from '../api/import-url.js';
+import handleFetchDocument from '../api/fetch-document.js';
 import { setAssetReader } from '../core/inline-assets.js';
 import { setFontFileExists } from '../core/font-loader.js';
 
@@ -136,12 +138,22 @@ function toWorkerResponse(state) {
   for (const [name, value] of Object.entries(state.headers)) {
     headers.set(name, value);
   }
-  const body = state.body === null || state.body === undefined ? null : String(state.body);
+
+  // Binary handlers (notably /api/fetch-document) end() with a Buffer. Passing
+  // it through unchanged is essential: String(buffer) would UTF-8-decode and
+  // corrupt document bytes. Text/JSON handlers retain the previous String()
+  // behaviour.
+  let body = null;
+  if (state.body !== null && state.body !== undefined) {
+    const isBuffer = typeof Buffer !== 'undefined' && Buffer.isBuffer(state.body);
+    const isBinary = isBuffer || state.body instanceof Uint8Array || state.body instanceof ArrayBuffer;
+    body = isBinary ? state.body : String(state.body);
+  }
   const resp = new Response(body, { status: state.statusCode, headers });
 
-  // Workerd does not sniff Content-Type for opaque string bodies — preserve
-  // whatever the handler set, defaulting to JSON (every end() call in the
-  // canonical handlers writes JSON).
+  // Workerd does not sniff Content-Type for opaque bodies — preserve whatever
+  // the handler set, defaulting to JSON because most canonical end() calls
+  // write JSON. Binary endpoints set their own Content-Type explicitly.
   if (!resp.headers.has('Content-Type')) {
     resp.headers.set('Content-Type', 'application/json');
   }
@@ -154,7 +166,7 @@ function toWorkerResponse(state) {
  * and 'end' events and counts chunk.length as bytes; TextDecoder chunks
  * guarantee string.length === byte count for UTF-8 input.
  */
-function makeRequestShim(request) {
+function makeRequestShim(request, maxBodyBytes) {
   const url = new URL(request.url);
   const headers = {};
   for (const [name, value] of request.headers.entries()) {
@@ -169,31 +181,72 @@ function makeRequestShim(request) {
     (headers['x-forwarded-for'] ? String(headers['x-forwarded-for']).split(',')[0].trim() : undefined) ||
     '0.0.0.0';
 
-  /* The Worker Request body can only be consumed once, but readBody()
-     registers BOTH 'data' and 'end' listeners — read the body lazily once,
-     cache it, and replay to whichever listeners attach. */
-  let bodyPromise = null;
-  function readBodyText() {
-    if (!bodyPromise) bodyPromise = request.text().catch(() => '');
-    return bodyPromise;
+  const listeners = { data: [], end: [], error: [] };
+  let pumped = false;
+
+  /* Stream the body through the request stream interface, enforcing the byte
+     cap on raw chunks BEFORE decoding: an oversized body is cancelled after
+     the first offending chunk rather than buffered whole, and handlers see
+     the same 'Payload too large' rejection they produce on Node. Chunks are
+     decoded with a streaming TextDecoder so multibyte characters split
+     across chunk boundaries decode correctly. The pump starts lazily once
+     readBody() has registered its listeners. */
+  async function pump() {
+    if (pumped) return;
+    pumped = true;
+    try {
+      if (request.body) {
+        const reader = request.body.getReader();
+        const decoder = new TextDecoder();
+        let total = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          total += value.byteLength;
+          if (Number.isFinite(maxBodyBytes) && total > maxBodyBytes) {
+            try {
+              const cancelled = reader.cancel();
+              if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
+            } catch {
+              // Best-effort only.
+            }
+            for (const cb of listeners.error) cb(new Error('Payload too large'));
+            return;
+          }
+          const text = decoder.decode(value, { stream: true });
+          if (text) for (const cb of listeners.data) cb(text);
+        }
+        const tail = decoder.decode();
+        if (tail) for (const cb of listeners.data) cb(tail);
+      }
+    } catch {
+      // A body that cannot be read at all behaves like an empty one —
+      // matches the previous shim's tolerance.
+    }
+    for (const cb of listeners.end) cb();
   }
 
-  let bodyDelivered = false;
   return {
     method: request.method,
     url: url.pathname + url.search,
     headers,
     socket: { remoteAddress: ip },
+    // readBody() destroys the request on overflow; a no-op keeps that
+    // contract safe — real cancellation already happens inside pump().
+    destroy() {},
 
     on(event, cb) {
-      if (event === 'data') {
-        if (bodyDelivered) return;
-        bodyDelivered = true;
-        readBodyText().then((text) => { if (text) cb(text); });
-      } else if (event === 'end') {
-        readBodyText().then(() => cb());
+      if (event === 'data' || event === 'end' || event === 'error') {
+        listeners[event].push(cb);
+        // 'end' alone never fires without a consumer on real Node streams;
+        // starting on data/error registration matches that ordering.
+        // The microtask deferral matters: with a null request body pump()
+        // has no await in its path and would emit 'end' synchronously —
+        // before readBody's own 'end' listener registration two lines down —
+        // hanging the read forever.
+        if (event !== 'end') queueMicrotask(pump);
       }
-      // 'error' and others: never fired for these handlers.
     },
   };
 }
@@ -314,15 +367,22 @@ export default {
     if (pathname === '/api/render') {
       if (request.method === 'POST') {
         const { res, state } = makeResponseShim();
-        await handleRender(makeRequestShim(request), res);
+        await handleRender(makeRequestShim(request, 512 * 1024), res);
         return toWorkerResponse(state);
       }
       return Response.json({ error: 'POST only' }, { status: 405 });
     }
+    if (pathname === '/api/fetch-document') {
+      // All methods go through the canonical handler so the documented
+      // 405 body shape is produced by the handler itself, not the router.
+      const { res, state } = makeResponseShim();
+      await handleFetchDocument(makeRequestShim(request, 8 * 1024), res);
+      return toWorkerResponse(state);
+    }
     if (pathname === '/api/import-url') {
       if (request.method === 'POST') {
         const { res, state } = makeResponseShim();
-        await handleImportUrl(makeRequestShim(request), res);
+        await handleImportUrl(makeRequestShim(request, 8 * 1024), res);
         return toWorkerResponse(state);
       }
       return Response.json({ error: 'POST only' }, { status: 405 });

@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const handleRender = require("./api/render");
 const handleImportUrl = require("./api/import-url");
+const handleFetchDocument = require("./api/fetch-document");
 const { readBody } = require("./core/io");
 
 const MIME = {
@@ -120,6 +121,12 @@ module.exports = async function handler(req, res) {
   if (url === "/api/render") {
     if (req.method === "POST") return handleRender(req, res);
     return json(res, 405, { error: "POST only" });
+  }
+  if (url === "/api/fetch-document") {
+    // All methods go through the canonical handler so the documented
+    // 405 body shape ({ ok: false, error: 'POST only' }) is consistent
+    // across every runtime serving this route.
+    return handleFetchDocument(req, res);
   }
   if (url === "/api/import-url") {
     if (req.method === "POST") return handleImportUrl(req, res);

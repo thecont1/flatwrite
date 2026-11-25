@@ -1,16 +1,17 @@
 openapi: 3.0.3
 info:
   title: FlatWrite API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     FlatWrite public APIs:
 
     - **Render** at `https://render.flatwrite.md` — markdown → HTML fragments
     - **Assist** at `https://assist.flatwrite.md` — Morph-powered document AI
       (Reflex → Router → Compact → Fast Models)
-    - **Extract** at `https://extract.flatwrite.md` — file ingest → Markdown
+    - **Extract** at `https://extract.flatwrite.md` — document files → Markdown
+      via in-process WASM conversion
 
-    See also `docs/MORPH-ASSIST.md` and `services/extract/README.md`.
+    See also `docs/MORPH-ASSIST.md` and `workers/flatwrite-extract/README.md`.
   contact:
     name: Mahesh Shantaram
     url: https://thecontrarian.in
@@ -20,14 +21,14 @@ servers:
   - url: https://assist.flatwrite.md
     description: Assist production (Morph)
   - url: https://extract.flatwrite.md
-    description: Production (file-extract proxy)
+    description: Production (in-process WASM extraction)
 tags:
   - name: render
     description: Render markdown into HTML head/body fragments
   - name: assist
     description: AI document assist via Morph
   - name: extract
-    description: Convert dropped files (PDF, DOCX, PPTX, XLSX, etc.) to Markdown
+    description: Convert document files (PDF, DOCX, PPTX, XLSX, CSV, EPUB, etc.) to Markdown
 security:
   - ApiKeyAuth: []
 paths:
@@ -162,14 +163,32 @@ paths:
               schema: { type: string }
     post:
       tags: [extract]
-      summary: Convert an uploaded file to Markdown
+      summary: Convert an uploaded document to Markdown
       description: |
         Accepts a single file via `multipart/form-data` and converts it to
-        deterministic Markdown. Supports PDF, PPTX, DOCX, XLSX/XLS, CSV,
-        JSON, XML, ZIP, EPUB, HTML, and common image and audio formats
-        (image and audio return a metadata-only stub in v1 — no OCR, no
-        transcription). 25 MB hard cap; no LLM calls; no disk writes.
+        deterministic Markdown in-process in the Cloudflare Worker using
+        AnyDoc and pdf-inspector WebAssembly. There is no upstream conversion
+        service. Authentication is unchanged: `X-Api-Key` is server-to-server;
+        browser clients use `X-Mcp-Token` minted by the extract Worker's
+        `/mcp-token` endpoint.
+
+        The public API is document-only: PDF, Word, PowerPoint, Excel, CSV,
+        and EPUB inputs are supported. Image files (`.png`, `.jpg`, `.jpeg`,
+        `.gif`, `.webp`, `.tiff`, `.tif`) and audio files (`.mp3`, `.wav`,
+        `.m4a`, `.ogg`, `.flac`) are rejected with `415 UNSUPPORTED_FILE_TYPE`.
+        Browser-interactive image OCR exists in the FlatWrite UI, but this API
+        does not OCR images or transcribe audio. Scanned or image-only PDFs
+        return `422 NEEDS_OCR`; encrypted files return `422 ENCRYPTED`.
+
+        25 MB hard cap; no LLM calls; no disk writes. Conversion-stage errors
+        keep the FastAPI-compatible `{"detail":{"error","code"}}` shape.
+        The Worker runs on Cloudflare Workers Free (10 ms nominal CPU per
+        request). Typical documents measure roughly 0–20 ms CPU and bursts
+        are tolerated, but very large multi-MB documents have measured
+        250–350 ms CPU and are best-effort — they may eventually hit
+        Cloudflare error 1102.
       security:
+        - ApiKeyAuth: []
         - McpTokenAuth: []
       requestBody:
         required: true
@@ -182,7 +201,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: The file to extract. Must have an allowlisted extension.
+                  description: The document to extract. Must have an allowlisted document extension.
       responses:
         '200':
           description: Extracted Markdown
@@ -191,11 +210,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtractResponse'
         '400':
-          description: Empty file
+          description: Empty file, malformed multipart body, or missing/empty file field
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractErrorResponse'
         '401':
           description: Missing or invalid X-Api-Key / X-Mcp-Token
           content:
@@ -213,25 +232,165 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractErrorResponse'
         '415':
-          description: Unsupported file extension
+          description: Unsupported media type or file type; images and audio are rejected on this API
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractErrorResponse'
+        '422':
+          description: Scanned/image-only PDF (NEEDS_OCR) or encrypted file (ENCRYPTED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractErrorResponse'
         '500':
-          description: Conversion failed
+          description: Conversion failed (CONVERT_FAILED)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractErrorResponse'
+  /api/import-url:
+    post:
+      tags: [extract]
+      summary: Retired server-side URL import endpoint
+      deprecated: true
+      description: |
+        Retired. Server-side conversion has been split into
+        `POST /api/fetch-document` (SSRF-guarded fetch of raw bytes) plus
+        browser-local conversion. This endpoint remains only to give old
+        clients a machine-readable retirement response.
+      security: []
+      servers:
+        - url: https://flatwrite.md
+      responses:
+        '410':
+          description: Endpoint retired (ENDPOINT_RETIRED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointRetiredResponse'
+  /api/fetch-document:
+    post:
+      tags: [extract]
+      summary: Fetch a document URL for browser-local conversion
+      description: |
+        Fetches a public document URL server-side and returns the raw document
+        bytes. The server does not convert the document; the browser (or
+        another client) runs the local WASM/OCR conversion pipeline after
+        downloading the response.
+
+        The initial URL and every redirect hop are validated against SSRF
+        rules: `http`/`https` only, no localhost, and no RFC1918, loopback,
+        link-local, CGNAT, IPv6 ULA, multicast, benchmarking, or reserved
+        addresses, plus a DNS-rebinding guard. IPv4-transition forms
+        (IPv4-mapped, IPv4-compatible, NAT64, 6to4) are not rejected
+        outright — instead the embedded IPv4 address is extracted and held
+        to the same restrictions, so publicly-routable embeddings pass
+        while e.g. NAT64-embedded loopback is refused. Redirects are followed
+        manually (maximum 5 hops). The upstream timeout is 60 seconds and the
+        downloaded document is capped at 25 MB. Raw upstream error bodies are
+        never forwarded.
+
+        This endpoint is rate-limited but unauthenticated: callers never
+        present `X-Api-Key` or `X-Mcp-Token` for it.
+      security: []
+      servers:
+        - url: https://flatwrite.md
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchDocumentRequest'
+            example:
+              url: https://example.com/files/report.pdf
+      responses:
+        '200':
+          description: Raw document bytes for client-side conversion
+          headers:
+            X-Flatwrite-Filename:
+              schema: { type: string }
+              description: URI-encoded filename inferred from the final URL or upstream Content-Type
+            X-Flatwrite-Source-Url:
+              schema: { type: string }
+              description: Final source URL after redirects
+            X-Flatwrite-Source-Content-Type:
+              schema: { type: string }
+              description: Content-Type reported by the upstream response
+            Cache-Control:
+              schema: { type: string }
+              description: Always `no-store`
+            X-RateLimit-Limit:
+              schema: { type: integer }
+              description: Per-minute request cap for this caller IP
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+              description: Remaining requests in the current window
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid/missing URL, SSRF rejection, invalid redirect target, or filename/type could not be determined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '404':
+          description: Source URL returned 404
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '405':
+          description: Method not allowed (POST only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '413':
+          description: Request body too large or document exceeds the 25 MB cap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '415':
+          description: URL points to HTML or an unsupported file extension
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '429':
+          description: Rate limit exceeded (20 requests per minute per caller IP)
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds until the next request is allowed
+            X-RateLimit-Limit:
+              schema: { type: integer }
+              description: Per-minute request cap for this caller IP
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+              description: Remaining requests in the current window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
         '502':
-          description: Upstream (Fly.io) unreachable
+          description: Upstream fetch failure, non-404 upstream error, redirect failure, or empty document
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
+        '504':
+          description: Upstream fetch timed out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchDocumentErrorResponse'
   /assist:
     post:
       tags: [assist]
@@ -314,8 +473,22 @@ paths:
           description: Upstream Morph failure
   /mcp-token:
     post:
-      tags: [assist]
-      summary: Mint short-lived browser token for Assist
+      tags: [assist, extract]
+      summary: Mint short-lived browser token (Assist or Extract)
+      description: |
+        Browser clients obtain short-lived HMAC tokens here instead of using
+        the server-to-server `X-Api-Key`. OpenAPI cannot repeat a path key,
+        so this single operation documents both independent minting services:
+
+        - `POST https://assist.flatwrite.md/mcp-token` — mints a token with
+          `scope: assist`, accepted by the Assist API.
+        - `POST https://extract.flatwrite.md/mcp-token` — mints a token with
+          `scope: mcp`, accepted by the Extract API as `X-Mcp-Token`.
+
+        Both validate the request `Origin` against the trusted-origin
+        allowlist, rate-limit per caller IP, and return the same response
+        contract shown below. Tokens are host-scoped: an assist token is not
+        valid for extract and vice versa.
       security: []
       servers:
         - url: https://assist.flatwrite.md
@@ -329,7 +502,7 @@ paths:
                 properties:
                   token: { type: string }
                   expiresAt: { type: integer }
-                  scope: { type: string, enum: [assist] }
+                  scope: { type: string, enum: [assist, mcp] }
         '403':
           description: Origin not allowed
   /health:
@@ -352,7 +525,7 @@ components:
       type: apiKey
       in: header
       name: X-Mcp-Token
-      description: Browser-facing short-lived MCP token minted by the render Worker. Used by the /extract proxy path.
+      description: Browser-facing short-lived MCP token minted by the target Worker. Used by browser clients; long-lived X-Api-Key is server-to-server only.
   schemas:
     MarkdownRenderRequest:
       type: object
@@ -423,10 +596,16 @@ components:
             - UNSUPPORTED_FILE_TYPE
             - MISCONFIGURED
             - RENDER_FAILED
-            - EXTRACT_FAILED
-            - CONVERSION_FAILED
             - EMPTY_FILE
             - BAD_REQUEST
+            - ENDPOINT_RETIRED
+            - NEEDS_OCR
+            - ENCRYPTED
+            - CONVERT_FAILED
+            - INVALID_TOKEN
+            - API_KEY_NOT_ALLOWED_FROM_BROWSER
+            - ORIGIN_NOT_ALLOWED
+            - NOT_FOUND
         detail:
           type: string
           description: Optional additional context (e.g. upstream error).
@@ -435,13 +614,79 @@ components:
           format: int32
           nullable: true
           description: Seconds until the next request is allowed (RATE_LIMIT only).
+    ExtractErrorResponse:
+      description: |
+        Extract errors use two wire shapes preserved for compatibility:
+        Worker-level validation errors are flat `{error, code}` objects;
+        conversion-stage errors are wrapped as `{detail: {error, code}}`.
+      oneOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - $ref: '#/components/schemas/ExtractConversionErrorResponse'
+    ExtractConversionErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [error, code]
+          properties:
+            error:
+              type: string
+              description: Human-readable error message.
+            code:
+              type: string
+              description: Machine-readable conversion error code.
+              enum:
+                - EMPTY_FILE
+                - PAYLOAD_TOO_LARGE
+                - UNSUPPORTED_FILE_TYPE
+                - ENCRYPTED
+                - NEEDS_OCR
+                - CONVERT_FAILED
+                - BAD_REQUEST
+    EndpointRetiredResponse:
+      type: object
+      required: [ok, code, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [ENDPOINT_RETIRED]
+        error:
+          type: string
+          description: Human-readable replacement guidance.
+    FetchDocumentRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Public HTTP(S) URL of the document to fetch.
+    FetchDocumentErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+          description: Human-readable error message.
+        retryAfter:
+          type: integer
+          format: int32
+          nullable: true
+          description: Seconds until the next request is allowed (rate-limit responses only).
     ExtractResponse:
       type: object
       required: [markdown, metadata]
       properties:
         markdown:
           type: string
-          description: The converted Markdown. For image/audio inputs this is a small metadata stub.
+          description: The converted Markdown.
         metadata:
           type: object
           required: [extractionType, filename, fileType, sizeBytes]
@@ -455,9 +700,6 @@ components:
                 - excel-tables
                 - structured-data
                 - epub-body
-                - image-metadata
-                - audio-metadata
-                - raw
             filename:
               type: string
               description: The original filename as supplied by the caller.
@@ -470,8 +712,6 @@ components:
                 - excel
                 - csv
                 - epub
-                - image
-                - audio
             sizeBytes:
               type: integer
               format: int32

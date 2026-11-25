@@ -641,6 +641,8 @@ flatwrite/
 │
 ├── api/
 │   ├── render.js                    ← Canonical /api/render handler (Node.js)
+│   ├── fetch-document.js            ← SSRF-guarded raw document fetch for browser-local conversion
+│   ├── import-url.js                ← Retired import endpoint (410 ENDPOINT_RETIRED)
 │   ├── share.js                     ← Share link creation (Dustebin proxy)
 │   └── s.js                         ← Share link retrieval
 │
@@ -742,9 +744,11 @@ wrangler secret put API_KEY
 ### Deploying the main site (flatwrite.md apex + www)
 
 The main site is itself a Worker with static assets (root `wrangler.jsonc`):
-`worker/index.js` serves the `/api/render`, `/api/import-url`, `/api/share`,
-and `/api/s` endpoints; every other path is served from `public/` by the
-assets layer (SPA fallback via `not_found_handling`).
+`worker/index.js` serves the `/api/render`, `/api/fetch-document`,
+`/api/import-url` (retired, 410), `/api/share`, and `/api/s` endpoints;
+every other path is served from `public/` by the assets layer (SPA fallback
+via `not_found_handling`). `/api/fetch-document` only fetches raw document
+bytes; conversion is browser-local and needs no extract-service secret.
 
 ```bash
 wrangler deploy
@@ -753,8 +757,6 @@ wrangler deploy
 Secrets/vars (set via `wrangler secret put` / `[vars]`):
 - `INTERNAL_RENDER_KEY` — HMAC secret for `/api/render` (same key the render
   Worker uses to sign its upstream calls).
-- `EXTRACT_SERVICE_URL` — AnyDoc extract service base URL.
-- `INTERNAL_EXTRACT_KEY` — HMAC secret shared with the extract service.
 - `DUSTEBIN_BASE_URL` — paste bin base URL behind `/api/share` and `/api/s`.
 
 ---

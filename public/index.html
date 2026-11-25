@@ -54,15 +54,19 @@
          it with a hard-coded ?v=1 — see docs/MCP.md for the
          build-script-driven version policy. -->
   <!-- App logic + deferred libs (non-render-blocking) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" defer></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" defer></script>
+  <!-- Same-origin vendored copies (versioned paths, immutable caching):
+       third-party CDN script execution in this origin is a supply-chain
+       surface, and a CDN hiccup must not silently disable sanitization. -->
+  <script src="/vendor/marked-14.1.4/marked.min.js" defer></script>
+  <script src="/vendor/dompurify-3.2.4/purify.min.js" defer></script>
   <script src="math-render.js?v=5" defer></script>
   <script type="module" src="webmcp.js?v=9"></script>
   <script src="extract-drop.js?v=2" defer></script>
   <script src="structured-print.js?v=2" defer></script>
   <script src="table-model.js?v=3" defer></script>
   <script src="url-routing.js?v=1" defer></script>
-  <script src="app.js?v=142" defer></script>
+  <script src="local-extract.js?v=1" defer></script>
+  <script src="app.js?v=143" defer></script>
 
 </head>
 <body>

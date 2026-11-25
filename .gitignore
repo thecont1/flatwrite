@@ -20,10 +20,8 @@ dist/
 __pycache__/
 *.pyc
 # uv.lock is gitignored globally because most JS projects in this repo
-# don't want it. The Python service under services/extract/ DOES need its
-# lockfile for reproducible Docker builds — that path is whitelisted below.
+# don't want it.
 uv.lock
-!/services/extract/uv.lock
 
 # local preview artifacts from manual render tests
 preview/

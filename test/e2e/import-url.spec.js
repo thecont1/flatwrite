@@ -1,8 +1,9 @@
 const { test, expect } = require('@playwright/test');
-const { IMPORT_FIXTURE } = require('./helpers');
-
-const AYODHYA = IMPORT_FIXTURE.document.sourceUrl;
-const ABSOLUTE_IMAGE = 'https://www.thecontrarian.in/library/originals/Ayodhya-TIME/MS202401-Ayodhya0658.jpg';
+const {
+  IMPORT_CSV,
+  IMPORT_SOURCE_URL,
+  fulfillFetchDocument,
+} = require('./helpers');
 
 async function importUrl(page, url) {
   await page.click('#btn-load-url');
@@ -11,73 +12,91 @@ async function importUrl(page, url) {
   await page.waitForSelector('#load-modal-overlay', { state: 'hidden' });
 }
 
-test('extensionless webpage auto-routes to one markdown.new request and rewrites markdown source', async ({ page }) => {
+test('extensionless document URL falls back to fetch-document and converts in the browser', async ({ page }) => {
   let directProbeCount = 0;
-  let importCount = 0;
-  let importBody = null;
-  await page.route(AYODHYA, route => {
-    directProbeCount++;
-    return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html></html>' });
+  let fetchDocumentCount = 0;
+  let fetchDocumentBody = null;
+  const forbiddenRequests = [];
+  page.on('request', request => {
+    const url = request.url();
+    if (url.includes('extract.flatwrite.md') || url.includes('fly.dev')) forbiddenRequests.push(url);
   });
-  await page.route('**/api/import-url', async route => {
-    importCount++;
-    importBody = route.request().postDataJSON();
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(IMPORT_FIXTURE) });
+
+  await page.route(IMPORT_SOURCE_URL, route => {
+    directProbeCount++;
+    return route.abort();
+  });
+  await page.route('**/api/fetch-document', async route => {
+    fetchDocumentCount++;
+    fetchDocumentBody = route.request().postDataJSON();
+    return fulfillFetchDocument(route);
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
-  await importUrl(page, AYODHYA);
+  await importUrl(page, IMPORT_SOURCE_URL);
 
   expect(directProbeCount).toBe(1);
-  expect(importCount).toBe(1);
-  expect(importBody).toEqual({ url: AYODHYA, method: 'auto', retain_images: true });
-  expect(await page.inputValue('#editor')).toContain(ABSOLUTE_IMAGE);
-  expect(await page.inputValue('#editor')).not.toContain('](/library/originals/Ayodhya-TIME/MS202401-Ayodhya0658.jpg)');
+  expect(fetchDocumentCount).toBe(1);
+  expect(fetchDocumentBody).toEqual({ url: IMPORT_SOURCE_URL });
+
+  const editor = await page.inputValue('#editor');
+  expect(editor).toContain('# example.com');
+  expect(editor).toContain('| Kind | Value | Note |');
+  expect(editor).toContain('fifteen and a half');
+  expect(editor).not.toContain(IMPORT_CSV.toString('utf8'));
   expect(await page.locator('#load-url-webpage-toggle').count()).toBe(0);
+  expect(forbiddenRequests).toEqual([]);
 });
 
-test('markdown URL stays direct and never calls markdown.new', async ({ page }) => {
+test('markdown URL stays direct and never calls fetch-document', async ({ page }) => {
   const url = 'https://example.com/document.md';
   let directCount = 0;
-  let importCount = 0;
+  let fetchDocumentCount = 0;
   await page.route(url, route => {
     directCount++;
     return route.fulfill({ status: 200, contentType: 'text/markdown', body: '# Direct markdown\n\nNo importer.' });
   });
-  await page.route('**/api/import-url', route => {
-    importCount++;
+  await page.route('**/api/fetch-document', route => {
+    fetchDocumentCount++;
     return route.abort();
   });
   await page.goto('/', { waitUntil: 'networkidle' });
   await importUrl(page, url);
   expect(directCount).toBe(1);
-  expect(importCount).toBe(0);
+  expect(fetchDocumentCount).toBe(0);
   expect(await page.inputValue('#editor')).toContain('# Direct markdown');
 });
 
-test('failed auto import exposes browser mode but does not retry automatically', async ({ page }) => {
-  let requests = [];
-  await page.route(AYODHYA, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html></html>' }));
-  await page.route('**/api/import-url', async route => {
+test('failed auto import exposes browser retry but does not retry automatically', async ({ page }) => {
+  const requests = [];
+  await page.route(IMPORT_SOURCE_URL, route => route.abort());
+  await page.route('**/api/fetch-document', async route => {
     requests.push(route.request().postDataJSON());
-    return route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Conversion failed' }) });
+    return route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, error: 'Conversion failed' }),
+    });
   });
   await page.goto('/', { waitUntil: 'networkidle' });
   await page.click('#btn-load-url');
-  await page.fill('#load-url-input', AYODHYA);
+  await page.fill('#load-url-input', IMPORT_SOURCE_URL);
   await page.click('#load-modal-insert');
   await expect(page.locator('.load-url-try-browser')).toBeVisible();
   expect(requests).toHaveLength(1);
-  expect(requests[0].method).toBe('auto');
+  expect(requests[0]).toEqual({ url: IMPORT_SOURCE_URL });
   await page.click('.load-url-try-browser');
   await expect.poll(() => requests.length).toBe(2);
-  expect(requests[1].method).toBe('browser');
+  expect(requests[1]).toEqual({ url: IMPORT_SOURCE_URL });
 });
 
-test('optional live markdown.new import', async ({ page }) => {
-  test.skip(!process.env.FW_E2E_LIVE_IMPORT, 'set FW_E2E_LIVE_IMPORT=1');
+test('fetch-document filename header drives local conversion routing', async ({ page }) => {
+  // The URL itself has no useful basename. The mocked server response simulates
+  // an upstream text/csv document for which fetch-document synthesized csv.csv;
+  // without that header the browser could not choose the CSV converter.
+  await page.route(IMPORT_SOURCE_URL, route => route.abort());
+  await page.route('**/api/fetch-document', route => fulfillFetchDocument(route));
   await page.goto('/', { waitUntil: 'networkidle' });
-  await importUrl(page, AYODHYA);
-  expect(await page.inputValue('#editor')).toContain('Ayodhya');
-  expect(await page.inputValue('#editor')).toContain(ABSOLUTE_IMAGE);
+  await importUrl(page, IMPORT_SOURCE_URL);
+  expect(await page.inputValue('#editor')).toContain('| Boolean | TRUE | yes |');
 });

@@ -28,6 +28,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+const dns = require("dns");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -87,16 +88,16 @@ function loadWorker() {
 }
 
 const originalFetch = globalThis.fetch;
+const originalDnsLookup = dns.promises.lookup;
 
 beforeEach(() => {
   process.env.INTERNAL_RENDER_KEY = SECRET;
   process.env.DUSTEBIN_BASE_URL = "https://dustebin.test";
-  process.env.EXTRACT_SERVICE_URL = "http://extract.test";
-  process.env.INTERNAL_EXTRACT_KEY = "";
   process.env.TRUST_PROXY = "0";
+  dns.promises.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
-  // Default fetch mock: Dustebin + everything else 404s; extract service
-  // reachable for import-url tests.
+  // Default fetch mock: Dustebin + a small CSV document for fetch-document;
+  // everything else 404s.
   globalThis.fetch = mock(async (url, opts) => {
     const u = String(url);
     if (u === "https://dustebin.test/api/pastes") {
@@ -108,13 +109,7 @@ beforeEach(() => {
     if (u.startsWith("https://dustebin.test/api/pastes/")) {
       return new Response("# shared doc\n\nhello", { status: 200 });
     }
-    if (u.endsWith("/extract")) {
-      return new Response(
-        JSON.stringify({ markdown: "# Extracted\n", metadata: { fileType: "csv" } }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    // import-url source fetch (example.com CSV)
+    // fetch-document upstream source fetch (example.com CSV)
     if (u.startsWith("http://example.com") || u.startsWith("https://example.com")) {
       return new Response("col1,col2\na,1\n", {
         status: 200,
@@ -127,6 +122,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  dns.promises.lookup = originalDnsLookup;
 });
 
 // ── HMAC signing (same scheme as the render Worker / api/render tests) ──
@@ -297,29 +293,52 @@ describe("worker/index.js — /api/render (canonical handler via shim)", () => {
   });
 });
 
-describe("worker/index.js — /api/import-url (canonical handler via shim)", () => {
-  test("valid URL → 200 with converted document", async () => {
+describe("worker/index.js — /api/fetch-document (canonical handler via shim)", () => {
+  test("valid URL → 200 with raw document bytes and FlatWrite headers", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(
-      wreq("POST", "/api/import-url", {
-        body: { url: "https://example.com/doc.csv", method: "auto", retain_images: true },
-        headers: { "content-type": "application/json" },
+      wreq("POST", "/api/fetch-document", {
+        body: { url: "https://example.com/doc.csv" },
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.101" },
       }),
       { ASSETS: makeAssetsBinding() },
       {},
     );
     expect(resp.status).toBe(200);
-    const data = await resp.json();
-    expect(data.ok).toBe(true);
-    expect(data.document.content).toContain("# Extracted");
-    expect(data.document.title).toBe("Extracted");
-    expect(data.document.importMeta.importer).toBe("anydoc");
+    expect(resp.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(resp.headers.get("X-Flatwrite-Filename")).toBe("doc.csv");
+    expect(resp.headers.get("X-Flatwrite-Source-Url")).toBe("https://example.com/doc.csv");
+    expect(resp.headers.get("X-Flatwrite-Source-Content-Type")).toContain("text/csv");
+    expect(resp.headers.get("Cache-Control")).toBe("no-store");
+    expect(await resp.text()).toBe("col1,col2\na,1\n");
+  });
+
+  test("binary response body passes through the Worker shim byte-for-byte", async () => {
+    const original = new Uint8Array([0, 1, 2, 127, 128, 159, 254, 255]);
+    globalThis.fetch = mock(async () => new Response(original, {
+      status: 200,
+      headers: { "Content-Type": "application/pdf" },
+    }));
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      wreq("POST", "/api/fetch-document", {
+        body: { url: "https://example.com/binary.pdf" },
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.102" },
+      }),
+      {},
+      {},
+    );
+    expect(resp.status).toBe(200);
+    expect(Array.from(new Uint8Array(await resp.arrayBuffer()))).toEqual(Array.from(original));
   });
 
   test("missing url → 400", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(
-      wreq("POST", "/api/import-url", { body: {}, headers: { "content-type": "application/json" } }),
+      wreq("POST", "/api/fetch-document", {
+        body: {},
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.103" },
+      }),
       {},
       {},
     );
@@ -330,9 +349,9 @@ describe("worker/index.js — /api/import-url (canonical handler via shim)", () 
   test("localhost URL → 400 (SSRF guard survives the port)", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(
-      wreq("POST", "/api/import-url", {
+      wreq("POST", "/api/fetch-document", {
         body: { url: "http://localhost:8000/x.pdf" },
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.104" },
       }),
       {},
       {},
@@ -342,6 +361,32 @@ describe("worker/index.js — /api/import-url (canonical handler via shim)", () 
   });
 
   test("GET → 405", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(wreq("GET", "/api/fetch-document"), {}, {});
+    expect(resp.status).toBe(405);
+  });
+});
+
+describe("worker/index.js — retired /api/import-url", () => {
+  test("POST → 410 ENDPOINT_RETIRED", async () => {
+    const { default: worker } = await loadWorker();
+    const resp = await worker.fetch(
+      wreq("POST", "/api/import-url", {
+        body: { url: "https://example.com/doc.csv" },
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.105" },
+      }),
+      {},
+      {},
+    );
+    expect(resp.status).toBe(410);
+    expect(await resp.json()).toEqual({
+      ok: false,
+      code: "ENDPOINT_RETIRED",
+      error: "Use /api/fetch-document — conversion now runs in the browser",
+    });
+  });
+
+  test("GET → 405 at the router", async () => {
     const { default: worker } = await loadWorker();
     const resp = await worker.fetch(wreq("GET", "/api/import-url"), {}, {});
     expect(resp.status).toBe(405);

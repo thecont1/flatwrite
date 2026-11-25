@@ -1,0 +1,10 @@
+{
+  "file": "empty.docx",
+  "status": 400,
+  "body": {
+    "detail": {
+      "error": "file is empty",
+      "code": "EMPTY_FILE"
+    }
+  }
+}

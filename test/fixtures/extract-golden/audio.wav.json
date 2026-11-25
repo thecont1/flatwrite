@@ -1,0 +1,13 @@
+{
+  "file": "audio.wav",
+  "status": 200,
+  "body": {
+    "markdown": "## Audio metadata\n\n- **Filename:** `audio.wav`\n- **Size:** 132344 bytes\n\n_AnyDoc does not transcribe audio (transcription is not enabled in v1)._\n",
+    "metadata": {
+      "extractionType": "audio-metadata",
+      "filename": "audio.wav",
+      "fileType": "audio",
+      "sizeBytes": 132344
+    }
+  }
+}

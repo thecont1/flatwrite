@@ -15,55 +15,79 @@
  */
 
 /**
- * Worker logic tests for the extract proxy. Mirrors worker.test.js's
- * strategy: mock the global `fetch` to emulate the Fly.io upstream, then
- * exercise the Worker's default export directly.
+ * Worker logic tests for the in-process WASM extract Worker.
+ *
+ * The Worker no longer proxies anywhere: conversion happens in-isolate
+ * with real WASM engines (@firecrawl/anydoc-wasm + pdf-inspector-wasm),
+ * initialized in workers/flatwrite-extract/src/engines.js. In Bun the
+ * `.wasm` imports resolve to file paths and engines.js compiles them from
+ * disk — see that file's header comment for the environment detection.
+ *
+ * These tests therefore exercise REAL conversions end-to-end through the
+ * Worker's fetch() handler using the regression corpus. A global fetch
+ * spy that throws proves no upstream/network call ever happens.
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 const KEY = "test-api-key";
-const SECRET = "test-internal-extract-key-do-not-use-in-prod";
-const UPSTREAM = "https://flatwrite-extract.fly.dev";
-
-function req({ method = "POST", headers = {}, body = null, url = "https://extract.flatwrite.md/extract" } = {}) {
-  return new Request(url, {
-    method,
-    headers,
-    body: body == null ? undefined : typeof body === "string" ? body : body,
-  });
-}
+const BASE = "https://extract.flatwrite.md";
 
 function loadWorker() {
   return import("../workers/flatwrite-extract/src/index.js");
 }
 
-let upstreamCalls = [];
-let upstreamResponder = null;
+// ── fetch spy: conversion must be fully in-process ──────────────────────
+
+let fetchCalls = [];
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  upstreamCalls = [];
-  globalThis.fetch = mock(async (url, opts) => {
-    upstreamCalls.push({ url: String(url), opts });
-    if (!upstreamResponder) {
-      return new Response(
-        JSON.stringify({ markdown: "# hi", metadata: { fileType: "csv", extractionType: "structured-data", filename: "data.csv", sizeBytes: 5 } }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return upstreamResponder(url, opts);
+  fetchCalls = [];
+  globalThis.fetch = mock(async (url) => {
+    fetchCalls.push(String(url));
+    throw new Error(`network access is forbidden in the extract worker: ${url}`);
   });
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  upstreamResponder = null;
 });
 
-const env = () => ({ API_KEY: KEY, INTERNAL_EXTRACT_KEY: SECRET, UPSTREAM_URL: UPSTREAM });
+const env = () => ({ API_KEY: KEY });
 
-// ── Auth + method ───────────────────────────────────────────────────────
+// ── request builders ────────────────────────────────────────────────────
+
+function req({ method = "POST", headers = {}, body = null, url = `${BASE}/extract` } = {}) {
+  return new Request(url, {
+    method,
+    headers,
+    body: body == null ? undefined : body,
+  });
+}
+
+/** Multipart request carrying `bytes` as the `file` field. Content-Type
+ * (with boundary) is set automatically by the Request constructor. */
+async function fileReq(filename, bytes, { headers = {}, url } = {}) {
+  const form = new FormData();
+  form.append("file", new File([bytes], filename));
+  return req({
+    url,
+    headers: { "X-Api-Key": KEY, ...headers },
+    body: form,
+  });
+}
+
+async function corpusBytes(name) {
+  return readFile(`test/fixtures/extract-corpus/${name}`);
+}
+
+async function goldenBody(name) {
+  return JSON.parse(await readFile(`test/fixtures/extract-golden/${name}.json`, "utf8"));
+}
+
+// ── Auth + method + worker-level validation ─────────────────────────────
 
 describe("extract Worker — auth + method", () => {
   test("rejects GET", async () => {
@@ -76,7 +100,7 @@ describe("extract Worker — auth + method", () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
       req({ headers: { "X-Api-Key": KEY, "Content-Type": "multipart/form-data; boundary=abc" }, body: "ignored" }),
-      { INTERNAL_EXTRACT_KEY: SECRET, UPSTREAM_URL: UPSTREAM }, // no API_KEY
+      {}, // no API_KEY
     );
     expect(r.status).toBe(500);
     const j = await r.json();
@@ -110,13 +134,15 @@ describe("extract Worker — auth + method", () => {
     expect(j.code).toBe("API_KEY_NOT_ALLOWED_FROM_BROWSER");
   });
 
-  test("rejects content-type that isn't multipart", async () => {
+  test("rejects content-type that isn't multipart (415 UNSUPPORTED_MEDIA_TYPE)", async () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
       req({ headers: { "X-Api-Key": KEY, "Content-Type": "application/json" }, body: "{}" }),
       env(),
     );
     expect(r.status).toBe(415);
+    const j = await r.json();
+    expect(j.code).toBe("UNSUPPORTED_MEDIA_TYPE");
   });
 
   test("rejects multipart/form-data with a missing boundary (400)", async () => {
@@ -147,111 +173,167 @@ describe("extract Worker — auth + method", () => {
     const j = await r.json();
     expect(j.code).toBe("PAYLOAD_TOO_LARGE");
   });
-});
 
-// ── Happy path: forwarding ───────────────────────────────────────────────
-
-describe("extract Worker — forwarding", () => {
-  test("forwards multipart body to upstream with HMAC headers", async () => {
+  test("rejects multipart body without a file field (400, flat shape)", async () => {
     const { default: worker } = await loadWorker();
-    const body = "--abc\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.csv\"\r\n\r\ncol1,col2\r\n--abc--\r\n";
+    const form = new FormData();
+    form.append("notfile", "hello");
+    const r = await worker.fetch(
+      req({ headers: { "X-Api-Key": KEY }, body: form }),
+      env(),
+    );
+    expect(r.status).toBe(400);
+    const j = await r.json();
+    expect(j.code).toBe("BAD_REQUEST");
+    // Worker-level validation errors are flat, not detail-wrapped.
+    expect(j.detail).toBeUndefined();
+  });
+
+  test("rejects a file field with an empty filename (400, FastAPI detail shape)", async () => {
+    const { default: worker } = await loadWorker();
+    // Hand-built multipart: undici normalizes empty filenames away when
+    // using FormData, so craft the body manually with filename="".
+    const boundary = "testboundary";
+    const body =
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename=""\r\n` +
+      `Content-Type: application/octet-stream\r\n\r\n` +
+      `abc\r\n` +
+      `--${boundary}--\r\n`;
     const r = await worker.fetch(
       req({
         headers: {
           "X-Api-Key": KEY,
-          "Content-Type": "multipart/form-data; boundary=abc",
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
         },
         body,
       }),
       env(),
     );
+    expect(r.status).toBe(400);
+    const j = await r.json();
+    expect(j.detail).toEqual({ error: "filename is empty", code: "BAD_REQUEST" });
+  });
+});
+
+// ── In-process conversions through the real WASM engines ────────────────
+
+describe("extract Worker — in-process conversion", () => {
+  test("never calls global fetch during /extract", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("sample.pptx", await corpusBytes("sample.pptx")), env());
     expect(r.status).toBe(200);
-    expect(upstreamCalls).toHaveLength(1);
-    const call = upstreamCalls[0];
-    expect(call.url).toBe(`${UPSTREAM}/extract`);
-    expect(call.opts.method).toBe("POST");
-    expect(call.opts.headers["X-Extract-Timestamp"]).toMatch(/^\d{10,}$/);
-    expect(call.opts.headers["X-Extract-Signature"]).toMatch(/^[0-9a-f]{64}$/);
-    // The original Content-Type should be preserved (with boundary).
-    expect(call.opts.headers["Content-Type"]).toBe("multipart/form-data; boundary=abc");
+    expect(fetchCalls).toHaveLength(0);
   });
 
-  test("re-signs the request with INTERNAL_EXTRACT_KEY (not the caller's key)", async () => {
+  test("sample.pptx → 200 with golden-exact markdown and metadata", async () => {
     const { default: worker } = await loadWorker();
-    await worker.fetch(
-      req({
-        headers: {
-          "X-Api-Key": KEY,
-          "Content-Type": "multipart/form-data; boundary=abc",
-        },
-        body: "x",
-      }),
-      env(),
-    );
-    const sig = upstreamCalls[0].opts.headers["X-Extract-Signature"];
-    // The signature is deterministic given (timestamp + payload). We can't
-    // recompute it without sharing the timestamp, but we can assert that
-    // it is NOT the caller's X-Api-Key.
-    expect(sig).not.toBe(KEY);
-    expect(sig).not.toContain(KEY);
-  });
-
-  test("forwards upstream JSON response verbatim, preserving status", async () => {
-    upstreamResponder = () =>
-      new Response(
-        JSON.stringify({
-          markdown: "# raw",
-          metadata: { fileType: "csv", extractionType: "structured-data", filename: "a.csv", sizeBytes: 1 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    const { default: worker } = await loadWorker();
-    const r = await worker.fetch(
-      req({
-        headers: { "X-Api-Key": KEY, "Content-Type": "multipart/form-data; boundary=abc" },
-        body: "x",
-      }),
-      env(),
-    );
+    const golden = await goldenBody("sample.pptx");
+    expect(golden.status).toBe(200);
+    const r = await worker.fetch(await fileReq("sample.pptx", await corpusBytes("sample.pptx")), env());
     expect(r.status).toBe(200);
     const j = await r.json();
-    expect(j.markdown).toBe("# raw");
+    expect(j.markdown).toContain("## Welcome");
+    expect(j.metadata.fileType).toBe("powerpoint");
+    expect(j.metadata.extractionType).toBe("powerpoint-notes");
+    expect(j.metadata).toEqual(golden.body.metadata);
+    expect(j.markdown).toBe(golden.body.markdown);
+    expect(fetchCalls).toHaveLength(0);
   });
 
-  test("passes through upstream 4xx/5xx without rewriting", async () => {
-    upstreamResponder = () =>
-      new Response(
-        JSON.stringify({ error: "Conversion failed", code: "CONVERSION_FAILED" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+  test("pdf-text.pdf → 200 with non-empty markdown", async () => {
     const { default: worker } = await loadWorker();
-    const r = await worker.fetch(
-      req({
-        headers: { "X-Api-Key": KEY, "Content-Type": "multipart/form-data; boundary=abc" },
-        body: "x",
-      }),
-      env(),
-    );
+    const r = await worker.fetch(await fileReq("pdf-text.pdf", await corpusBytes("pdf-text.pdf")), env());
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(typeof j.markdown).toBe("string");
+    expect(j.markdown.length).toBeGreaterThan(0);
+    expect(j.metadata.fileType).toBe("pdf");
+    expect(j.metadata.extractionType).toBe("pdf-body");
+  });
+
+  test("encrypted.odt → 422 detail ENCRYPTED", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("encrypted.odt", await corpusBytes("encrypted.odt")), env());
+    expect(r.status).toBe(422);
+    const j = await r.json();
+    expect(j.detail.code).toBe("ENCRYPTED");
+    expect(typeof j.detail.error).toBe("string");
+  });
+
+  test("pdf-scanned.pdf → 422 detail NEEDS_OCR", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("pdf-scanned.pdf", await corpusBytes("pdf-scanned.pdf")), env());
+    expect(r.status).toBe(422);
+    const j = await r.json();
+    expect(j.detail.code).toBe("NEEDS_OCR");
+  });
+
+  test("image-text.png → 415 (images are not accepted on this API)", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("image-text.png", await corpusBytes("image-text.png")), env());
+    expect(r.status).toBe(415);
+    const j = await r.json();
+    expect(j.detail.code).toBe("UNSUPPORTED_FILE_TYPE");
+  });
+
+  test("audio.wav → 415 (audio is not accepted on this API)", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("audio.wav", await corpusBytes("audio.wav")), env());
+    expect(r.status).toBe(415);
+    const j = await r.json();
+    expect(j.detail.code).toBe("UNSUPPORTED_FILE_TYPE");
+  });
+
+  test("unknown extension .xyz → 415", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("notes.xyz", new Uint8Array([1, 2, 3])), env());
+    expect(r.status).toBe(415);
+    const j = await r.json();
+    expect(j.detail.code).toBe("UNSUPPORTED_FILE_TYPE");
+  });
+
+  test("empty file → 400 detail EMPTY_FILE", async () => {
+    const { default: worker } = await loadWorker();
+    const bytes = await corpusBytes("empty.docx");
+    expect(bytes.byteLength).toBe(0);
+    const r = await worker.fetch(await fileReq("empty.docx", bytes), env());
+    expect(r.status).toBe(400);
+    const j = await r.json();
+    expect(j.detail).toEqual({ error: "file is empty", code: "EMPTY_FILE" });
+  });
+
+  test("corrupt.docx → 500 detail CONVERT_FAILED", async () => {
+    const { default: worker } = await loadWorker();
+    const r = await worker.fetch(await fileReq("corrupt.docx", await corpusBytes("corrupt.docx")), env());
     expect(r.status).toBe(500);
     const j = await r.json();
-    expect(j.code).toBe("CONVERSION_FAILED");
+    expect(j.detail).toEqual({ error: "Conversion failed", code: "CONVERT_FAILED" });
   });
 
-  test("returns 502 when upstream is unreachable", async () => {
-    globalThis.fetch = mock(async () => {
-      throw new Error("ECONNREFUSED");
-    });
+  test("browser path: X-Mcp-Token converts end-to-end", async () => {
     const { default: worker } = await loadWorker();
+    const mint = await worker.fetch(
+      req({ url: `${BASE}/mcp-token`, headers: { "Origin": "https://flatwrite.md" } }),
+      env(),
+    );
+    expect(mint.status).toBe(200);
+    const { token } = await mint.json();
+    const form = new FormData();
+    form.append("file", new File([await corpusBytes("sample.pptx")], "sample.pptx"));
     const r = await worker.fetch(
       req({
-        headers: { "X-Api-Key": KEY, "Content-Type": "multipart/form-data; boundary=abc" },
-        body: "x",
+        headers: { "X-Mcp-Token": token, "Origin": "https://flatwrite.md" },
+        body: form,
       }),
       env(),
     );
-    expect(r.status).toBe(502);
+    expect(r.status).toBe(200);
     const j = await r.json();
-    expect(j.code).toBe("UPSTREAM_UNREACHABLE");
+    expect(j.markdown).toContain("## Welcome");
+    // Trusted browser origin gets CORS headers on the response.
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://flatwrite.md");
+    expect(fetchCalls).toHaveLength(0);
   });
 });
 
@@ -335,7 +417,7 @@ describe("extract Worker — CORS", () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
       req({
-        url: "https://extract.flatwrite.md/mcp-token",
+        url: `${BASE}/mcp-token`,
         headers: {
           "Origin": "http://127.0.0.1:8080",
           "CF-Connecting-IP": "127.0.0.1",
@@ -354,14 +436,14 @@ describe("extract Worker — CORS", () => {
 describe("extract Worker — /mcp-token", () => {
   test("rejects mint from non-browser (no Origin)", async () => {
     const { default: worker } = await loadWorker();
-    const r = await worker.fetch(req({ url: "https://extract.flatwrite.md/mcp-token" }), env());
+    const r = await worker.fetch(req({ url: `${BASE}/mcp-token` }), env());
     expect(r.status).toBe(403);
   });
 
   test("rejects mint from untrusted origin", async () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
-      req({ url: "https://extract.flatwrite.md/mcp-token", headers: { "Origin": "https://evil.example" } }),
+      req({ url: `${BASE}/mcp-token`, headers: { "Origin": "https://evil.example" } }),
       env(),
     );
     expect(r.status).toBe(403);
@@ -370,7 +452,7 @@ describe("extract Worker — /mcp-token", () => {
   test("mints a token from trusted origin", async () => {
     const { default: worker } = await loadWorker();
     const r = await worker.fetch(
-      req({ url: "https://extract.flatwrite.md/mcp-token", headers: { "Origin": "https://flatwrite.md" } }),
+      req({ url: `${BASE}/mcp-token`, headers: { "Origin": "https://flatwrite.md" } }),
       env(),
     );
     expect(r.status).toBe(200);

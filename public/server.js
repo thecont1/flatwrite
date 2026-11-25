@@ -18,6 +18,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const importUrlHandler = require("../api/import-url.js");
+const fetchDocumentHandler = require("../api/fetch-document.js");
 
 const PORT = process.env.PORT || 3000;
 
@@ -85,6 +86,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   const pathOnly = req.url.split("?")[0];
+  if (pathOnly === "/api/fetch-document") {
+    await fetchDocumentHandler(req, res);
+    return;
+  }
   if (pathOnly === "/api/import-url") {
     await importUrlHandler(req, res);
     return;
