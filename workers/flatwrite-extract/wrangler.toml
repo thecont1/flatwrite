@@ -1,7 +1,6 @@
 name = "flatwrite-extract"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
-route = { pattern = "extract.flatwrite.md/*", zone_name = "flatwrite.md" }
+compatibility_date = "2026-06-24"
 
 # IMPORTANT: The repo-root `wrangler.jsonc` declares
 # `assets.directory = "public"`. When wrangler walks up to find a
@@ -13,23 +12,30 @@ route = { pattern = "extract.flatwrite.md/*", zone_name = "flatwrite.md" }
 # config's assets via TOML alone, so the script is required.
 
 # Secrets (set via `wrangler secret put`):
-#   API_KEY              — public-facing key clients send in X-Api-Key.
-#                          Separate from the render worker's API_KEY so a
-#                          leak in either surface doesn't grant access to
-#                          the other. NEVER commit the actual value here.
-#   INTERNAL_EXTRACT_KEY — HMAC secret used to sign upstream requests to
-#                          the Fly.io extract service. NEVER commit.
+#   API_KEY — public-facing key clients send in X-Api-Key. Separate from
+#             the render worker's API_KEY so a leak in either surface
+#             doesn't grant access to the other. NEVER commit the actual
+#             value here. Must be set on BOTH environments:
+#               wrangler secret put API_KEY --env production
+#               wrangler secret put API_KEY --env staging
+
+# IMPORTANT — environments and route inheritance (verified against
+# wrangler 4.104 source, `normalizeAndValidateRoute`/`inheritable`):
+# `route` IS inherited by named environments, and wrangler publishes
+# inherited routes even when the environment sets `workers_dev = true`.
+# If the production route stayed at the top level, deploying
+# `--env staging` would reassign `extract.flatwrite.md/*` to the staging
+# Worker and steal production traffic. The route therefore lives ONLY in
+# [env.production], and deploy.sh always passes an explicit --env flag.
+# Conversely, `vars` is NOT inherited by environments, so each env
+# carries its own copy.
 #
-#   UPSTREAM_URL         — base URL of the Fly.io service. Defaults to
-#                          https://flatwrite-extract.fly.dev at deploy time.
-#                          Set via `wrangler secret put UPSTREAM_URL` if you
-#                          need to point at staging.
+# Deploying without --env (plain `wrangler deploy`) now targets the
+# top-level config, which has no route — a footgun that deploy.sh guards
+# against by always passing --env. Do not deploy this worker manually
+# without an environment.
 
 [vars]
-# Default upstream — overridable via secret for staging. The Worker never
-# serves /extract directly; it only forwards here.
-UPSTREAM_URL = "https://flatwrite-extract.fly.dev"
-
 # Comma-separated list of extra CORS origins to trust. Production leaves
 # this empty; the strict allowlist (https://flatwrite.md and
 # https://*.flatwrite.md) is the only thing that matters. Local dev and
@@ -37,4 +43,28 @@ UPSTREAM_URL = "https://flatwrite-extract.fly.dev"
 # the worker accepts requests from a local editor without a real DNS
 # hostname. Treat this like a secret — anyone in the list can call
 # /mcp-token and /extract.
+ALLOWED_DEV_ORIGINS = ""
+
+# Workers Logs (free tier).
+[observability]
+enabled = true
+
+# Production: the real worker name and the public route. The explicit
+# `name` keeps the worker identical to the pre-environments deployment
+# (without it wrangler would name it `flatwrite-extract-production`).
+[env.production]
+name = "flatwrite-extract"
+route = { pattern = "extract.flatwrite.md/*", zone_name = "flatwrite.md" }
+
+[env.production.vars]
+ALLOWED_DEV_ORIGINS = ""
+
+# Staging: workers.dev-only copy for CPU-time measurement and smoke
+# testing. No route key anywhere above it, so nothing can be inherited —
+# it is reachable only at https://flatwrite-extract-staging.<subdomain>.workers.dev
+[env.staging]
+name = "flatwrite-extract-staging"
+workers_dev = true
+
+[env.staging.vars]
 ALLOWED_DEV_ORIGINS = ""
