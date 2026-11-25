@@ -49,8 +49,39 @@ async function main() {
   const tesseractCoreVersion = await packageVersion('tesseract.js-core');
   const engVersion = await packageVersion('@tesseract.js-data/eng');
 
+  const markedVersion = await packageVersion('marked');
+  const dompurifyVersion = await packageVersion('dompurify');
+
   await rm(VENDOR_DIR, { recursive: true, force: true });
   await mkdir(VENDOR_DIR, { recursive: true });
+
+  // Editor markdown pipeline scripts — referenced by public/index.html at
+  // these exact versioned paths. They are not extraction assets (the
+  // extract-worker never loads them), so they live outside the extract
+  // manifest, but they MUST be regenerated here: this script wipes the
+  // whole vendor tree, and anything it does not recreate ceases to exist —
+  // which is exactly how the editor once shipped with script tags pointing
+  // at files that were never committed.
+  const markedDir = path.join(VENDOR_DIR, `marked-${markedVersion}`);
+  const markedFiles = await copyNamed(
+    ['marked.min.js', 'LICENSE.md'],
+    path.join(ROOT, 'node_modules', 'marked'),
+    markedDir,
+  );
+  const dompurifyDir = path.join(VENDOR_DIR, `dompurify-${dompurifyVersion}`);
+  const dompurifyFiles = await copyNamed(
+    ['purify.min.js'],
+    path.join(ROOT, 'node_modules', 'dompurify', 'dist'),
+    dompurifyDir,
+  );
+  const dompurifyLicenseSize = await copyIn(
+    path.join(ROOT, 'node_modules', 'dompurify', 'LICENSE'),
+    path.join(dompurifyDir, 'LICENSE'),
+  );
+  dompurifyFiles['LICENSE'] = {
+    path: publicRelative(path.join(dompurifyDir, 'LICENSE')),
+    sizeBytes: dompurifyLicenseSize,
+  };
 
   const anydocDir = path.join(VENDOR_DIR, `anydoc-${anydocVersion}`);
   const anydocFiles = await copyNamed(
@@ -143,9 +174,11 @@ async function main() {
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
 
-  const totalBytes = Object.values(files).reduce((sum, file) => sum + file.sizeBytes, 0);
-  console.log(`vendored ${Object.keys(files).length} extraction assets (${totalBytes} bytes) into ${publicRelative(VENDOR_DIR)}/`);
-  for (const [file, value] of Object.entries(files)) {
+  const editorFiles = { ...markedFiles, ...dompurifyFiles };
+  const allFiles = { ...files, ...editorFiles };
+  const totalBytes = Object.values(allFiles).reduce((sum, file) => sum + file.sizeBytes, 0);
+  console.log(`vendored ${Object.keys(allFiles).length} browser assets (${totalBytes} bytes) into ${publicRelative(VENDOR_DIR)}/`);
+  for (const [file, value] of Object.entries(allFiles)) {
     console.log(`${value.path}\t${value.sizeBytes}`);
   }
 }
