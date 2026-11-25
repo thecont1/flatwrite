@@ -90,25 +90,37 @@ async function getToken() {
 }
 
 async function extractFile(filename, bytes) {
-  const token = await getToken();
-  const form = new FormData();
-  form.append('file', new Blob([bytes]), filename);
-  const response = await fetchWithRetries(filename, `${BASE}/extract`, {
-    method: 'POST',
-    headers: {
-      Origin: ORIGIN,
-      'X-Mcp-Token': token,
-    },
-    body: form,
-  });
-  const text = await response.text();
-  let body;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = text;
+  // /extract has its own per-IP budget (30/min) beside the token limiter.
+  // A 429 here is infrastructure backpressure, not a conversion outcome —
+  // it must never be saved as a golden fixture. Wait out the sliding
+  // window and retry the same file.
+  for (let rateLimitRetries = 0; rateLimitRetries < 6; rateLimitRetries += 1) {
+    const token = await getToken();
+    const form = new FormData();
+    form.append('file', new Blob([bytes]), filename);
+    const response = await fetchWithRetries(filename, `${BASE}/extract`, {
+      method: 'POST',
+      headers: {
+        Origin: ORIGIN,
+        'X-Mcp-Token': token,
+      },
+      body: form,
+    });
+    const text = await response.text();
+    if (response.status === 429) {
+      console.warn(`[${filename}] extract rate limited; waiting 62s for the sliding window`);
+      await sleep(62_000);
+      continue;
+    }
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+    return { file: filename, status: response.status, body };
   }
-  return { file: filename, status: response.status, body };
+  throw new Error(`[${filename}] extract still rate limited after retries`);
 }
 
 async function main() {

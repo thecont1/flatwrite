@@ -241,7 +241,11 @@ function makeRequestShim(request, maxBodyBytes) {
         listeners[event].push(cb);
         // 'end' alone never fires without a consumer on real Node streams;
         // starting on data/error registration matches that ordering.
-        if (event !== 'end') pump();
+        // The microtask deferral matters: with a null request body pump()
+        // has no await in its path and would emit 'end' synchronously —
+        // before readBody's own 'end' listener registration two lines down —
+        // hanging the read forever.
+        if (event !== 'end') queueMicrotask(pump);
       }
     },
   };

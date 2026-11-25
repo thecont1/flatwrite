@@ -30,11 +30,20 @@ const net = require('net');
 const { readBody } = require('../core/io');
 const { createRateLimiter } = require('../core/rate-limit');
 // extract-core.js is an ES module while this canonical handler is CommonJS.
-// `require()` of a synchronous ESM module is supported by current Node.js and
-// Bun, and Wrangler/esbuild inlines the same static require graph for workerd.
-// Keeping this import (rather than copying the table) preserves one source of
-// truth for the allowed extensions.
-const { EXTENSIONS } = require('../public/extract-core.js');
+// The require is DEFERRED to first use rather than module evaluation:
+// require(esm) needs Node >= 20.19 / 22.12 (declared in package.json
+// engines), and loading it lazily means server.js/index.js can always load
+// this handler and serve their other routes even on a runtime where the
+// ESM require itself would fail. Wrangler/esbuild still statically resolves
+// the require for the workerd bundle. Keeping the import (rather than
+// copying the table) preserves one source of truth for allowed extensions.
+let extractCoreCache = null;
+function loadExtractCore() {
+  if (!extractCoreCache) {
+    extractCoreCache = require('../public/extract-core.js');
+  }
+  return extractCoreCache;
+}
 
 const MAX_REQUEST_BYTES = 8 * 1024; // request body is just { url }
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024; // same cap as browser conversion
@@ -324,14 +333,19 @@ const MIME_TO_EXTENSION = {
 };
 
 function guessFilename(parsedUrl, contentType) {
-  const fromPath = parsedUrl.pathname.split('/').pop() || '';
-  if (fromPath && fromPath.includes('.')) {
-    let decoded = fromPath;
-    try {
-      decoded = decodeURIComponent(fromPath);
-    } catch {
-      // Keep the undecoded form.
-    }
+  const { EXTENSIONS } = loadExtractCore();
+  const rawSegment = parsedUrl.pathname.split('/').pop() || '';
+  // Decode ONCE before any dot/extension inspection: percent-encoding can
+  // hide the dot itself (e.g. report%2Epdf), so checking the raw segment
+  // misclassifies encoded filenames as extensionless.
+  let decoded = rawSegment;
+  try {
+    decoded = decodeURIComponent(rawSegment);
+  } catch {
+    // Keep the undecoded form.
+  }
+  const hasDot = decoded.includes('.');
+  if (decoded && hasDot) {
     // Prefer the path filename only when its extension is one the browser
     // converter can actually handle. An unsupported or misleading extension
     // (e.g. /download.exe serving a PDF) falls through to the Content-Type
@@ -350,15 +364,13 @@ function guessFilename(parsedUrl, contentType) {
   // path at least named a file, return it anyway so the allowlist check
   // below produces the informative 415 unsupported-extension response —
   // same outcome whether or not the request was redirected.
-  if (fromPath && fromPath.includes('.')) {
-    try {
-      return decodeURIComponent(fromPath);
-    } catch {
-      return fromPath;
-    }
+  if (decoded && hasDot) {
+    return decoded;
   }
   return null;
 }
+
+const HTML_PAGE_ERROR = 'This URL points to an HTML page. Only document files (PDF, DOCX, PPTX, XLSX, etc.) can be imported locally with AnyDoc.';
 
 function htmlContentType(contentType) {
   const mime = (contentType || '').split(';')[0].trim().toLowerCase();
@@ -490,6 +502,16 @@ async function fetchDocumentBytes(validatedInitial, signal) {
       throw httpError(413, 'Document is too large (25 MB max)');
     }
 
+    // HTML is never a document — reject before reading the body so an
+    // attacker-controlled or endless HTML page cannot consume the byte cap
+    // (or the timeout) on a response we were always going to refuse.
+    // Responses with missing/unknown Content-Type still get the bounded
+    // read: they may be perfectly good documents.
+    if (htmlContentType(responseHeader(upstream, 'content-type'))) {
+      cancelUpstreamBody(upstream);
+      throw httpError(415, HTML_PAGE_ERROR);
+    }
+
     const buffer = await readBodyWithCap(upstream);
     return {
       buffer,
@@ -577,12 +599,6 @@ module.exports = async function handleFetchDocument(req, res) {
     return json(res, 502, { ok: false, error: 'The URL returned an empty document.' });
   }
 
-  if (htmlContentType(contentType)) {
-    return json(res, 415, {
-      ok: false,
-      error: 'This URL points to an HTML page. Only document files (PDF, DOCX, PPTX, XLSX, etc.) can be imported locally with AnyDoc.',
-    });
-  }
 
   const filename = guessFilename(finalParsedUrl, contentType);
   if (!filename) {
@@ -592,6 +608,7 @@ module.exports = async function handleFetchDocument(req, res) {
     });
   }
 
+  const { EXTENSIONS } = loadExtractCore();
   const ext = filenameExtension(filename);
   if (!ext || !Object.prototype.hasOwnProperty.call(EXTENSIONS, ext)) {
     return json(res, 415, {

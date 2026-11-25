@@ -286,6 +286,12 @@
 
   async function extract(blob, filename) {
     var extractCore = await loadExtractCore();
+    // Check the Blob's own size before anything reads it: arrayBuffer()
+    // materializes the whole payload in memory, so the byte cap must bite
+    // first. Same contract as extractCore.convert (413 PAYLOAD_TOO_LARGE).
+    if (blob && typeof blob.size === 'number' && blob.size > extractCore.MAX_BYTES) {
+      throw makeError(413, 'PAYLOAD_TOO_LARGE', 'file exceeds ' + extractCore.MAX_BYTES + ' bytes');
+    }
     var typeInfo;
     try {
       typeInfo = extractCore.inferType(filename);

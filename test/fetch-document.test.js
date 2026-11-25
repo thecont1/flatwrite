@@ -464,8 +464,10 @@ describe("api/fetch-document.js", () => {
   });
 
   test("SSRF matrix: literal private/transition/transition-embedded targets are rejected before any fetch", async () => {
-    // Literal-IP URLs skip DNS entirely, so no mock is needed — a 400 here
-    // can only come from the isPrivateIp classification itself.
+    // Counting fetch mock installed BEFORE any blocked invocation: the
+    // rejection proof is not just the 400 but that zero fetch calls happen,
+    // and the positive cases prove the mock itself is reachable.
+    const fetchCalls = mockSimpleDocumentFetch();
     const blocked = [
       "http://127.0.0.1/a.pdf",
       "http://2130706433/a.pdf",        // decimal loopback — rejected by URL parse or resolution
@@ -494,14 +496,15 @@ describe("api/fetch-document.js", () => {
       const res = await invoke({ url });
       expect(res._status).toBe(400);
     }
+    expect(fetchCalls.length).toBe(0);
     // Public embeddings of the same transition forms must stay valid —
     // the guard rejects private targets, not the mechanisms themselves.
-    // Literal IPs skip DNS, so mock only the document fetch itself.
-    mockSimpleDocumentFetch();
+    // Literal IPs skip DNS, so they reach the same mock.
     for (const url of ["http://[::ffff:808:808]/a.pdf", "http://[64:ff9b::808:808]/a.pdf"]) {
       const res = await invoke({ url });
       expect(res._status).toBe(200);
     }
+    expect(fetchCalls.length).toBe(2);
   });
 
   test("rate limit is enforced after 20 requests per IP", async () => {

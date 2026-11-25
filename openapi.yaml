@@ -283,9 +283,12 @@ paths:
 
         The initial URL and every redirect hop are validated against SSRF
         rules: `http`/`https` only, no localhost, and no RFC1918, loopback,
-        link-local, CGNAT, IPv6 ULA, multicast, benchmarking, or
-        IPv4-transition-embedded (IPv4-mapped/compatible, NAT64, 6to4)
-        addresses, plus a DNS-rebinding guard. Redirects are followed
+        link-local, CGNAT, IPv6 ULA, multicast, benchmarking, or reserved
+        addresses, plus a DNS-rebinding guard. IPv4-transition forms
+        (IPv4-mapped, IPv4-compatible, NAT64, 6to4) are not rejected
+        outright — instead the embedded IPv4 address is extracted and held
+        to the same restrictions, so publicly-routable embeddings pass
+        while e.g. NAT64-embedded loopback is refused. Redirects are followed
         manually (maximum 5 hops). The upstream timeout is 60 seconds and the
         downloaded document is capped at 25 MB. Raw upstream error bodies are
         never forwarded.

@@ -18,8 +18,18 @@
 'use strict';
 
 /**
- * Read the full request body as a string, enforcing a byte limit.
- * Destroys the stream on overflow to stop buffering.
+ * Read the full request body as a string, enforcing a byte limit on the
+ * raw bytes before decoding.
+ *
+ * Bytes are accumulated and decoded once at end: decoding per chunk
+ * corrupts multibyte UTF-8 sequences split across chunk boundaries on
+ * native Node streams. String chunks (the Worker shim decodes statefully
+ * upstream) are re-encoded — a lossless round-trip for valid UTF-8.
+ *
+ * On overflow we stop buffering and reject WITHOUT destroying the
+ * request: destroying a native Node request tears down the socket
+ * before the handler can send its JSON 413. The response closes the
+ * connection instead; the remainder of the body is never buffered.
  *
  * @param {IncomingMessage} req
  * @param {number} [maxBytes] - max bytes to buffer (default: Infinity)
@@ -27,19 +37,32 @@
  */
 function readBody(req, maxBytes) {
   const limit = maxBytes || Infinity;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder('utf-8');
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks = [];
     let total = 0;
+    let overflowed = false;
     req.on('data', (chunk) => {
-      total += chunk.length;
+      if (overflowed) return;
+      const bytes = typeof chunk === 'string' ? encoder.encode(chunk) : chunk;
+      total += bytes.length;
       if (total > limit) {
+        overflowed = true;
         reject(new Error('Payload too large'));
-        req.destroy();
         return;
       }
-      data += chunk;
+      chunks.push(bytes);
     });
-    req.on('end', () => resolve(data));
+    req.on('end', () => {
+      const all = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        all.set(c, offset);
+        offset += c.length;
+      }
+      resolve(decoder.decode(all));
+    });
     req.on('error', reject);
   });
 }

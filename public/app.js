@@ -5322,6 +5322,10 @@
        btnFetch.disabled would toggle a node that is no longer in the DOM
        and the visible Fetch button would stay enabled (duplicate submits). */
     var newFetch = btnFetch.cloneNode(true);
+    // cloneNode copies the disabled property: if the dialog was closed
+    // mid-fetch the source button is still disabled, and the clone would
+    // reopen in a dead state. Every opening starts enabled.
+    newFetch.disabled = false;
     var newCancel = btnCancel.cloneNode(true);
     var newClose = btnClose.cloneNode(true);
     btnFetch.parentNode.replaceChild(newFetch, btnFetch);

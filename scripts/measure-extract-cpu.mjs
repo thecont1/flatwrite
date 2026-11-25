@@ -88,8 +88,11 @@ async function postFile(baseUrl, apiKey, filename, bytes) {
       body: form,
       signal: controller.signal,
     });
-    const latencyMs = Math.round((performance.now() - started) * 100) / 100;
+    // Latency must include body-transfer time: headers arriving fast says
+    // nothing about total conversion+transfer cost. The abort timer stays
+    // active until this read completes (cleared in finally).
     const text = await response.text();
+    const latencyMs = Math.round((performance.now() - started) * 100) / 100;
     let body = null;
     try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
     const result = {
@@ -144,7 +147,22 @@ async function main() {
     const bytes = new Uint8Array(await readFile(path.join(CORPUS_DIR, filename)));
     const runs = [];
     for (let run = 1; run <= args.runs; run += 1) {
-      const outcome = await postFile(baseUrl, args.apiKey, filename, bytes);
+      // /extract enforces a 30/min per-IP budget. A 429 is backpressure,
+      // not a measurement: wait out the sliding window and retry the same
+      // run so latency statistics only ever see valid measurement runs.
+      let outcome = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        outcome = await postFile(baseUrl, args.apiKey, filename, bytes);
+        if (outcome.status !== 429) break;
+        process.stderr.write(`${filename} run ${run}: rate limited; waiting 62s for the window\n`);
+        await new Promise((resolve) => setTimeout(resolve, 62_000));
+        outcome = null;
+      }
+      if (!outcome) {
+        // 4+ minutes of continuous limiting means something else is sharing
+        // this IP budget — the measurement is invalid either way.
+        throw new Error(`${filename} run ${run}: still rate limited after 4 windows; aborting measurement`);
+      }
       runs.push({ run, bytes: bytes.byteLength, ...outcome });
       process.stderr.write(
         `${filename} run ${run}/${args.runs}: HTTP ${outcome.status} in ${outcome.latencyMs}ms` +
