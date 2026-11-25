@@ -29,7 +29,10 @@ function assetUrl(relativePath) {
 async function loadManifest() {
   if (!manifestPromise) {
     manifestPromise = (async () => {
-      const response = await fetch(assetUrl('vendor/extract-manifest.json'));
+      // The manifest is the one unversioned asset — always revalidate it so a
+      // deployment upgrade is picked up, while versioned WASM files keep
+      // their immutable caching behavior.
+      const response = await fetch(assetUrl('vendor/extract-manifest.json'), { cache: 'no-cache' });
       if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
       return response.json();
     })();

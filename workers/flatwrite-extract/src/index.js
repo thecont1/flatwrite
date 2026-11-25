@@ -244,9 +244,59 @@ async function handleExtract(req, env, devOrigins) {
     }, cors);
   }
 
+  // Content-Length can be absent or inaccurate, so bound the actual body
+  // bytes before parsing: read the stream with a hard cap (25 MB plus a
+  // small multipart-framing allowance), then re-parse the bounded copy.
+  const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
+  const BODY_CAP = 25 * 1024 * 1024 + MULTIPART_OVERHEAD_ALLOWANCE;
+  let bodyBytes = null;
+  if (req.body) {
+    try {
+      const reader = req.body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > BODY_CAP) {
+          try {
+            const cancelled = reader.cancel();
+            if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
+          } catch {
+            // Best-effort only.
+          }
+          return jsonResponse(413, {
+            error: 'Payload too large (25 MB max)',
+            code: 'PAYLOAD_TOO_LARGE',
+          }, cors);
+        }
+        chunks.push(value);
+      }
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      bodyBytes = merged;
+    } catch {
+      return jsonResponse(400, {
+        error: 'malformed multipart body',
+        code: 'BAD_REQUEST',
+      }, cors);
+    }
+  }
+
   let formData;
   try {
-    formData = await req.formData();
+    const bounded = new Request(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: bodyBytes,
+    });
+    formData = await bounded.formData();
   } catch {
     return jsonResponse(400, {
       error: 'malformed multipart body',
@@ -275,6 +325,16 @@ async function handleExtract(req, env, devOrigins) {
     // isolate; fail the conversion cleanly instead.
     return jsonResponse(500, {
       detail: { error: 'Conversion failed', code: 'CONVERT_FAILED' },
+    }, cors);
+  }
+
+  // formData() buffering means a truthful Content-Length already gated the
+  // upload, but a chunked/inaccurate upload can still slip an oversized file
+  // field through — check the parsed size before paying for the copy.
+  if (typeof file.size === 'number' && file.size > 25 * 1024 * 1024) {
+    return jsonResponse(413, {
+      error: 'Payload too large (25 MB max)',
+      code: 'PAYLOAD_TOO_LARGE',
     }, cors);
   }
 

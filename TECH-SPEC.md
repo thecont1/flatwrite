@@ -34,7 +34,7 @@ The system has four planes:
 
 The defining architectural decision (November 2026 migration): **document conversion never runs on a VM or container.** The previous implementation — a Python/FastAPI service wrapping AnyDoc, pdf-inspector, and RapidOCR on Fly.io — was fully retired and the Fly app destroyed. The conversion engines now ship as WebAssembly compiled from the same Rust cores, pinned to exact versions, vendored into the repository, and executed wherever the work is cheapest:
 
-- Interactive conversion (drag-and-drop, URL import) runs **in the user's browser** — file bytes never transit any server.
+- Interactive conversion runs **in the user's browser**. For locally dropped files, bytes never transit any server at all. URL imports do pass through the server-side `/api/fetch-document` handler — it fetches the remote document and returns the raw bytes — but conversion still runs in the browser and nothing is stored server-side.
 - The public programmatic extract API runs **in-process in a Cloudflare Worker**.
 
 ## 2. Deployment topology
@@ -138,6 +138,8 @@ A staging copy (`flatwrite-extract-staging`, workers.dev-only) exists for pre-pr
 - 25 MB streaming cap, 60 s timeout, 20 req/min/IP rate limit
 - Extension validated against the same `EXTENSIONS` table the browser converter uses
 - Success: raw bytes as `application/octet-stream` with `X-Flatwrite-Filename` (URI-encoded), `X-Flatwrite-Source-Url`, `X-Flatwrite-Source-Content-Type`, `Cache-Control: no-store`. Raw upstream error bodies are never forwarded.
+
+**Residual SSRF consideration — DNS pinning.** Validation resolves each hostname and rejects private results, but the subsequent `fetch()` performs its own resolution, leaving a theoretical time-of-check/time-of-use window for attacker-controlled DNS that alternates responses. Connection-level IP pinning (connecting to the validated address while preserving `Host`/SNI) is not reliably enforceable across the runtimes this handler serves: the Worker `fetch` API exposes no connect-level control at all, and the handler must remain portable. The enforced controls are therefore: deny-by-default private resolution on every hop, manual redirect revalidation, and the bounded response handling above. Deployments with strict egress requirements should additionally enforce network-level egress filtering at the platform layer.
 
 The browser then constructs a `File` from those bytes and runs the exact same local conversion pipeline as drag-and-drop, including frontmatter parsing and title extraction. There is one document model — everything lands in the editor through `setEditorContent()`.
 

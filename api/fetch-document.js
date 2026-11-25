@@ -69,26 +69,81 @@ function getClientIp(req) {
  * not special-case every documented/benchmarking range) but blocks the
  * ranges that matter for SSRF defense-in-depth.
  */
+function isPrivateIpV4Parts(parts) {
+  if (parts.some((p) => !Number.isFinite(p))) return true; // malformed → fail closed
+  if (parts[0] === 0) return true;
+  if (parts[0] === 10) return true;
+  if (parts[0] === 127) return true;
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true; // CGNAT
+  return false;
+}
+
+/**
+ * Expand an IPv6 address into its eight 16-bit groups as numbers.
+ * Handles :: compression and an embedded dotted-decimal IPv4 tail
+ * (e.g. ::ffff:127.0.0.1). Returns null when the shape is invalid.
+ */
+function ipv6Groups(ip) {
+  let input = ip.toLowerCase();
+  let tailGroups = [];
+  const dotIndex = input.indexOf('.');
+  if (dotIndex !== -1) {
+    // Embedded IPv4 tail counts as two groups.
+    const lastColon = input.lastIndexOf(':');
+    if (lastColon === -1) return null;
+    const v4 = input.slice(lastColon + 1).split('.').map(Number);
+    if (v4.length !== 4 || v4.some((p) => !Number.isFinite(p) || p < 0 || p > 255)) return null;
+    tailGroups = [(v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]];
+    input = input.slice(0, lastColon + 1).replace(/:$/, '');
+  }
+  const halves = input.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const groups = [];
+  for (const part of left.concat(right)) {
+    if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+    groups.push(parseInt(part, 16));
+  }
+  if (halves.length === 2) {
+    // "::" fills however many zero groups are missing.
+    const missing = 8 - tailGroups.length - groups.length;
+    if (missing < 0) return null;
+    return left.map((p) => parseInt(p, 16))
+      .concat(new Array(missing).fill(0))
+      .concat(right.map((p) => parseInt(p, 16)))
+      .concat(tailGroups);
+  }
+  if (groups.length + tailGroups.length !== 8) return null;
+  return groups.concat(tailGroups);
+}
+
 function isPrivateIp(ip) {
   if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    if (parts.some((p) => !Number.isFinite(p))) return true; // malformed → fail closed
-    if (parts[0] === 0) return true;
-    if (parts[0] === 10) return true;
-    if (parts[0] === 127) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true; // CGNAT
-    return false;
+    return isPrivateIpV4Parts(ip.split('.').map(Number));
   }
   if (net.isIPv6(ip)) {
-    const lower = ip.toLowerCase();
-    if (lower === '::1' || lower === '::') return true;
-    if (lower.startsWith('fe80:')) return true; // link-local
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local fc00::/7
-    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPrivateIp(mapped[1]);
+    const groups = ipv6Groups(ip);
+    if (!groups) return true; // malformed → fail closed
+    const allZero = groups.every((g) => g === 0);
+    if (allZero) return true; // :: unspecified
+    if (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) return true; // ::1 loopback
+    // Link-local fe80::/10 — covers fe80 through febf numerically.
+    if (groups[0] >= 0xfe80 && groups[0] <= 0xfebf) return true;
+    // Unique local fc00::/7.
+    if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    // IPv4-mapped ::ffff:a.b.c.d — regardless of whether the source
+    // spelled the tail dotted or as hex groups, apply the IPv4 rules
+    // to the final 32 bits.
+    if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
+      return isPrivateIpV4Parts([
+        groups[6] >> 8, groups[6] & 0xff,
+        groups[7] >> 8, groups[7] & 0xff,
+      ]);
+    }
     return false;
   }
   return true; // unrecognized shape → fail closed
@@ -196,16 +251,36 @@ const MIME_TO_EXTENSION = {
 function guessFilename(parsedUrl, contentType) {
   const fromPath = parsedUrl.pathname.split('/').pop() || '';
   if (fromPath && fromPath.includes('.')) {
+    let decoded = fromPath;
     try {
-      return decodeURIComponent(fromPath);
+      decoded = decodeURIComponent(fromPath);
     } catch {
-      return fromPath;
+      // Keep the undecoded form.
+    }
+    // Prefer the path filename only when its extension is one the browser
+    // converter can actually handle. An unsupported or misleading extension
+    // (e.g. /download.exe serving a PDF) falls through to the Content-Type
+    // mapping first, exactly like a path with no extension at all.
+    const pathExt = filenameExtension(decoded);
+    if (pathExt && Object.prototype.hasOwnProperty.call(EXTENSIONS, pathExt)) {
+      return decoded;
     }
   }
   const mime = (contentType || '').split(';')[0].trim().toLowerCase();
   const ext = MIME_TO_EXTENSION[mime];
   if (ext) {
     return 'document' + ext;
+  }
+  // Neither the path nor the Content-Type yields a supported type. If the
+  // path at least named a file, return it anyway so the allowlist check
+  // below produces the informative 415 unsupported-extension response —
+  // same outcome whether or not the request was redirected.
+  if (fromPath && fromPath.includes('.')) {
+    try {
+      return decodeURIComponent(fromPath);
+    } catch {
+      return fromPath;
+    }
   }
   return null;
 }
@@ -227,6 +302,20 @@ function responseHeader(response, name) {
 
 function httpError(status, message) {
   return Object.assign(new Error(message), { status });
+}
+
+// Release the upstream connection without consuming the body. Matters for
+// every path where we reject before reading: non-success responses, declared
+// oversized content, and redirect hops we refuse to follow.
+function cancelUpstreamBody(upstream) {
+  if (upstream && upstream.body && typeof upstream.body.cancel === 'function') {
+    try {
+      const cancelled = upstream.body.cancel();
+      if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
+    } catch {
+      // Best-effort only.
+    }
+  }
 }
 
 async function readBodyWithCap(upstream) {
@@ -280,9 +369,11 @@ async function fetchDocumentBytes(validatedInitialUrl, signal) {
     if (REDIRECT_STATUSES.has(upstream.status)) {
       const location = responseHeader(upstream, 'location');
       if (!location) {
+        cancelUpstreamBody(upstream);
         throw httpError(502, 'Source URL returned a redirect without a Location header');
       }
       if (redirectHops >= MAX_REDIRECT_HOPS) {
+        cancelUpstreamBody(upstream);
         throw httpError(502, 'Source URL returned too many redirects');
       }
       redirectHops += 1;
@@ -291,28 +382,24 @@ async function fetchDocumentBytes(validatedInitialUrl, signal) {
       try {
         nextUrl = new URL(location, currentUrl).toString();
       } catch {
+        cancelUpstreamBody(upstream);
         throw httpError(502, 'Source URL returned an invalid redirect');
       }
       const validated = await validateImportUrl(nextUrl);
       if (!validated.ok) {
+        cancelUpstreamBody(upstream);
         throw httpError(400, validated.error);
       }
       currentUrl = validated.url;
 
       // Redirect responses normally have no meaningful body, but cancelling is
       // important for unusual upstreams and keeps the socket reusable in Node.
-      if (upstream.body && typeof upstream.body.cancel === 'function') {
-        try {
-          const cancelled = upstream.body.cancel();
-          if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
-        } catch {
-          // Best-effort only.
-        }
-      }
+      cancelUpstreamBody(upstream);
       continue;
     }
 
     if (!upstream.ok) {
+      cancelUpstreamBody(upstream);
       throw httpError(
         upstream.status === 404 ? 404 : 502,
         `Source URL returned ${upstream.status}`,
@@ -321,6 +408,7 @@ async function fetchDocumentBytes(validatedInitialUrl, signal) {
 
     const contentLength = parseInt(responseHeader(upstream, 'content-length') || '', 10);
     if (Number.isFinite(contentLength) && contentLength > MAX_DOCUMENT_BYTES) {
+      cancelUpstreamBody(upstream);
       throw httpError(413, 'Document is too large (25 MB max)');
     }
 
@@ -388,9 +476,19 @@ module.exports = async function handleFetchDocument(req, res) {
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
     const status = err.status || (timedOut ? 504 : 502);
-    const error = timedOut
-      ? 'Import timed out. The document may be too large or the server too slow.'
-      : (err.message || 'Could not fetch the URL.');
+    let error;
+    if (timedOut) {
+      error = 'Import timed out. The document may be too large or the server too slow.';
+    } else if (err.status) {
+      // Deliberate httpError messages are authored here and safe to relay.
+      error = err.message || 'Could not fetch the URL.';
+    } else {
+      // Unexpected transport/runtime failures can embed internal detail
+      // (resolver chains, socket errors, upstream implementation quirks).
+      // Log the real cause server-side; the client gets a stable message.
+      console.error('[fetch-document] upstream fetch failure:', err);
+      error = 'Could not fetch the URL.';
+    }
     return json(res, status, { ok: false, error });
   } finally {
     clearTimeout(timeout);

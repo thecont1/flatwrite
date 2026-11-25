@@ -260,12 +260,15 @@ describe("api/fetch-document.js", () => {
     expect(JSON.stringify(res._body)).not.toContain("secret internal error page");
   });
 
-  test("upstream network failure (fetch throws) → 502", async () => {
+  test("upstream network failure (fetch throws) → 502 with sanitized message", async () => {
     mockPublicDns();
     mockFetchHandler(async () => { throw new Error("network down"); });
     const res = await invoke({ url: "https://example.com/data.csv" });
     expect(res._status).toBe(502);
-    expect(res._body.error).toBe("network down");
+    // Transport exceptions can embed internal detail, so the client gets a
+    // stable public message that must not contain the thrown text.
+    expect(res._body.error).toBe("Could not fetch the URL.");
+    expect(JSON.stringify(res._body)).not.toContain("network down");
   });
 
   test("upstream timeout (AbortError) → 504", async () => {
@@ -464,12 +467,16 @@ describe("api/fetch-document.js", () => {
     mockPublicDns();
     mockSimpleDocumentFetch();
     const ip = "198.51.100.5";
-    let lastStatus = 200;
+    const statuses = [];
     for (let i = 0; i < 21; i++) {
       const res = await invoke({ url: "https://example.com/data.csv" }, { ip });
-      lastStatus = res._status;
+      statuses.push(res._status);
     }
-    expect(lastStatus).toBe(429);
+    // Each of the first 20 requests succeeds; only the 21st is rejected.
+    // Asserting per-request catches regressions where earlier requests are
+    // throttled or the cap drifts.
+    expect(statuses.slice(0, 20)).toEqual(new Array(20).fill(200));
+    expect(statuses[20]).toBe(429);
   });
 
   test("successful responses include rate-limit headers", async () => {

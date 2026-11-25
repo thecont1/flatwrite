@@ -371,7 +371,10 @@ const goldenEngines = {
 
 // Manually inspected output differences caused by intentionally newer engines.
 // These are improvements (or, for PDF, the planned newer pdf-inspector output
-// with better semantic markup), not unexplained drift.
+// with better semantic markup), not unexplained drift. The exact new-engine
+// output for each is stored in test/fixtures/extract-expected/ so upgrades
+// that change output fail loudly for deliberate re-inspection rather than
+// passing on a nonempty check.
 const KNOWN_DIFFS = {
   'pdf-text.pdf': 'pdf-inspector 1.26.1 output: preserves strike/footnote markup and corrects RTL text ordering; layout text flow differs from the legacy service',
   'xlsx.xlsx': 'anydoc 0.2.4 renders spreadsheet display formatting (15.5%, $1,234.50, grouped thousands)',
@@ -413,7 +416,8 @@ describe('golden parity corpus', () => {
       const result = await convert({ bytes, filename: golden.file, engines: goldenEngines });
       expect(result.metadata).toEqual(golden.body.metadata);
       if (KNOWN_DIFFS[golden.file]) {
-        expect(result.markdown.length).toBeGreaterThan(0);
+        const expected = await readFile(`test/fixtures/extract-expected/${golden.file}.md`, 'utf8');
+        expect(result.markdown).toBe(expected);
         knownDiffs.push(golden.file);
       } else {
         expect(result.markdown).toBe(golden.body.markdown);

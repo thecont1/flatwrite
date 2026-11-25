@@ -261,6 +261,7 @@ paths:
         `POST /api/fetch-document` (SSRF-guarded fetch of raw bytes) plus
         browser-local conversion. This endpoint remains only to give old
         clients a machine-readable retirement response.
+      security: []
       servers:
         - url: https://flatwrite.md
       responses:
@@ -286,6 +287,10 @@ paths:
         manually (maximum 5 hops). The upstream timeout is 60 seconds and the
         downloaded document is capped at 25 MB. Raw upstream error bodies are
         never forwarded.
+
+        This endpoint is rate-limited but unauthenticated: callers never
+        present `X-Api-Key` or `X-Mcp-Token` for it.
+      security: []
       servers:
         - url: https://flatwrite.md
       requestBody:
@@ -463,8 +468,22 @@ paths:
           description: Upstream Morph failure
   /mcp-token:
     post:
-      tags: [assist]
-      summary: Mint short-lived browser token for Assist
+      tags: [assist, extract]
+      summary: Mint short-lived browser token (Assist or Extract)
+      description: |
+        Browser clients obtain short-lived HMAC tokens here instead of using
+        the server-to-server `X-Api-Key`. OpenAPI cannot repeat a path key,
+        so this single operation documents both independent minting services:
+
+        - `POST https://assist.flatwrite.md/mcp-token` — mints a token with
+          `scope: assist`, accepted by the Assist API.
+        - `POST https://extract.flatwrite.md/mcp-token` — mints a token with
+          `scope: mcp`, accepted by the Extract API as `X-Mcp-Token`.
+
+        Both validate the request `Origin` against the trusted-origin
+        allowlist, rate-limit per caller IP, and return the same response
+        contract shown below. Tokens are host-scoped: an assist token is not
+        valid for extract and vice versa.
       security: []
       servers:
         - url: https://assist.flatwrite.md
@@ -478,7 +497,7 @@ paths:
                 properties:
                   token: { type: string }
                   expiresAt: { type: integer }
-                  scope: { type: string, enum: [assist] }
+                  scope: { type: string, enum: [assist, mcp] }
         '403':
           description: Origin not allowed
   /health:

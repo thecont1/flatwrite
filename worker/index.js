@@ -166,7 +166,7 @@ function toWorkerResponse(state) {
  * and 'end' events and counts chunk.length as bytes; TextDecoder chunks
  * guarantee string.length === byte count for UTF-8 input.
  */
-function makeRequestShim(request) {
+function makeRequestShim(request, maxBodyBytes) {
   const url = new URL(request.url);
   const headers = {};
   for (const [name, value] of request.headers.entries()) {
@@ -181,31 +181,68 @@ function makeRequestShim(request) {
     (headers['x-forwarded-for'] ? String(headers['x-forwarded-for']).split(',')[0].trim() : undefined) ||
     '0.0.0.0';
 
-  /* The Worker Request body can only be consumed once, but readBody()
-     registers BOTH 'data' and 'end' listeners — read the body lazily once,
-     cache it, and replay to whichever listeners attach. */
-  let bodyPromise = null;
-  function readBodyText() {
-    if (!bodyPromise) bodyPromise = request.text().catch(() => '');
-    return bodyPromise;
+  const listeners = { data: [], end: [], error: [] };
+  let pumped = false;
+
+  /* Stream the body through the request stream interface, enforcing the byte
+     cap on raw chunks BEFORE decoding: an oversized body is cancelled after
+     the first offending chunk rather than buffered whole, and handlers see
+     the same 'Payload too large' rejection they produce on Node. Chunks are
+     decoded with a streaming TextDecoder so multibyte characters split
+     across chunk boundaries decode correctly. The pump starts lazily once
+     readBody() has registered its listeners. */
+  async function pump() {
+    if (pumped) return;
+    pumped = true;
+    try {
+      if (request.body) {
+        const reader = request.body.getReader();
+        const decoder = new TextDecoder();
+        let total = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          total += value.byteLength;
+          if (Number.isFinite(maxBodyBytes) && total > maxBodyBytes) {
+            try {
+              const cancelled = reader.cancel();
+              if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(() => {});
+            } catch {
+              // Best-effort only.
+            }
+            for (const cb of listeners.error) cb(new Error('Payload too large'));
+            return;
+          }
+          const text = decoder.decode(value, { stream: true });
+          if (text) for (const cb of listeners.data) cb(text);
+        }
+        const tail = decoder.decode();
+        if (tail) for (const cb of listeners.data) cb(tail);
+      }
+    } catch {
+      // A body that cannot be read at all behaves like an empty one —
+      // matches the previous shim's tolerance.
+    }
+    for (const cb of listeners.end) cb();
   }
 
-  let bodyDelivered = false;
   return {
     method: request.method,
     url: url.pathname + url.search,
     headers,
     socket: { remoteAddress: ip },
+    // readBody() destroys the request on overflow; a no-op keeps that
+    // contract safe — real cancellation already happens inside pump().
+    destroy() {},
 
     on(event, cb) {
-      if (event === 'data') {
-        if (bodyDelivered) return;
-        bodyDelivered = true;
-        readBodyText().then((text) => { if (text) cb(text); });
-      } else if (event === 'end') {
-        readBodyText().then(() => cb());
+      if (event === 'data' || event === 'end' || event === 'error') {
+        listeners[event].push(cb);
+        // 'end' alone never fires without a consumer on real Node streams;
+        // starting on data/error registration matches that ordering.
+        if (event !== 'end') pump();
       }
-      // 'error' and others: never fired for these handlers.
     },
   };
 }
@@ -326,23 +363,22 @@ export default {
     if (pathname === '/api/render') {
       if (request.method === 'POST') {
         const { res, state } = makeResponseShim();
-        await handleRender(makeRequestShim(request), res);
+        await handleRender(makeRequestShim(request, 512 * 1024), res);
         return toWorkerResponse(state);
       }
       return Response.json({ error: 'POST only' }, { status: 405 });
     }
     if (pathname === '/api/fetch-document') {
-      if (request.method === 'POST') {
-        const { res, state } = makeResponseShim();
-        await handleFetchDocument(makeRequestShim(request), res);
-        return toWorkerResponse(state);
-      }
-      return Response.json({ error: 'POST only' }, { status: 405 });
+      // All methods go through the canonical handler so the documented
+      // 405 body shape is produced by the handler itself, not the router.
+      const { res, state } = makeResponseShim();
+      await handleFetchDocument(makeRequestShim(request, 8 * 1024), res);
+      return toWorkerResponse(state);
     }
     if (pathname === '/api/import-url') {
       if (request.method === 'POST') {
         const { res, state } = makeResponseShim();
-        await handleImportUrl(makeRequestShim(request), res);
+        await handleImportUrl(makeRequestShim(request, 8 * 1024), res);
         return toWorkerResponse(state);
       }
       return Response.json({ error: 'POST only' }, { status: 405 });

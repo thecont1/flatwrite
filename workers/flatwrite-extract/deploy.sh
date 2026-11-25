@@ -69,6 +69,14 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+# Validate the resolved value itself — an empty `--env ""` or a typo like
+# `--env prod` must never reach wrangler, where it would create or deploy
+# to an unintended environment.
+if [ "$ENV_NAME" != "production" ] && [ "$ENV_NAME" != "staging" ]; then
+  echo "error: invalid environment '$ENV_NAME' (must be production|staging)" >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")/../.."
 REPO_ROOT="$(pwd)"
 WORKER_DIR="$REPO_ROOT/workers/flatwrite-extract"

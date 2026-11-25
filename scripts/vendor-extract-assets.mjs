@@ -74,10 +74,17 @@ async function main() {
     tesseractDir,
   );
 
+  // The browser loader's getCore picks exactly one single-file `.wasm.js`
+  // build per SIMD support tier, and local-extract.js hardcodes
+  // OEM.LSTM_ONLY, so only the three `-lstm.wasm.js` builds are ever
+  // fetched. The standalone `.js`/`.wasm` pairs (~9 MB) are dead weight.
   const coreSourceDir = path.join(ROOT, 'node_modules', 'tesseract.js-core');
   const coreFileNames = (await readdir(coreSourceDir))
-    .filter((file) => file.startsWith('tesseract-core') && file.includes('lstm'))
+    .filter((file) => /^tesseract-core(-relaxedsimd|-simd)?-lstm\.wasm\.js$/.test(file))
     .sort();
+  if (coreFileNames.length !== 3) {
+    throw new Error(`expected 3 lstm .wasm.js core builds, found: ${coreFileNames.join(', ')}`);
+  }
   const coreFiles = await copyNamed(coreFileNames, coreSourceDir, tesseractDir);
 
   // createWorker('eng', OEM.LSTM_ONLY) uses the smaller LSTM-only traineddata

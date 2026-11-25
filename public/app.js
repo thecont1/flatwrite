@@ -5109,18 +5109,21 @@
      * legacy retry UX — neither value is sent to the server.
      */
     function addBrowserRetry(url) {
+      // Both paths through doImportWebpage are the same server-fetch +
+      // browser-convert flow; the control is a plain retry, not a distinct
+      // browser-rendering mode.
       var retry = document.createElement("button");
       retry.type = "button";
       retry.className = "btn btn-mode load-url-try-browser";
-      retry.textContent = "Try browser rendering";
-      retry.addEventListener("click", function () { doImportWebpage(url, "browser"); });
+      retry.textContent = "Retry";
+      retry.addEventListener("click", function () { doImportWebpage(url, "auto"); });
       status.appendChild(document.createTextNode(" "));
       status.appendChild(retry);
     }
 
     async function doImportWebpage(url, method) {
-      method = method === "browser" ? "browser" : "auto";
-      status.textContent = method === "browser" ? "Trying browser rendering…" : "Fetching document…";
+      method = "auto";
+      status.textContent = "Fetching document…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
       var thisGen = beginImport();
@@ -5228,6 +5231,11 @@
       var url = urlInput.value.trim();
       if (!url) { status.textContent = "Enter a URL"; status.className = "load-url-status error"; return; }
 
+      // Capture the import generation when the request starts. If the user
+      // kicks off a newer import while this probe is in flight, the stale
+      // fallback must not supersede it.
+      var fetchGen = currentImportGeneration;
+
       status.textContent = "Loading…";
       status.className = "load-url-status loading";
       btnFetch.disabled = true;
@@ -5284,6 +5292,7 @@
           // while conversion remains browser-local. Plain markdown/text stays
           // direct-only because /api/fetch-document intentionally allows only
           // extract-core conversion types.
+          if (!isCurrentImport(fetchGen)) return;
           var fallbackRoute = window.FlatwriteExtractDrop
             ? window.FlatwriteExtractDrop.routeDroppedFile(filename)
             : routeDroppedFileInline(filename);

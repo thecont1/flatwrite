@@ -395,6 +395,13 @@ export async function convert({ bytes: inputBytes, filename, engines = {}, allow
       if (engines.pdf && typeof engines.pdf.processPdf === 'function') {
         try {
           const result = await engines.pdf.processPdf(bytes);
+          // NOTE: pagesNeedingOcr is deliberately NOT enforced as a hard
+          // rejection here. The detector flags scanned pages even in
+          // documents the legacy service converted fine (corpus pdf-text.pdf
+          // is Mixed with page 2 flagged, yet golden-locked as a full-200
+          // conversion), so rejecting on any flagged page would regress
+          // golden parity. Fully scanned/image-only PDFs yield no usable
+          // markdown here and reach NEEDS_OCR through the AnyDoc fallback.
           if (result && typeof result.markdown === 'string' && result.markdown.trim()) {
             return resultPayload(result.markdown, typeInfo, filename, sizeBytes);
           }

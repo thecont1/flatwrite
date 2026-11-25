@@ -51,16 +51,27 @@
     return makeError(500, 'CONVERT_FAILED', 'Conversion failed');
   }
 
+  var extractCoreRetryCount = 0;
+
   function loadExtractCore() {
     if (!extractCorePromise) {
-      extractCorePromise = import(assetUrl('extract-core.js'));
+      // A failed dynamic import can be cached by the browser's module map,
+      // so retries use a cache-busting query string to bypass it. The query
+      // is absent on the first attempt to preserve normal caching.
+      var suffix = extractCoreRetryCount > 0 ? '?retry=' + extractCoreRetryCount : '';
+      extractCorePromise = import(assetUrl('extract-core.js' + suffix));
+      extractCorePromise.catch(function () {
+        extractCorePromise = null;
+        extractCoreRetryCount += 1;
+      });
     }
     return extractCorePromise;
   }
 
   function loadManifest() {
     if (!manifestPromise) {
-      manifestPromise = fetch(assetUrl('vendor/extract-manifest.json'))
+      // Unversioned manifest: always revalidate; versioned assets keep immutable caching.
+      manifestPromise = fetch(assetUrl('vendor/extract-manifest.json'), { cache: 'no-cache' })
         .then(function (response) {
           if (!response.ok) throw new Error('manifest HTTP ' + response.status);
           return response.json();
@@ -97,6 +108,8 @@
     return tesseractScriptPromise;
   }
 
+  var TESSERACT_STARTUP_TIMEOUT_MS = 60000;
+
   function loadTesseractWorker() {
     if (!tesseractWorkerPromise) {
       tesseractWorkerPromise = Promise.all([loadTesseractScript(), loadManifest()])
@@ -106,13 +119,45 @@
           // v7 otherwise defaults to jsdelivr for worker/core/lang. Every URL
           // below is same-origin and versioned; cacheMethod write only uses
           // IndexedDB after the vendored traineddata has been fetched once.
-          return Tesseract.createWorker('eng', 1, {
+          var workerPromise = Tesseract.createWorker('eng', 1, {
             workerPath: assetUrl(manifest.tesseract.worker),
             corePath: assetUrl(manifest.tesseract.corePath),
             langPath: assetUrl(manifest.tesseract.langPath),
             cacheMethod: 'write',
             workerBlobURL: true,
             gzip: true,
+          });
+          // createWorker can hang indefinitely when the core WASM never
+          // reports back: race it against a startup deadline, and on any
+          // failure terminate the half-initialized worker so a later import
+          // retries from a clean slate.
+          return new Promise(function (resolve, reject) {
+            var settled = false;
+            var timer = setTimeout(function () {
+              if (settled) return;
+              settled = true;
+              workerPromise.then(function (w) {
+                if (w && typeof w.terminate === 'function') w.terminate().catch(function () {});
+              }).catch(function () {});
+              reject(new Error('OCR engine startup timed out'));
+            }, TESSERACT_STARTUP_TIMEOUT_MS);
+            workerPromise.then(function (w) {
+              if (settled) {
+                if (w && typeof w.terminate === 'function') w.terminate().catch(function () {});
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              resolve(w);
+            }).catch(function (err) {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              workerPromise.then(function (w) {
+                if (w && typeof w.terminate === 'function') w.terminate().catch(function () {});
+              }).catch(function () {});
+              reject(err instanceof Error ? err : new Error('OCR engine failed to start'));
+            });
           });
         });
       tesseractWorkerPromise.catch(function () { tesseractWorkerPromise = null; });
