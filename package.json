@@ -8,10 +8,11 @@
     "dev": "bunx serve .",
     "start": "node public/server.js",
     "test": "bun test ./test/*.test.js",
+    "vendor": "bun scripts/vendor-extract-assets.mjs",
+    "vercel-build": "node scripts/vendor-extract-assets.mjs",
     "test:e2e": "playwright test",
     "test:e2e:live-import": "FW_E2E_LIVE_IMPORT=1 playwright test test/e2e/import-url.spec.js",
-    "test:py": "cd services/extract && uv run --project . pytest ../../test/extract",
-    "test:all": "bun test ./test/*.test.js && cd services/extract && uv run --project . pytest ../../test/extract",
+    "test:all": "bun test ./test/*.test.js",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
     "bruno:import": "rm -rf bruno/.openapi-import && mkdir -p bruno && bru import openapi --source openapi.yaml --output bruno/.openapi-import --collection-name \"FlatWrite API\" --collection-format bru --group-by tags",
@@ -28,10 +29,15 @@
     "wrangler": "^4.104.0"
   },
   "dependencies": {
+    "@firecrawl/anydoc-wasm": "0.2.4",
+    "@firecrawl/pdf-inspector-wasm": "1.26.1",
+    "@tesseract.js-data/eng": "1.0.0",
     "chrome-devtools-mcp": "^1.4.0",
     "marked": "14.1.4",
     "sanitize-html": "^2.18.0",
-    "spectrum-ts": "^5.2.0"
+    "spectrum-ts": "^5.2.0",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0"
   },
   "overrides": {
     "@azure/msal-node": "^7.1.0",

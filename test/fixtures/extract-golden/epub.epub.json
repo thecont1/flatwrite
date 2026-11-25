@@ -1,0 +1,13 @@
+{
+  "file": "epub.epub",
+  "status": 200,
+  "body": {
+    "markdown": "# Fixture Book\n\n# Fixture Book\n\nanydoc tests\n\n<a id=\"epub-text-ch001-xhtml-chapter-one\"></a>\n\n# Chapter One\n\nOpening paragraph with **bold**, *italic*, and `code` runs.\n\nA list of things:\n\n1. first\n\n2. second\n\n   - nested bullet\n\n3. third\n\nSee [Chapter Two](#epub-text-ch002-xhtml-chapter-two) for the table, or jump straight to [the marked paragraph](#epub-text-ch002-xhtml-markpoint).\n\ntiny dot tiny dot\n\n<a id=\"epub-text-ch002-xhtml-chapter-two\"></a>\n\n# Chapter Two\n\n| Name | Qty |\n| --- | --- |\n| Bolts | 12 |\n| Nuts | 30 |\n\n<a id=\"epub-text-ch002-xhtml-markpoint\"></a>This paragraph carries an inline anchor and is not a heading.\n\nBack to [Chapter One](#epub-text-ch001-xhtml-chapter-one).\n\nExternal reference: [example site](https://example.com/ref).\n",
+    "metadata": {
+      "extractionType": "epub-body",
+      "filename": "epub.epub",
+      "fileType": "epub",
+      "sizeBytes": 6167
+    }
+  }
+}

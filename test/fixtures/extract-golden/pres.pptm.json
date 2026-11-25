@@ -1,0 +1,13 @@
+{
+  "file": "pres.pptm",
+  "status": 200,
+  "body": {
+    "markdown": "Deck Title Slide\n\n- Top level point\n\n  - Nested detail\n\n- Second point with emphasis\n\n> Speaker note for the intro slide.\n\nNumbers Slide\n\n| Region | Total |\n| --- | --- |\n| North | 42 |\n\nGrouped shapes below.\n\nInside a group shape.\n\n> Second slide notes mention the table.\n",
+    "metadata": {
+      "extractionType": "powerpoint-notes",
+      "filename": "pres.pptm",
+      "fileType": "powerpoint",
+      "sizeBytes": 15734
+    }
+  }
+}

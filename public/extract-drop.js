@@ -22,16 +22,16 @@
  * The two functions exported here answer two questions:
  *
  *   1. `routeDroppedFile(filename)` — should this dropped file go to
- *      the existing `handleFileUpload` (plain-text path) or to the
- *      new `handleExtractDrop` (multipart /extract path)?
+ *      the existing `handleFileUpload` (plain-text path) or to
+ *      `handleExtractDrop` (browser-local conversion)?
  *
- *   2. `buildExtractFormData(file, filename)` — wraps the raw File in
- *      a FormData with the right field name (`file`), matching the
- *      server contract.
+ *   2. `buildExtractFormData(file, filename)` — legacy multipart helper
+ *      retained for tests and compatibility with the old server contract.
+ *      The interactive browser flow no longer performs a network upload.
  *
  * `app.js` imports these via a script tag (it's not a module) and
- * wires them into the drop event listener. The actual network call
- * lives in `app.js` because it depends on the `setEditorContent`
+ * wires them into the drop event listener. Local conversion is
+ * orchestrated in `app.js` because it depends on the `setEditorContent`
  * and `showToast` functions defined there.
  */
 
@@ -40,7 +40,7 @@
 
   // Plain-text extensions that the existing `handleFileUpload` can
   // read directly via FileReader.readAsText. Anything else goes
-  // through the /extract multipart endpoint.
+  // through browser-local conversion.
   const PLAIN_TEXT_EXTS = new Set(['.md', '.markdown', '.txt']);
   const LOCAL_TABLE_EXTS = new Set(['.csv', '.tsv']);
 
@@ -60,9 +60,9 @@
   }
 
   /**
-   * Wrap a browser File in FormData with the field name the server
-   * contract expects. Kept as a separate helper so the test can
-   * exercise the exact wire shape without a live File.
+   * Wrap a browser File in FormData with the field name the legacy server
+   * contract expected. Kept as a separate helper so the test can exercise
+   * the exact historical wire shape without a live File.
    *
    * @param {Blob} blob
    * @param {string} filename

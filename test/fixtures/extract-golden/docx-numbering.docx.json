@@ -1,0 +1,13 @@
+{
+  "file": "docx-numbering.docx",
+  "status": 200,
+  "body": {
+    "markdown": "1. One-one\n\n2. One-two\n\n   - i) One-two-a roman\n\n   - ii) One-two-b roman\n\n         - Deep bullet\n\n3. One-three\n\nInterruption paragraph.\n\n4. One-four continues the count\n\n1. Two-one independent counter\n\n10. Ten-start via override\n\n- A: Letter-A via numStyleLink\n\n- G) Level replaced and start overridden together\n\nSuppressed numbering paragraph\n\n5. Style-numbered paragraph\n\n1. pStyle-bound level one\n\n   - a. pStyle-bound level two\n\n2. pStyle-bound level one again\n\n## Inherited subheading\n\n**Bold here, and style-false keeps it bold**\n\ntoggled off by a true in the character style\n\ndouble toggle cancels to plain\n\ndirect off wins absolutely\n\n*direct on makes this italic*\n",
+    "metadata": {
+      "extractionType": "word-body",
+      "filename": "docx-numbering.docx",
+      "fileType": "word",
+      "sizeBytes": 2892
+    }
+  }
+}

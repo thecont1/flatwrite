@@ -1,0 +1,13 @@
+{
+  "file": "image-text.png",
+  "status": 200,
+  "body": {
+    "markdown": "QUARTERLYREPORT\n\nRevenue overview and operating highlights\n\n### Summary\n\n- Revenue increased 18 percent year over year\n\n- Enterprise renewals remained above forecast\n\n: Operating margin improved in every region\n\nThe outlook for the next quarter remains positive. Prepared for the executive team\n",
+    "metadata": {
+      "extractionType": "image-ocr",
+      "filename": "image-text.png",
+      "fileType": "image",
+      "sizeBytes": 55780
+    }
+  }
+}

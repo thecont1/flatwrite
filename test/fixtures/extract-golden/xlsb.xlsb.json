@@ -1,0 +1,10 @@
+{
+  "file": "xlsb.xlsb",
+  "status": 500,
+  "body": {
+    "detail": {
+      "error": "Conversion failed",
+      "code": "CONVERSION_FAILED"
+    }
+  }
+}
