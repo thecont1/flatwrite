@@ -2,6 +2,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "flatwrite",
   "main": "worker/index.js",
+  "build": {
+    "command": "bun scripts/vendor-extract-assets.mjs"
+  },
   "compatibility_date": "2026-06-24",
   "observability": {
     "enabled": true
@@ -19,13 +22,13 @@
     "run_worker_first": ["/api/*"]
   },
   // nodejs_compat (compat date >= 2025-04-01 auto-populates process.env with
-  // Worker env vars/secrets) is required by api/render.js, api/import-url.js
-  // and core/*: node:crypto, node:dns, node:net, node:module (createRequire),
-  // plus Buffer. Secrets to set via `wrangler secret put`:
+  // Worker env vars/secrets) is required by api/render.js, api/fetch-document.js,
+  // api/import-url.js and core/*: node:crypto, node:dns, node:net,
+  // node:module (createRequire), plus Buffer. Secrets/vars to configure:
   //   INTERNAL_RENDER_KEY  — HMAC secret for /api/render (same as Vercel)
-  //   EXTRACT_SERVICE_URL  — e.g. https://flatwrite-extract.fly.dev
-  //   INTERNAL_EXTRACT_KEY — HMAC secret for the extract service
   //   DUSTEBIN_BASE_URL    — paste bin base URL for /api/share + /api/s
+  // Conversion is browser-local or in-process in the extract Worker; no
+  // upstream extract-service secrets are used here.
   "compatibility_flags": [
     "nodejs_compat"
   ]
