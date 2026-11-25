@@ -149,8 +149,10 @@ Run after any change to index.html, styles.css, or app.js.
 ## 6. Editor Textarea
 
 ### 6.1 Scrollbars
-- [ ] No visible scrollbar in the textarea (hidden via CSS)
-- [ ] Content is still scrollable (scrollbar-width: none + webkit override)
+- [ ] A slim visible scroll-position indicator appears in the textarea when content overflows
+- [ ] The same indicator appears in View and Read modes when the rendered document overflows
+- [ ] Indicator thumb size and position indicate document progress
+- [ ] Content remains scrollable with mouse wheel, trackpad, keyboard, and indicator dragging
 
 ### 6.2 Corners
 - [ ] Edit mode: rounded top corners (12px), rounded bottom corners (var(--radius-inner))

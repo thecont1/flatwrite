@@ -720,6 +720,8 @@
     positionWidthHandles();
     applyZoom();
     hidePreviewLoader();
+    bindPreviewScrollListener();
+    scheduleDocScrollIndicators();
   }
 
   function onPreviewFrameReady(e) {
@@ -819,6 +821,188 @@
   var widthHandleLeft   = document.getElementById("width-handle-left");
   var widthHandleRight  = document.getElementById("width-handle-right");
   var widthDragOverlay  = document.getElementById("width-drag-overlay");
+
+  /* Document scroll-position indicators. Native scrollbars are OS-dependent
+     (and often overlay only while scrolling), so these slim indicators give a
+     persistent sense of document position in Edit, View, and Read modes. */
+  function createDocScrollIndicator(host) {
+    if (!host) return null;
+    var track = document.createElement("div");
+    var thumb = document.createElement("div");
+    track.className = "doc-scrollbar";
+    thumb.className = "doc-scrollbar-thumb";
+    track.setAttribute("aria-hidden", "true");
+    track.appendChild(thumb);
+    host.appendChild(track);
+    return { track: track, thumb: thumb };
+  }
+
+  function updateDocScrollIndicator(indicator, scrollTop, scrollHeight, clientHeight) {
+    if (!indicator) return;
+    var maxScroll = scrollHeight - clientHeight;
+    var trackHeight = indicator.track.clientHeight;
+    if (!isFinite(maxScroll) || maxScroll <= 1 || clientHeight <= 0 || trackHeight <= 0) {
+      indicator.track.classList.remove("is-visible");
+      return;
+    }
+    var visibleRatio = Math.min(1, clientHeight / scrollHeight);
+    var thumbHeight = Math.max(30, Math.round(trackHeight * visibleRatio));
+    thumbHeight = Math.min(trackHeight, thumbHeight);
+    var ratio = Math.max(0, Math.min(1, scrollTop / maxScroll));
+    var travel = Math.max(0, trackHeight - thumbHeight);
+    indicator.thumb.style.height = thumbHeight + "px";
+    indicator.thumb.style.transform = "translateY(" + Math.round(travel * ratio) + "px)";
+    indicator.track.classList.add("is-visible");
+  }
+
+  var editorScrollIndicator = createDocScrollIndicator(editorWrap);
+  var previewScrollIndicator = createDocScrollIndicator(previewWrap);
+
+  function updateEditorScrollIndicator() {
+    updateDocScrollIndicator(
+      editorScrollIndicator,
+      editor.scrollTop,
+      editor.scrollHeight,
+      editor.clientHeight
+    );
+  }
+
+  function getPreviewScrollMetrics() {
+    if (!previewFrame || !previewFrame.contentDocument) return null;
+    try {
+      var doc = previewFrame.contentDocument;
+      var vivlViewport = doc.getElementById("vivl-viewport");
+      if (vivlViewport) {
+        return {
+          scrollTop: vivlViewport.scrollTop,
+          scrollHeight: vivlViewport.scrollHeight,
+          clientHeight: vivlViewport.clientHeight
+        };
+      }
+      var docEl = doc.documentElement;
+      var body = doc.body;
+      var win = doc.defaultView;
+      return {
+        scrollTop: win ? win.scrollY : docEl.scrollTop,
+        scrollHeight: Math.max(docEl ? docEl.scrollHeight : 0, body ? body.scrollHeight : 0),
+        clientHeight: win ? win.innerHeight : previewFrame.clientHeight
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function updatePreviewScrollIndicator() {
+    var metrics = getPreviewScrollMetrics();
+    if (!metrics) {
+      if (previewScrollIndicator) previewScrollIndicator.track.classList.remove("is-visible");
+      return;
+    }
+    updateDocScrollIndicator(
+      previewScrollIndicator,
+      metrics.scrollTop,
+      metrics.scrollHeight,
+      metrics.clientHeight
+    );
+  }
+
+  function scheduleDocScrollIndicators() {
+    requestAnimationFrame(function () {
+      updateEditorScrollIndicator();
+      updatePreviewScrollIndicator();
+    });
+  }
+
+  function bindPreviewScrollListener() {
+    if (!previewFrame || !previewFrame.contentWindow) return;
+    try {
+      previewFrame.contentWindow.addEventListener("scroll", updatePreviewScrollIndicator, { passive: true });
+      var vivlViewport = previewFrame.contentDocument && previewFrame.contentDocument.getElementById("vivl-viewport");
+      if (vivlViewport) {
+        vivlViewport.addEventListener("scroll", updatePreviewScrollIndicator, { passive: true });
+      }
+    } catch (e) {
+      /* The sandboxed frame can be momentarily unavailable while swapping. */
+    }
+  }
+
+  function setEditorScrollRatio(ratio) {
+    var maxScroll = editor.scrollHeight - editor.clientHeight;
+    if (maxScroll <= 0) return;
+    editor.scrollTop = Math.round(maxScroll * Math.max(0, Math.min(1, ratio)));
+    updateEditorScrollIndicator();
+  }
+
+  function setPreviewScrollRatio(ratio) {
+    if (!previewFrame || !previewFrame.contentDocument) return;
+    ratio = Math.max(0, Math.min(1, ratio));
+    try {
+      var doc = previewFrame.contentDocument;
+      var vivlViewport = doc.getElementById("vivl-viewport");
+      if (vivlViewport) {
+        var vivlMax = vivlViewport.scrollHeight - vivlViewport.clientHeight;
+        if (vivlMax > 0) vivlViewport.scrollTop = Math.round(vivlMax * ratio);
+      } else {
+        var docEl = doc.documentElement;
+        var body = doc.body;
+        var win = doc.defaultView;
+        var scrollHeight = Math.max(docEl ? docEl.scrollHeight : 0, body ? body.scrollHeight : 0);
+        var clientHeight = win ? win.innerHeight : previewFrame.clientHeight;
+        var maxScroll = scrollHeight - clientHeight;
+        if (win && maxScroll > 0) win.scrollTo(0, Math.round(maxScroll * ratio));
+      }
+      lastScrollRatio = ratio;
+      updatePreviewScrollIndicator();
+    } catch (e) {
+      /* Ignore transient access while the preview frame is being replaced. */
+    }
+  }
+
+  function bindDocScrollIndicator(indicator, setRatio) {
+    if (!indicator) return;
+    var drag = null;
+
+    function ratioFromPointer(e) {
+      var trackRect = indicator.track.getBoundingClientRect();
+      var thumbHeight = indicator.thumb.offsetHeight;
+      var travel = trackRect.height - thumbHeight;
+      if (travel <= 0) return 0;
+      var y = e.clientY - trackRect.top - drag.grabOffset;
+      return Math.max(0, Math.min(1, y / travel));
+    }
+
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      drag = null;
+      indicator.track.classList.remove("dragging");
+    }
+
+    indicator.track.addEventListener("pointerdown", function (e) {
+      if (!indicator.track.classList.contains("is-visible")) return;
+      e.preventDefault();
+      var thumbRect = indicator.thumb.getBoundingClientRect();
+      var withinThumb = e.clientY >= thumbRect.top && e.clientY <= thumbRect.bottom;
+      drag = {
+        pointerId: e.pointerId,
+        grabOffset: withinThumb ? e.clientY - thumbRect.top : thumbRect.height / 2
+      };
+      indicator.track.setPointerCapture(e.pointerId);
+      indicator.track.classList.add("dragging");
+      setRatio(ratioFromPointer(e));
+    });
+
+    indicator.track.addEventListener("pointermove", function (e) {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      e.preventDefault();
+      setRatio(ratioFromPointer(e));
+    });
+
+    indicator.track.addEventListener("pointerup", endDrag);
+    indicator.track.addEventListener("pointercancel", endDrag);
+  }
+
+  bindDocScrollIndicator(editorScrollIndicator, setEditorScrollRatio);
+  bindDocScrollIndicator(previewScrollIndicator, setPreviewScrollRatio);
 
   /* ==========================================================================
      Tab bubble alignment — sync export-actions top with textarea
@@ -1708,6 +1892,7 @@
       bindEvents();
       requestAnimationFrame(syncExportActionsTop);
       updateCharCount();
+      scheduleDocScrollIndicators();
       /* Apply restored mode (may differ from initial "edit") */
       if (mode !== "edit") setMode(mode);
     }
@@ -2108,12 +2293,19 @@
     var text = (button.textContent || "").replace(/\s+/g, " ").trim();
     if (button.classList.contains("engine-btn")) return "Render with " + (text || aria || title);
     if (button.classList.contains("surface-btn")) {
-      if (button.dataset.surface === "app" && !APP_SURFACE_EXPERIMENT) {
-        return "App surface — coming soon";
+      if (button.dataset.surface === "doc") {
+        return "Write, style, export, and share documents";
       }
-      return "Use the " + text + " surface";
+      if (button.dataset.surface === "app") {
+        return APP_SURFACE_EXPERIMENT
+          ? "Prototype app interfaces with components"
+          : "Prototype app interfaces — coming soon";
+      }
+      return "Choose the working surface";
     }
-    if (button.classList.contains("font-dropdown-item")) return "Use " + text + " as the document typeface";
+    /* Font names already preview their own typeface; a tooltip repeating the
+       same name covers neighboring choices while the menu is open. */
+    if (button.classList.contains("font-dropdown-item")) return "";
     if (button.classList.contains("fw-dropdown-item")) return "Use the " + text + " component framework";
     if (button.classList.contains("comp-btn")) return "Insert the " + text + " component";
     if (button.classList.contains("assist-mode")) return "Use the " + text + " assist mode";
@@ -2572,7 +2764,13 @@
     var toolbarCenter = document.querySelector(".toolbar-center");
     function checkToolbarOverflow() {
       if (!toolbarCenter) return;
-      if (toolbarCenter.scrollWidth > toolbarCenter.clientWidth + 2) {
+      /* Hidden inactive toolbars are absolutely positioned during the slide
+         transition and can inflate scrollWidth. Measure only the active one. */
+      var activeToolbar = null;
+      if (mode === "edit") activeToolbar = toolbarCenter.querySelector(".md-toolbar");
+      if (mode === "preview") activeToolbar = toolbarCenter.querySelector(".typo-controls");
+      var contentWidth = activeToolbar ? activeToolbar.scrollWidth : 0;
+      if (contentWidth > toolbarCenter.clientWidth + 2) {
         toolbarCenter.classList.remove("no-overflow");
       } else {
         toolbarCenter.classList.add("no-overflow");
@@ -2580,6 +2778,15 @@
     }
     if (toolbarCenter) {
       requestAnimationFrame(checkToolbarOverflow);
+      /* Desktop mouse wheels are vertical by default; translate that input so
+         the flexed single-row toolbar remains usable when it overflows. */
+      toolbarCenter.addEventListener("wheel", function (e) {
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        if (toolbarCenter.scrollWidth <= toolbarCenter.clientWidth + 2) return;
+        e.preventDefault();
+        var scale = e.deltaMode === 1 ? 16 : 1;
+        toolbarCenter.scrollLeft += e.deltaY * scale;
+      }, { passive: false });
     }
 
     /* Surface mode toggle (Doc | App) */
@@ -2734,7 +2941,11 @@
       suppressAutosave = false;
       scheduleAutosave();
       updateCharCount();
+      updateEditorScrollIndicator();
     });
+
+    editor.addEventListener("scroll", updateEditorScrollIndicator, { passive: true });
+    window.addEventListener("resize", scheduleDocScrollIndicators);
 
     editor.addEventListener("keydown", function (e) {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
@@ -2978,6 +3189,7 @@
       }
       if (e.data && e.data.type === "scroll") {
         lastScrollRatio = e.data.ratio;
+        updatePreviewScrollIndicator();
       }
       if (e.data && e.data.type === "iframe-pointerdown") {
         closeFontDropdown();
@@ -3801,7 +4013,9 @@
         // continuous gradient — no tile boundary, no seams. The stripe
         // thickness scales with the iframe height (~40 stripes per 1280px).
         + '<style id="_fw_vivl_shell">' + stripePlaceholderCss()
-        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0!important;outline:0.8px solid #000!important;outline-offset:-0.8px!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}</style>'
+        + 'body{background:transparent!important;}#vivl-viewport{width:100%;height:100%;overflow:auto;background:transparent;}[data-vivliostyle-page-container]{border:0!important;outline:0.8px solid #000!important;outline-offset:-0.8px!important;box-sizing:border-box!important;background:#fff!important;box-shadow:none!important;}'
+        + '#vivl-viewport::-webkit-scrollbar{display:none}#vivl-viewport{scrollbar-width:none;-ms-overflow-style:none}'
+        + '</style>'
         + '<style id="_fw_document_css">' + docCss + '</style>'
         + '</head><body><div id="vivl-viewport"></div>'
         + '<script type="module">'
@@ -4441,8 +4655,13 @@
         }
       }
     }
-    /* Re-align tab bubble after mode switch (toolbar height may change) */
-    requestAnimationFrame(syncExportActionsTop);
+    /* Re-align tab bubble and overflow affordance after mode switches. */
+    requestAnimationFrame(function () {
+      syncExportActionsTop();
+      checkToolbarOverflow();
+      updateEditorScrollIndicator();
+      updatePreviewScrollIndicator();
+    });
     scheduleAutosave();
   }
 

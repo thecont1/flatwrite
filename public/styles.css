@@ -290,7 +290,7 @@ body {
 .sidebar-divider {
   border: none;
   border-top: 1px solid rgba(180, 160, 200, 0.25);
-  margin: var(--space-4) 0;
+  margin: var(--space-5) 0;
 }
 
 /* ---------- Sidebar share section (mobile only) ---------- */
@@ -599,7 +599,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-2);
 }
 
 /* ---------- Engine selector (sidebar) ---------- */
@@ -823,26 +823,37 @@ body {
 .typo-controls {
   display: flex;
   flex-direction: row;
-  gap: var(--space-2);
+  gap: 2px;
   align-items: center;
   flex-shrink: 0;
   white-space: nowrap;
 }
 
+.typo-stepper,
+.typo-stepper-buttons {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.typo-stepper {
+  gap: 2px;
+}
+
 .typo-label {
   font-family: var(--font-body);
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
   white-space: nowrap;
   margin-right: 2px;
 }
 
 .typo-btn {
-  width: 50px;
-  height: 50px;
-  min-width: 50px;
-  min-height: 50px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -873,7 +884,7 @@ body {
   width: 1px;
   height: 22px;
   background: rgba(180, 160, 200, 0.3);
-  margin: 0 var(--space-1);
+  margin: 0 var(--space-2);
   flex-shrink: 0;
 }
 
@@ -889,7 +900,7 @@ body {
   cursor: pointer;
   transition: border-color 0.2s;
   appearance: auto;
-  max-width: 150px;
+  max-width: 120px;
 }
 
 .typo-font-picker:focus {
@@ -1090,7 +1101,7 @@ body {
 .export-actions {
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2vw, 20px);
+  gap: var(--space-2);
   position: absolute;
   /* top: set dynamically by JS to align with textarea */
   left: 100%;
@@ -1113,7 +1124,7 @@ body {
   box-shadow: none;
   /* Responsive padding — shrinks with viewport so the tab stays tucked
      inside the canvas glass edge instead of spilling off-screen. */
-  padding: clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(7px, 0.9vw, 16px) clamp(6px, 0.75vw, 12px);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-2);
 }
 
 .export-icon {
@@ -1122,18 +1133,44 @@ body {
   color: #1a1a1a;
   opacity: 1;
   cursor: pointer;
-  padding: clamp(2px, 0.4vw, 6px);
+  padding: var(--space-1);
+  border-radius: 10px;
+  min-width: 44px;
+  min-height: 44px;
   transition: opacity 0.2s ease, color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+
+.export-actions-title {
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: var(--space-1);
+}
+
+.export-actions-separator {
+  width: 28px;
+  height: 1px;
+  background: rgba(180, 160, 200, 0.35);
+  margin: var(--space-1) auto;
+}
+
+.export-icon:hover {
+  background: rgba(176, 106, 179, 0.1);
+}
+
 .export-icon svg {
   /* Icons scale down at narrower viewports so the tab bubble fits within the
      available canvas-edge space. Floor at 16px so glyphs stay legible. */
-  width: clamp(16px, 2.3vw, 33px);
-  height: clamp(16px, 2.3vw, 33px);
+  width: clamp(20px, 2vw, 28px);
+  height: clamp(20px, 2vw, 28px);
 }
 
 .export-icon:hover {
@@ -1186,7 +1223,7 @@ body {
 .load-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  gap: var(--space-2);
 }
 
 .load-btn {
@@ -1310,6 +1347,13 @@ body {
   mask-image: none;
 }
 
+/* A soft right-edge fade makes additional horizontally scrollable controls
+   discoverable instead of looking accidentally truncated. */
+.toolbar-center:not(.no-overflow) {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+}
+
 /* ---------- Toolbar slides container ---------- */
 .toolbar-slides {
   position: relative;
@@ -1328,29 +1372,38 @@ body {
 
 /* ---------- Mode-specific toolbar visibility ---------- */
 .mode-edit .toolbar-slides .typo-controls {
-  transform: translateX(100%);
+  transform: translateX(24px);
   opacity: 0;
   position: absolute;
   top: 0;
   left: 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .mode-preview .toolbar-slides .md-toolbar {
-  transform: translateX(-100%);
+  transform: translateX(-24px);
   opacity: 0;
   position: absolute;
   top: 0;
   left: 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Read mode: hide both toolbars, only mode-switch stays */
 .mode-read .toolbar-slides .md-toolbar,
 .mode-read .toolbar-slides .typo-controls {
-  transform: translateX(-100%);
+  transform: translateX(-24px);
   opacity: 0;
   position: absolute;
   top: 0;
   left: 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .mode-edit .toolbar-right {
@@ -1418,7 +1471,7 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 8px 24px;
+  padding: 8px 18px;
   text-align: center;
   color: var(--text-muted);
   cursor: pointer;
@@ -1500,8 +1553,8 @@ body {
 .md-toolbar {
   display: inline-flex;
   flex-wrap: nowrap;
-  gap: 6px;
-  padding: 5px var(--space-2);
+  gap: 2px;
+  padding: 4px var(--space-2);
   align-items: center;
   flex-shrink: 0;
 }
@@ -1522,10 +1575,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 50px;
-  width: 50px;
-  min-height: 50px;
-  min-width: 50px;
+  height: 44px;
+  width: 44px;
+  min-height: 44px;
+  min-width: 44px;
   position: relative;
   overflow: visible;
 }
@@ -1577,7 +1630,7 @@ body {
   width: 1px;
   height: 22px;
   background: rgba(180, 160, 200, 0.3);
-  margin: 0 2px;
+  margin: 0 var(--space-2);
   flex-shrink: 0;
 }
 
@@ -1861,6 +1914,57 @@ body {
   display: none;
 }
 
+/* Slim document-position indicator. Native scrollbars are overlayed or hidden
+   depending on the OS, so this gives the editor and preview a consistent
+   progress cue whenever the document overflows. */
+.doc-scrollbar {
+  position: absolute;
+  top: 12px;
+  bottom: 14px;
+  right: 2px;
+  width: 14px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.doc-scrollbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 5px;
+  border-radius: 999px;
+  background: rgba(180, 160, 200, 0.16);
+  transform: translateX(-50%);
+}
+
+.doc-scrollbar.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.doc-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(176, 106, 179, 0.58);
+  box-shadow: 0 1px 3px rgba(80, 55, 100, 0.16);
+  transform: translateY(0);
+  will-change: transform;
+  cursor: grab;
+}
+
+.doc-scrollbar.dragging .doc-scrollbar-thumb {
+  cursor: grabbing;
+  background: rgba(176, 106, 179, 0.72);
+}
+
 .editor:focus {
   outline: none;
   border-color: var(--accent);
@@ -1881,6 +1985,11 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  border-bottom-left-radius: var(--radius-inner);
+  border-bottom-right-radius: var(--radius-inner);
+  overflow: hidden;
   /* Glass surface — lets the body's rainbow gradient show through
      .main-inner's backdrop-filter blur, matching the sidebar. */
   background: var(--surface-canvas);
@@ -2393,6 +2502,25 @@ body {
   }
 }
 
+/* Narrow desktop/tablet: keep the feature controls and mode switch in one
+   row. The center container takes whatever width remains and scrolls its
+   larger control set horizontally instead of dropping to a second row. */
+@media (min-width: 846px) and (max-width: 1320px) {
+  .toolbar {
+    flex-wrap: nowrap;
+  }
+
+  .toolbar-center {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .mode-switch-label {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
 /* Stage D: Small laptop / tablet landscape, 760px – 979px */
 @media (max-width: 979px) {
   .reserve-zone {
@@ -2709,12 +2837,12 @@ body {
     width: 44px;
   }
 
-  /* Typography +/- buttons — 50px WCAG, larger +/- labels */
+  /* Typography +/- buttons — 44px WCAG, larger +/- labels */
   .typo-btn {
-    width: 50px;
-    height: 50px;
-    min-width: 50px;
-    min-height: 50px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     font-size: 1.3rem;
   }
 
