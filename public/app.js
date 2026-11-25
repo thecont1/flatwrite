@@ -644,6 +644,30 @@
      ========================================================================== */
 
   var mode = "edit";
+
+  /* The App surface is an unfinished experiment: the toggle stays visible
+     but App is disabled with a "coming soon" affordance for everyone except
+     the author, who opts in with ?appsurface=1 (persisted to localStorage
+     so the experiment survives navigations; ?appsurface=0 revokes). While
+     disabled, every App-only control (framework selector, components panel,
+     component modal) remains display:none via the .surface-doc CSS rule. */
+  var APP_SURFACE_EXPERIMENT = (function () {
+    try {
+      var flag = new URLSearchParams(window.location.search).get("appsurface");
+      if (flag === "1" || flag === "true") {
+        window.localStorage.setItem("fw.appsurface", "1");
+        return true;
+      }
+      if (flag === "0" || flag === "false") {
+        window.localStorage.removeItem("fw.appsurface");
+        return false;
+      }
+      return window.localStorage.getItem("fw.appsurface") === "1";
+    } catch (_) {
+      return false;
+    }
+  })();
+
   var surfaceMode = "doc";  /* "doc" | "app" */
   var currentDocEngine = "none";
   var currentAppFramework = "spectre";
@@ -2083,7 +2107,12 @@
     if (aria) return aria;
     var text = (button.textContent || "").replace(/\s+/g, " ").trim();
     if (button.classList.contains("engine-btn")) return "Render with " + (text || aria || title);
-    if (button.classList.contains("surface-btn")) return "Use the " + text + " surface";
+    if (button.classList.contains("surface-btn")) {
+      if (button.dataset.surface === "app" && !APP_SURFACE_EXPERIMENT) {
+        return "App surface — coming soon";
+      }
+      return "Use the " + text + " surface";
+    }
     if (button.classList.contains("font-dropdown-item")) return "Use " + text + " as the document typeface";
     if (button.classList.contains("fw-dropdown-item")) return "Use the " + text + " component framework";
     if (button.classList.contains("comp-btn")) return "Insert the " + text + " component";
@@ -3056,6 +3085,13 @@
 
   function setSurfaceMode(sm) {
     if (sm !== "doc" && sm !== "app") sm = "doc";
+    /* Single enforcement point: clicks, frontmatter restores, IDB restores
+       and share-link loads all funnel through here, so no path can enter
+       the App surface while the experiment flag is off. */
+    if (sm === "app" && !APP_SURFACE_EXPERIMENT) {
+      showToast("The App surface is coming soon");
+      sm = "doc";
+    }
     surfaceMode = sm;
     var appShell = document.querySelector(".app-shell");
     if (appShell) {
@@ -3071,6 +3107,7 @@
         btns[i].classList.toggle("active", active);
         btns[i].setAttribute("aria-pressed", String(active));
       }
+      toggle.classList.toggle("app-coming-soon", !APP_SURFACE_EXPERIMENT);
     }
     scheduleAutosave();
     if (mode === "preview" || mode === "read") renderPreview();

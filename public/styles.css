@@ -352,6 +352,26 @@ body {
   cursor: not-allowed;
 }
 
+/* App surface is gated behind ?appsurface=1 — the button stays visible as
+   a teaser but reads as unfinished and announces itself on click. */
+.surface-toggle.app-coming-soon .surface-btn[data-surface="app"] {
+  opacity: 0.55;
+}
+
+.surface-toggle.app-coming-soon .surface-btn[data-surface="app"]::after {
+  content: "soon";
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
 .surface-slider {
   position: absolute;
   top: 3px;
