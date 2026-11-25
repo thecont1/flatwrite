@@ -1,0 +1,104 @@
+{
+  "versions": {
+    "anydoc": "0.2.4",
+    "pdfInspector": "1.26.1",
+    "tesseract": "7.0.0",
+    "tesseractCore": "7.0.0",
+    "eng": "1.0.0"
+  },
+  "anydoc": {
+    "dir": "vendor/anydoc-0.2.4",
+    "script": "vendor/anydoc-0.2.4/anydoc_wasm.js",
+    "wasm": "vendor/anydoc-0.2.4/anydoc_wasm_bg.wasm"
+  },
+  "pdfInspector": {
+    "dir": "vendor/pdf-inspector-1.26.1",
+    "script": "vendor/pdf-inspector-1.26.1/pdf_inspector_wasm.js",
+    "wasm": "vendor/pdf-inspector-1.26.1/pdf_inspector_wasm_bg.wasm"
+  },
+  "tesseract": {
+    "dir": "vendor/tesseract-7.0.0",
+    "script": "vendor/tesseract-7.0.0/tesseract.min.js",
+    "worker": "vendor/tesseract-7.0.0/worker.min.js",
+    "corePath": "vendor/tesseract-7.0.0",
+    "langPath": "vendor/tesseract-7.0.0",
+    "traineddata": "vendor/tesseract-7.0.0/eng.traineddata.gz",
+    "coreFiles": {
+      "tesseract-core-lstm.js": "vendor/tesseract-7.0.0/tesseract-core-lstm.js",
+      "tesseract-core-lstm.wasm": "vendor/tesseract-7.0.0/tesseract-core-lstm.wasm",
+      "tesseract-core-lstm.wasm.js": "vendor/tesseract-7.0.0/tesseract-core-lstm.wasm.js",
+      "tesseract-core-relaxedsimd-lstm.js": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.js",
+      "tesseract-core-relaxedsimd-lstm.wasm": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.wasm",
+      "tesseract-core-relaxedsimd-lstm.wasm.js": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js",
+      "tesseract-core-simd-lstm.js": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.js",
+      "tesseract-core-simd-lstm.wasm": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.wasm",
+      "tesseract-core-simd-lstm.wasm.js": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.wasm.js"
+    }
+  },
+  "files": {
+    "anydoc_wasm.js": {
+      "path": "vendor/anydoc-0.2.4/anydoc_wasm.js",
+      "sizeBytes": 14366
+    },
+    "anydoc_wasm_bg.wasm": {
+      "path": "vendor/anydoc-0.2.4/anydoc_wasm_bg.wasm",
+      "sizeBytes": 6691779
+    },
+    "pdf_inspector_wasm.js": {
+      "path": "vendor/pdf-inspector-1.26.1/pdf_inspector_wasm.js",
+      "sizeBytes": 22916
+    },
+    "pdf_inspector_wasm_bg.wasm": {
+      "path": "vendor/pdf-inspector-1.26.1/pdf_inspector_wasm_bg.wasm",
+      "sizeBytes": 6003630
+    },
+    "worker.min.js": {
+      "path": "vendor/tesseract-7.0.0/worker.min.js",
+      "sizeBytes": 111307
+    },
+    "tesseract.min.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract.min.js",
+      "sizeBytes": 62961
+    },
+    "tesseract-core-lstm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-lstm.js",
+      "sizeBytes": 89261
+    },
+    "tesseract-core-lstm.wasm": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-lstm.wasm",
+      "sizeBytes": 2855361
+    },
+    "tesseract-core-lstm.wasm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-lstm.wasm.js",
+      "sizeBytes": 3896484
+    },
+    "tesseract-core-relaxedsimd-lstm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.js",
+      "sizeBytes": 89360
+    },
+    "tesseract-core-relaxedsimd-lstm.wasm": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.wasm",
+      "sizeBytes": 2862266
+    },
+    "tesseract-core-relaxedsimd-lstm.wasm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js",
+      "sizeBytes": 3905767
+    },
+    "tesseract-core-simd-lstm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.js",
+      "sizeBytes": 89271
+    },
+    "tesseract-core-simd-lstm.wasm": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.wasm",
+      "sizeBytes": 2857601
+    },
+    "tesseract-core-simd-lstm.wasm.js": {
+      "path": "vendor/tesseract-7.0.0/tesseract-core-simd-lstm.wasm.js",
+      "sizeBytes": 3899472
+    },
+    "eng.traineddata.gz": {
+      "path": "vendor/tesseract-7.0.0/eng.traineddata.gz",
+      "sizeBytes": 2952873
+    }
+  }
+}

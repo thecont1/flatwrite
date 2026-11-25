@@ -14,7 +14,6 @@ bun.lock
 .qodo/
 .devin/
 dist/
-public/vendor/
 
 # Python venvs and lockfiles (services/extract/)
 .venv/
