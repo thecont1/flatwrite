@@ -134,7 +134,7 @@ A staging copy (`flatwrite-extract-staging`, workers.dev-only) exists for pre-pr
 **`POST /api/fetch-document`** (`api/fetch-document.js`) — server-side fetch only:
 
 - Body: `{url}`; `http`/`https` only
-- SSRF hardening: no localhost, no private/reserved network ranges, DNS resolution validation with a rebinding guard (Workers `resolve4`/`resolve6` fallback), and **every redirect hop re-validated** (manual redirect following, max 5)
+- SSRF hardening: no localhost, no RFC1918/loopback/link-local/CGNAT/IPv6-ULA ranges, no multicast/benchmarking/protocol-assignment ranges, and no IPv4-transition embeddings (IPv4-mapped, IPv4-compatible, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) of those addresses; DNS resolution validation with a rebinding guard (Workers `resolve4`/`resolve6` fallback), and **every redirect hop re-validated** (manual redirect following, max 5)
 - 25 MB streaming cap, 60 s timeout, 20 req/min/IP rate limit
 - Extension validated against the same `EXTENSIONS` table the browser converter uses
 - Success: raw bytes as `application/octet-stream` with `X-Flatwrite-Filename` (URI-encoded), `X-Flatwrite-Source-Url`, `X-Flatwrite-Source-Content-Type`, `Cache-Control: no-store`. Raw upstream error bodies are never forwarded.
@@ -207,7 +207,9 @@ Measured against the production extract Worker (Workers Free plan, November 2026
 - WASM module startup is single-digit milliseconds per isolate; both modules combined are ~12.7 MB raw, well under the 64 MiB uncompressed Worker size limit (bundle ≈6.5 MiB, ≈2.9 MiB gzip) and the 128 MB isolate memory limit even with a 25 MB upload expanded in memory.
 - A stress-case 2.4 MB docx with ~40k paragraphs measured **260–345 ms CPU** and still returned 200.
 
-The Workers Free plan nominally allows 10 ms CPU per request. Cloudflare tolerates bursts in practice — every measured request succeeded — but very large files rely on that tolerance and could theoretically hit error 1102 under strict enforcement. This is a documented best-effort posture: the plan is deliberately unchanged because the high-volume interactive path never touches the Worker at all. The escalation path, if 1102s ever appear in production logs, is moving only the extract Worker to Workers Paid (5 min CPU ceiling).
+The Workers Free plan nominally allows 10 ms CPU per request. Cloudflare tolerates bursts in practice — every measured request succeeded — but very large files rely on that tolerance and could theoretically hit error 1102 under strict enforcement.
+
+**Conversion-cost amplification.** The 25 MB input cap bounds bytes, not cost: office XML is dense, and a small upload can expand enormously. Independent-review measurements with the real engines (Bun, not workerd): a 68 KB docx of ~2M XML nodes converted in ~600 ms while holding ~300 MiB RSS and producing ~8.5 M characters — the engine's internal `max_xml_nodes` ceiling (2M) sits above the 128 MB isolate memory limit. Inputs beyond the ceiling fail cleanly with `500 CONVERT_FAILED` rather than crashing the isolate (locked by regression fixture `docx-density-bomb.docx`). Before relying on Free-plan burst tolerance for the public API, take a production measurement of the densest acceptable input; the escalation paths are capping accepted node budget at the engine layer or moving the extract Worker to Workers Paid. This is a documented best-effort posture: the plan is deliberately unchanged because the high-volume interactive path never touches the Worker at all. The escalation path, if 1102s ever appear in production logs, is moving only the extract Worker to Workers Paid (5 min CPU ceiling).
 
 Browser-side conversion has no such ceiling: a reference pptx converts in roughly a second on commodity hardware including WASM warm-up, with the ~2.9 MB compressed engine lazy-loaded once per format family.
 

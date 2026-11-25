@@ -443,4 +443,21 @@ describe('golden parity corpus', () => {
     expect(result.markdown).toContain('65.0%');
     expect(result.metadata.fileType).toBe('excel');
   });
+
+  // Conversion-cost amplification boundary (independent security review F1):
+  // a small upload can expand into huge engine memory/CPU. These fixtures
+  // pin the contract at the engine's internal max_xml_nodes ceiling —
+  // dense-but-legal input converts, over-ceiling input fails cleanly with
+  // a structured ExtractError and never an unwrapped engine exception.
+  test('density fixtures pin the conversion-cost boundary', async () => {
+    const okBytes = new Uint8Array(await readFile('test/fixtures/extract-density/docx-density-ok.docx'));
+    const ok = await convert({ bytes: okBytes, filename: 'docx-density-ok.docx', engines: goldenEngines });
+    expect(ok.markdown.length).toBeGreaterThan(0);
+    expect(ok.metadata.fileType).toBe('word');
+
+    const bombBytes = new Uint8Array(await readFile('test/fixtures/extract-density/docx-density-bomb.docx'));
+    const error = await captureError(convert({ bytes: bombBytes, filename: 'docx-density-bomb.docx', engines: goldenEngines }));
+    expect(error).toBeInstanceOf(ExtractError);
+    expectExtractError(error, 500, 'CONVERT_FAILED');
+  });
 });

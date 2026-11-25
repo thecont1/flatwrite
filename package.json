@@ -33,6 +33,7 @@
     "@firecrawl/pdf-inspector-wasm": "1.26.1",
     "@tesseract.js-data/eng": "1.0.0",
     "chrome-devtools-mcp": "^1.4.0",
+    "dompurify": "3.2.4",
     "marked": "14.1.4",
     "sanitize-html": "^2.18.0",
     "spectrum-ts": "^5.2.0",

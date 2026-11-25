@@ -463,6 +463,47 @@ describe("api/fetch-document.js", () => {
     expect(res._body.error).toBe("URL is required");
   });
 
+  test("SSRF matrix: literal private/transition/transition-embedded targets are rejected before any fetch", async () => {
+    // Literal-IP URLs skip DNS entirely, so no mock is needed — a 400 here
+    // can only come from the isPrivateIp classification itself.
+    const blocked = [
+      "http://127.0.0.1/a.pdf",
+      "http://2130706433/a.pdf",        // decimal loopback — rejected by URL parse or resolution
+      "http://0x7f000001/a.pdf",        // hex loopback
+      "http://10.0.0.1/a.pdf",
+      "http://169.254.169.254/a.pdf",   // link-local metadata
+      "http://100.64.0.1/a.pdf",        // CGNAT
+      "http://192.168.0.1/a.pdf",
+      "http://224.0.0.1/a.pdf",         // multicast
+      "http://240.0.0.1/a.pdf",         // reserved
+      "http://192.0.0.1/a.pdf",         // protocol assignments
+      "http://198.18.0.1/a.pdf",        // benchmarking
+      "http://[::1]/a.pdf",
+      "http://[::ffff:7f00:1]/a.pdf",   // hex IPv4-mapped loopback
+      "http://[::ffff:127.0.0.1]/a.pdf",
+      "http://[::7f00:1]/a.pdf",        // IPv4-compatible loopback
+      "http://[64:ff9b::7f00:1]/a.pdf", // NAT64 loopback
+      "http://[2002:7f00:1::]/a.pdf",   // 6to4 loopback
+      "http://[fec0::1]/a.pdf",         // deprecated site-local
+      "http://[ff02::1]/a.pdf",         // multicast v6
+      "http://[fe80::1]/a.pdf",         // link-local
+      "http://[febf::1]/a.pdf",         // link-local range end
+      "http://[fc00::1]/a.pdf",         // ULA
+    ];
+    for (const url of blocked) {
+      const res = await invoke({ url });
+      expect(res._status).toBe(400);
+    }
+    // Public embeddings of the same transition forms must stay valid —
+    // the guard rejects private targets, not the mechanisms themselves.
+    // Literal IPs skip DNS, so mock only the document fetch itself.
+    mockSimpleDocumentFetch();
+    for (const url of ["http://[::ffff:808:808]/a.pdf", "http://[64:ff9b::808:808]/a.pdf"]) {
+      const res = await invoke({ url });
+      expect(res._status).toBe(200);
+    }
+  });
+
   test("rate limit is enforced after 20 requests per IP", async () => {
     mockPublicDns();
     mockSimpleDocumentFetch();

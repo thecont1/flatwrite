@@ -282,8 +282,10 @@ paths:
         downloading the response.
 
         The initial URL and every redirect hop are validated against SSRF
-        rules: `http`/`https` only, no localhost, no private or reserved
-        network addresses, and a DNS-rebinding guard. Redirects are followed
+        rules: `http`/`https` only, no localhost, and no RFC1918, loopback,
+        link-local, CGNAT, IPv6 ULA, multicast, benchmarking, or
+        IPv4-transition-embedded (IPv4-mapped/compatible, NAT64, 6to4)
+        addresses, plus a DNS-rebinding guard. Redirects are followed
         manually (maximum 5 hops). The upstream timeout is 60 seconds and the
         downloaded document is capped at 25 MB. Raw upstream error bodies are
         never forwarded.

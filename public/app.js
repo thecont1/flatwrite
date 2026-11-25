@@ -1813,7 +1813,14 @@
         ALLOW_DATA_ATTR: false
       });
     }
-    return raw;
+    // Fail closed. DOMPurify is vendored same-origin, so its absence means
+    // something is badly wrong — imported documents are a first-class
+    // untrusted-content channel and raw markup must never reach the preview.
+    // Degrade to visible text instead of rendering anything.
+    console.warn("[sanitize] DOMPurify unavailable — rendering as escaped text");
+    var escaped = document.createElement("div");
+    escaped.textContent = raw;
+    return "<pre>" + escaped.innerHTML + "</pre>";
   }
 
   // SOURCE: core/render.js — keep in sync

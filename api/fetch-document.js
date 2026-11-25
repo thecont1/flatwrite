@@ -51,9 +51,14 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// Only trust X-Forwarded-For when explicitly configured — Vercel and most
-// PaaS proxies set it, but a direct connection lets clients spoof it freely.
-const TRUST_PROXY = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true';
+// Only trust X-Forwarded-For when the deployment is genuinely behind a
+// proxy: explicit TRUST_PROXY configuration, or the Vercel platform itself
+// (which always edge-proxies — there remoteAddress is never the real
+// client, so failing closed would collapse every caller into one bucket).
+// A direct connection lets clients spoof XFF freely, so it stays off
+// everywhere else.
+const TRUST_PROXY = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true'
+  || process.env.VERCEL === '1';
 
 function getClientIp(req) {
   if (TRUST_PROXY) {
@@ -78,6 +83,12 @@ function isPrivateIpV4Parts(parts) {
   if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
   if (parts[0] === 192 && parts[1] === 168) return true;
   if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true; // CGNAT
+  if (parts[0] === 192 && parts[1] === 0 && parts[2] === 0) return true; // 192.0.0.0/24 protocol assignments
+  if (parts[0] === 192 && parts[1] === 0 && parts[2] === 2) return true; // 192.0.2.0/24 documentation
+  if (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) return true; // 198.18.0.0/15 benchmarking
+  if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) return true; // documentation
+  if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) return true; // documentation
+  if (parts[0] >= 224) return true; // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved
   return false;
 }
 
@@ -135,6 +146,10 @@ function isPrivateIp(ip) {
     if (groups[0] >= 0xfe80 && groups[0] <= 0xfebf) return true;
     // Unique local fc00::/7.
     if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    // Deprecated site-local fec0::/10 and multicast ff00::/8 — never
+    // legitimate document-fetch targets.
+    if (groups[0] >= 0xfec0 && groups[0] <= 0xfeff) return true;
+    if ((groups[0] & 0xff00) === 0xff00) return true;
     // IPv4-mapped ::ffff:a.b.c.d — regardless of whether the source
     // spelled the tail dotted or as hex groups, apply the IPv4 rules
     // to the final 32 bits.
@@ -142,6 +157,31 @@ function isPrivateIp(ip) {
       return isPrivateIpV4Parts([
         groups[6] >> 8, groups[6] & 0xff,
         groups[7] >> 8, groups[7] & 0xff,
+      ]);
+    }
+    // IPv4-compatible ::a.b.c.d (::/96): network stacks route these to the
+    // embedded IPv4 address — [::7f00:1] is loopback. Unspecified (::) and
+    // loopback (::1) are already rejected above; everything else in this
+    // space gets the IPv4 treatment.
+    if (groups.slice(0, 6).every((g) => g === 0)) {
+      return isPrivateIpV4Parts([
+        groups[6] >> 8, groups[6] & 0xff,
+        groups[7] >> 8, groups[7] & 0xff,
+      ]);
+    }
+    // NAT64 64:ff9b::/96 embeds the IPv4 destination in the final 32 bits.
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b &&
+        groups.slice(2, 6).every((g) => g === 0)) {
+      return isPrivateIpV4Parts([
+        groups[6] >> 8, groups[6] & 0xff,
+        groups[7] >> 8, groups[7] & 0xff,
+      ]);
+    }
+    // 6to4 2002::/16 embeds the IPv4 destination in groups 1–2.
+    if (groups[0] === 0x2002) {
+      return isPrivateIpV4Parts([
+        groups[1] >> 8, groups[1] & 0xff,
+        groups[2] >> 8, groups[2] & 0xff,
       ]);
     }
     return false;
@@ -183,49 +223,84 @@ async function validateImportUrl(rawUrl) {
   }
 
   // DNS-rebinding guard: resolve the hostname and reject if *any* resolved
-  // address (IPv4 or IPv6) is private/reserved.
-  //
-  // Two resolution paths, in order:
-  //   1. dns.lookup(hostname, { all: true }) — Node.js (Vercel, index.js,
-  //      the dev server). Follows the OS resolver, IPv4+IPv6 in one call.
-  //   2. dns.promises.resolve4/resolve6 — Cloudflare Workers, where
-  //      node:dns.lookup is not implemented (throws "Not implemented") but
-  //      resolve4/resolve6 work and each query counts as a subrequest.
-  // Both are awaited so the guard keeps working on every runtime the
-  // canonical handler runs on; total cost is one lookup either way.
+  // address (IPv4 or IPv6) is private/reserved. The resolved set is returned
+  // so the pre-fetch recheck can compare against it.
+  let addresses;
   try {
-    let addresses;
-    try {
-      addresses = await dnsPromises.lookup(hostname, { all: true });
-    } catch (lookupErr) {
-      if (typeof lookupErr === 'object' && lookupErr !== null &&
-          (lookupErr.code === 'ERR_NOT_IMPLEMENTED' /* Node semver */ ||
-           /not implemented/i.test(String(lookupErr.message || lookupErr)))) {
-        const [v4, v6] = await Promise.all([
-          dnsPromises.resolve4(hostname).catch(() => []),
-          dnsPromises.resolve6(hostname).catch(() => []),
-        ]);
-        addresses = [
-          ...v4.map((address) => ({ address, family: 4 })),
-          ...v6.map((address) => ({ address, family: 6 })),
-        ];
-      } else {
-        throw lookupErr;
-      }
-    }
-    if (!addresses.length) {
-      return { ok: false, error: 'Could not resolve host' };
-    }
-    for (const entry of addresses) {
-      if (isPrivateIp(entry.address)) {
-        return { ok: false, error: 'URL resolves to a private network address' };
-      }
-    }
+    addresses = await resolveHostAddresses(hostname);
   } catch {
     return { ok: false, error: 'Could not resolve host' };
   }
+  if (!addresses.length) {
+    return { ok: false, error: 'Could not resolve host' };
+  }
+  for (const entry of addresses) {
+    if (isPrivateIp(entry.address)) {
+      return { ok: false, error: 'URL resolves to a private network address' };
+    }
+  }
 
-  return { ok: true, url: parsed };
+  return { ok: true, url: parsed, addresses: addresses.map((entry) => entry.address) };
+}
+
+/**
+ * Resolve a hostname with the best mechanism the runtime offers:
+ *   1. dns.lookup(hostname, { all: true }) — Node.js (Vercel, index.js,
+ *      the dev server). Follows the OS resolver, IPv4+IPv6 in one call.
+ *   2. dns.promises.resolve4/resolve6 — Cloudflare Workers, where
+ *      node:dns.lookup is not implemented (throws "Not implemented") but
+ *      resolve4/resolve6 work and each query counts as a subrequest.
+ */
+async function resolveHostAddresses(hostname) {
+  try {
+    return await dnsPromises.lookup(hostname, { all: true });
+  } catch (lookupErr) {
+    if (typeof lookupErr === 'object' && lookupErr !== null &&
+        (lookupErr.code === 'ERR_NOT_IMPLEMENTED' /* Node semver */ ||
+         /not implemented/i.test(String(lookupErr.message || lookupErr)))) {
+      const [v4, v6] = await Promise.all([
+        dnsPromises.resolve4(hostname).catch(() => []),
+        dnsPromises.resolve6(hostname).catch(() => []),
+      ]);
+      return [
+        ...v4.map((address) => ({ address, family: 4 })),
+        ...v6.map((address) => ({ address, family: 6 })),
+      ];
+    }
+    throw lookupErr;
+  }
+}
+
+/**
+ * Cheap DNS-TOCTOU mitigation. Validation resolves the hostname; fetch()
+ * resolves it again independently, so a TTL-0 alternating-DNS attacker can
+ * in principle land the connection on a private address after a public
+ * verdict. Re-resolving immediately before connect and requiring (a) no
+ * private results and (b) overlap with the validated set shrinks the window
+ * to subresolver cache behavior without rejecting legitimate CDN rotation,
+ * which normally keeps some records stable across seconds. It does not
+ * close the window — see TECH-SPEC §5 — and literal-IP URLs skip it because
+ * there is nothing to rebind.
+ */
+async function recheckDnsStability(parsedUrl, validatedAddresses) {
+  if (!Array.isArray(validatedAddresses) || validatedAddresses.length === 0) return;
+  const hostname = parsedUrl.hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (net.isIP(hostname)) return;
+  let fresh;
+  try {
+    fresh = await resolveHostAddresses(hostname);
+  } catch {
+    throw httpError(502, 'Could not resolve host');
+  }
+  const freshAddresses = fresh.map((entry) => entry.address);
+  for (const address of freshAddresses) {
+    if (isPrivateIp(address)) {
+      throw httpError(400, 'URL resolves to a private network address');
+    }
+  }
+  if (!freshAddresses.some((address) => validatedAddresses.includes(address))) {
+    throw httpError(502, 'DNS answers changed during validation; refusing to fetch');
+  }
 }
 
 // Map common MIME types to a browser-conversion-friendly filename extension.
@@ -352,11 +427,13 @@ async function readBodyWithCap(upstream) {
  * complete SSRF validator before the next request. This closes the
  * public-URL → redirect → private-address bypass.
  */
-async function fetchDocumentBytes(validatedInitialUrl, signal) {
-  let currentUrl = validatedInitialUrl;
+async function fetchDocumentBytes(validatedInitial, signal) {
+  let currentUrl = validatedInitial.url;
+  let currentAddresses = validatedInitial.addresses;
   let redirectHops = 0;
 
   for (;;) {
+    await recheckDnsStability(currentUrl, currentAddresses);
     const upstream = await fetch(currentUrl.toString(), {
       signal,
       redirect: 'manual',
@@ -391,6 +468,7 @@ async function fetchDocumentBytes(validatedInitialUrl, signal) {
         throw httpError(400, validated.error);
       }
       currentUrl = validated.url;
+      currentAddresses = validated.addresses;
 
       // Redirect responses normally have no meaningful body, but cancelling is
       // important for unusual upstreams and keeps the socket reusable in Node.
@@ -472,7 +550,7 @@ module.exports = async function handleFetchDocument(req, res) {
 
   let fetched;
   try {
-    fetched = await fetchDocumentBytes(validated.url, controller.signal);
+    fetched = await fetchDocumentBytes(validated, controller.signal);
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
     const status = err.status || (timedOut ? 504 : 502);

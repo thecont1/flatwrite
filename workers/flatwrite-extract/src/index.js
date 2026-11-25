@@ -70,7 +70,12 @@ const TOKEN_TTL_SECONDS = 60;
 // deploys should back this with KV or Durable Objects.
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_TOKENS_PER_IP = 10;
+// Conversion costs real in-isolate CPU and /mcp-token is Origin-gated only,
+// so /extract gets its own per-IP budget — generous for interactive and
+// batch use, tight enough to bound scripted burn of the Free-plan isolate.
+const RATE_LIMIT_MAX_EXTRACT_PER_IP = 30;
 const tokenRequestLog = new Map(); // ip -> array of timestamps
+const extractRequestLog = new Map(); // ip -> array of timestamps
 
 // Hard cap on distinct tracked IPs to bound memory under an IP-rotation
 // attack. This is a stop-gap for a single-isolate in-memory Map; a
@@ -99,29 +104,37 @@ function parseDevOrigins(raw) {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function isTokenRateLimited(ip) {
+function hitRateLimit(log2, ip, maxPerWindow) {
   if (!ip) return false;
   const now = Date.now();
   const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
-  let log = tokenRequestLog.get(ip);
+  let log = log2.get(ip);
   if (!log) {
-    if (tokenRequestLog.size >= MAX_TRACKED_IPS) {
+    if (log2.size >= MAX_TRACKED_IPS) {
       // Maps preserve insertion order — evict the oldest tracked IP to
       // make room, rather than letting the Map grow without bound.
-      const oldestKey = tokenRequestLog.keys().next().value;
-      tokenRequestLog.delete(oldestKey);
+      const oldestKey = log2.keys().next().value;
+      log2.delete(oldestKey);
     }
     log = [];
-    tokenRequestLog.set(ip, log);
+    log2.set(ip, log);
   }
   const cutoff = now - windowMs;
   const withinWindow = log.filter((ts) => ts > cutoff);
-  if (withinWindow.length >= RATE_LIMIT_MAX_TOKENS_PER_IP) {
+  if (withinWindow.length >= maxPerWindow) {
     return true;
   }
   withinWindow.push(now);
-  tokenRequestLog.set(ip, withinWindow);
+  log2.set(ip, withinWindow);
   return false;
+}
+
+function isTokenRateLimited(ip) {
+  return hitRateLimit(tokenRequestLog, ip, RATE_LIMIT_MAX_TOKENS_PER_IP);
+}
+
+function isExtractRateLimited(ip) {
+  return hitRateLimit(extractRequestLog, ip, RATE_LIMIT_MAX_EXTRACT_PER_IP);
 }
 
 function isTrustedOrigin(origin, devOrigins) {
@@ -215,6 +228,14 @@ async function handleExtract(req, env, devOrigins) {
 
   const auth = await authenticateRequest(req, env);
   if (!auth.ok) return jsonResponse(auth.status, auth.body, cors);
+
+  // Per-IP conversion budget. Counted after auth so unauthenticated noise
+  // does not consume a legitimate caller's window, and keyed on the
+  // connecting IP rather than any client-controlled header.
+  const callerIp = req.headers.get('CF-Connecting-IP') || 'unknown';
+  if (isExtractRateLimited(callerIp)) {
+    return jsonResponse(429, { error: 'Rate limit exceeded', code: 'RATE_LIMIT' }, cors);
+  }
 
   const contentType = req.headers.get('Content-Type') || '';
   if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
@@ -392,7 +413,7 @@ async function handleMintToken(req, env, devOrigins) {
 // Exposed for tests only — lets test suites assert the rate-limit Map
 // stays bounded without needing to issue 10,000+ real requests through
 // the full Worker fetch() handler.
-export const __testing = { tokenRequestLog, MAX_TRACKED_IPS, isTokenRateLimited };
+export const __testing = { tokenRequestLog, extractRequestLog, MAX_TRACKED_IPS, isTokenRateLimited, isExtractRateLimited };
 
 export default {
   async fetch(req, env) {
